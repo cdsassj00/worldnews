@@ -17,8 +17,9 @@
   "ai": { "binding": "AI" },
   "vars": {
     // "vts" = 모의투자 도메인(29443), "prod" = 실전투자 도메인(9443).
-    // 실전 계좌 앱키를 발급받았다면 반드시 "prod" 여야 토큰이 발급된다.
-    "KIS_ENV": "vts",
+    // 사용자 계좌가 실전 전용이므로 "prod". 주문은 아래 스위치들로 여전히 막혀 있다
+    // (ORDER_ENABLED=false, ORDER_DRY_RUN=true) — 조회와 검증만 가능한 상태다.
+    "KIS_ENV": "prod",
     // 주문 API 전체 스위치. "true" 로 바꾸기 전에는 주문이 거부된다.
     "ORDER_ENABLED": "false",
     // KIS_ENV=prod 상태에서 실제 주문을 내려면 이 값도 "true" 여야 한다(이중 안전장치).
