@@ -100,12 +100,62 @@ await page.waitForFunction(() => document.querySelectorAll(".news-list li a").le
 check("뉴스 목록", (await page.locator(".news-list li a").count()) > 3, `${await page.locator(".news-list li a").count()}건`);
 
 // 주문 탭
+const kisState0 = await page.evaluate(async () => (await fetch("/api/kis/status")).json());
 await page.getByRole("tab", { name: "주문" }).click();
 await page.waitForTimeout(600);
 const orderFormVisible = await page.locator('form[data-role="order-form"]').count();
 const warnVisible = await page.locator(".order-warn").count();
-check("주문 탭 렌더", orderFormVisible + warnVisible > 0, `form ${orderFormVisible} / 경고 ${warnVisible}`);
+check(
+  "주문 탭 렌더",
+  kisState0.configured ? orderFormVisible === 1 : orderFormVisible + warnVisible > 0,
+  `form ${orderFormVisible} / 경고 ${warnVisible} / configured ${kisState0.configured}`,
+);
 await page.screenshot({ path: `${outDir}/03-order.png` });
+
+// 해외주식 차단 상태에서 미국 주문 탭이 이유를 보여주는지
+const kisState = kisState0;
+if (kisState.configured && !kisState.overseasEnabled) {
+  await page.evaluate(() => window.__wfg.globe.selectByIso2("US"));
+  await page.waitForFunction(() => document.querySelector(".panel-head h2")?.textContent?.includes("미국"), { timeout: 20000 });
+  await page.getByRole("tab", { name: "주문" }).click();
+  await page.waitForSelector(".order-warn", { timeout: 20000 });
+  const warnText = (await page.locator(".order-warn").allTextContents()).join(" ");
+  const formCount = await page.locator('form[data-role="order-form"]').count();
+  check(
+    "해외 주문 차단 안내",
+    /해외주식 주문이 막혀 있습니다/.test(warnText) && formCount === 0,
+    `form ${formCount} · ${warnText.slice(0, 60)}`,
+  );
+  await page.screenshot({ path: `${outDir}/05-overseas-blocked.png` });
+  await page.evaluate(() => window.__wfg.globe.selectByIso2("KR"));
+  await page.waitForFunction(() => document.querySelector(".panel-head h2")?.textContent?.includes("대한민국"), { timeout: 20000 });
+} else {
+  console.log(`[참고] 해외 주문 차단 검사 건너뜀 (configured=${kisState.configured}, overseasEnabled=${kisState.overseasEnabled})`);
+}
+
+// 검증 모드(ORDER_DRY_RUN)일 때 주문 탭이 그 사실을 알려주는지
+if (kisState.configured && kisState.dryRun) {
+  await page.getByRole("tab", { name: "주문" }).click();
+  await page.waitForSelector(".order-warn", { timeout: 20000 });
+  const dryText = (await page.locator(".order-warn").allTextContents()).join(" ");
+  check("검증 모드 안내", /검증 모드/.test(dryText), dryText.slice(0, 60));
+  await page.screenshot({ path: `${outDir}/06-dryrun.png` });
+}
+
+// AI 분석 탭 (제공자가 설정돼 있을 때만)
+const cfg = await page.evaluate(async () => (await fetch("/api/config")).json());
+if (cfg.ai?.enabled) {
+  await page.evaluate(() => window.__wfg.globe.selectByIso2("KR"));
+  await page.waitForFunction(() => document.querySelector(".panel-head h2")?.textContent?.includes("대한민국"), { timeout: 20000 });
+  await page.getByRole("tab", { name: "AI 분석" }).click();
+  await page.waitForSelector(".ai-block", { timeout: 120000 });
+  const blocks = await page.locator(".ai-block").count();
+  const bullets = await page.locator(".ai-list li").count();
+  check("AI 분석 렌더", blocks >= 1 && bullets >= 2, `블록 ${blocks} · 항목 ${bullets} · ${cfg.ai.provider}`);
+  await page.screenshot({ path: `${outDir}/07-ai.png` });
+} else {
+  console.log(`[참고] AI 분석 검사 건너뜀 — ${cfg.ai?.reason ?? "상태 불명"}`);
+}
 
 // 티커테이프 & 좌측 요약
 check("티커테이프", (await page.locator(".tape-item").count()) > 5);

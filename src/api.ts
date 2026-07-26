@@ -11,6 +11,9 @@ export interface Snapshot {
 }
 
 export interface KisStatus {
+  /** 현재 계좌 모드에서 해외주식 주문·잔고가 가능한지 */
+  overseasEnabled: boolean;
+  overseasReason: string;
   configured: boolean;
   tradeTokenSet: boolean;
   env: "vts" | "prod";
@@ -18,12 +21,43 @@ export interface KisStatus {
   ordersEnabled: boolean;
   realOrdersAllowed: boolean;
   maxOrderNotionalKrw: number;
+  /** true 면 서버가 주문을 전송하지 않고 검증만 한다 */
+  dryRun: boolean;
   transport: string;
+}
+
+export interface AiStatus {
+  enabled: boolean;
+  provider: "anthropic" | "workers-ai" | null;
+  model: string | null;
+  reason: string;
+}
+
+export interface AnalysisResult {
+  cc: string;
+  provider: "anthropic" | "workers-ai";
+  model: string;
+  generatedAt: number;
+  summary: string[];
+  picks: { name: string; symbol: string; stance: string; reason: string }[];
+  risks: string[];
+  checklist: string[];
+  disclaimer: string;
 }
 
 export interface ConfigResponse {
   kis: KisStatus;
-  markets: { cc: string; nameKo: string; indexName: string | null; tickers: number; orderable: number }[];
+  ai: AiStatus;
+  markets: {
+    cc: string;
+    nameKo: string;
+    indexName: string | null;
+    tickers: number;
+    /** KIS 주문 코드가 등록된 종목 수 */
+    orderable: number;
+    /** 지금 계좌 모드에서 실제로 주문이 나갈 수 있는 종목 수 */
+    orderableNow: number;
+  }[];
   disclaimer: string;
 }
 
@@ -133,6 +167,7 @@ export interface BalanceResponse {
 
 export interface OrderResponse {
   ok: true;
+  dryRun?: boolean;
   isPaper: boolean;
   market: string;
   code: string;
@@ -193,6 +228,11 @@ function humanize(code: string, detail: unknown): string {
     confirm_mismatch: "확인란의 종목코드가 일치하지 않습니다.",
     symbol_not_found: "시세를 찾을 수 없는 종목입니다.",
     upstream_429: "데이터 제공처 호출 한도에 걸렸습니다. 잠시 후 다시 시도하세요.",
+    overseas_unavailable: "이 계좌 모드에서는 해외주식 주문·잔고가 지원되지 않습니다.",
+    ai_disabled: "AI 분석이 비활성 상태입니다.",
+    ai_bad_json: "AI 응답을 해석하지 못했습니다. 다시 시도해 주세요.",
+    ai_refused: "모델이 이 내용에 대한 응답을 거부했습니다.",
+    analysis_unsupported: "이 국가는 시장 데이터가 없어 AI 분석을 만들지 않습니다.",
   };
   return table[code] ?? `요청 실패 (${code})`;
 }
@@ -228,6 +268,7 @@ export const api = {
   news: (cc: string, name: string) =>
     request<{ items: NewsItem[]; sources: ProviderStat[] }>(`/api/country/${cc}/news?name=${encodeURIComponent(name)}`),
   recommend: (cc: string) => request<RecommendResponse>(`/api/country/${cc}/recommend`),
+  analysis: (cc: string) => request<AnalysisResult>(`/api/country/${cc}/analysis`),
   kisStatus: () => request<KisStatus>("/api/kis/status"),
   balance: (market: string, currency?: string) =>
     request<BalanceResponse>("/api/kis/balance", { method: "POST", auth: true, body: JSON.stringify({ market, currency }) }),

@@ -3,6 +3,8 @@
  */
 import {
   api,
+  type AiStatus,
+  type AnalysisResult,
   ApiFailure,
   type KisStatus,
   type NewsItem,
@@ -29,11 +31,12 @@ export interface PanelDeps {
   root: HTMLElement;
   empty: HTMLElement;
   kis: () => KisStatus | null;
+  ai: () => AiStatus | null;
   requestOrder: (order: OrderDraft, ctx: { fxToKrw: number | null }) => void;
   onNeedAuth: () => void;
 }
 
-type Tab = "news" | "reco" | "order";
+type Tab = "news" | "reco" | "ai" | "order";
 
 export class Panel {
   private deps: PanelDeps;
@@ -44,6 +47,9 @@ export class Panel {
   private news: NewsItem[] | null = null;
   private newsSources: ProviderStat[] = [];
   private reco: RecommendResponse | null = null;
+  private analysis: AnalysisResult | null = null;
+  private analysisError: string | null = null;
+  private analysisLoading = false;
   private expanded = new Set<string>();
   private loadToken = 0;
   private orderDraft: OrderIntent | null = null;
@@ -60,6 +66,9 @@ export class Panel {
     this.news = null;
     this.newsSources = [];
     this.reco = null;
+    this.analysis = null;
+    this.analysisError = null;
+    this.analysisLoading = false;
     this.expanded.clear();
     this.orderDraft = null;
     this.tab = "reco"; // 국가를 새로 고르면 항상 추천부터 보여준다
@@ -87,6 +96,108 @@ export class Panel {
   setTab(tab: Tab): void {
     this.tab = tab;
     this.render();
+    // AI 분석은 비용이 있으니 탭을 처음 열 때만 불러온다(서버에서 15분 캐시).
+    if (tab === "ai" && !this.analysis && !this.analysisLoading && !this.analysisError) void this.loadAnalysis();
+  }
+
+  private async loadAnalysis(): Promise<void> {
+    const token = this.loadToken;
+    const cc = this.cc;
+    this.analysisLoading = true;
+    this.analysisError = null;
+    this.render();
+    try {
+      const data = await api.analysis(cc);
+      if (token !== this.loadToken) return;
+      this.analysis = data;
+    } catch (err) {
+      if (token !== this.loadToken) return;
+      this.analysisError = err instanceof ApiFailure ? err.message : String(err);
+    } finally {
+      if (token === this.loadToken) {
+        this.analysisLoading = false;
+        this.render();
+      }
+    }
+  }
+
+  private renderAnalysis(): HTMLElement[] {
+    const out: HTMLElement[] = [];
+    const ai = this.deps.ai();
+
+    if (ai && !ai.enabled) {
+      out.push(el("div", { class: "order-warn", text: ai.reason }));
+      return out;
+    }
+    if (this.analysisLoading) {
+      out.push(
+        el("p", { class: "note", text: "AI가 지수·뉴스·종목 점수를 읽고 브리핑을 쓰고 있습니다… (10~20초)" }),
+        el("div", { class: "skeleton-row" }),
+        el("div", { class: "skeleton-row" }),
+      );
+      return out;
+    }
+    if (this.analysisError) {
+      out.push(el("div", { class: "order-warn", text: this.analysisError }));
+      const retry = el("button", { class: "btn btn-ghost", type: "button", text: "다시 시도" });
+      retry.addEventListener("click", () => {
+        this.analysisError = null;
+        void this.loadAnalysis();
+      });
+      out.push(retry);
+      return out;
+    }
+    const a = this.analysis;
+    if (!a) {
+      out.push(el("p", { class: "note", text: "AI 분석을 불러오는 중입니다." }));
+      return out;
+    }
+
+    const section = (title: string, items: string[], cls = "") => {
+      if (!items.length) return null;
+      const box = el("div", { class: `ai-block ${cls}` });
+      box.append(el("h3", { class: "ai-title", text: title }));
+      const ul = el("ul", { class: "ai-list" });
+      for (const it of items) ul.append(el("li", { text: it }));
+      box.append(ul);
+      return box;
+    };
+
+    const s1 = section("지금 이 시장", a.summary);
+    if (s1) out.push(s1);
+
+    if (a.picks.length) {
+      const box = el("div", { class: "ai-block" });
+      box.append(el("h3", { class: "ai-title", text: "주목 종목" }));
+      for (const p of a.picks) {
+        box.append(
+          el("div", { class: "ai-pick" }, [
+            el("div", { class: "ai-pick-head" }, [
+              el("b", { text: p.name }),
+              el("span", { class: "sym", text: p.symbol }),
+              el("span", { class: "action-chip action-WATCH", text: p.stance }),
+            ]),
+            el("p", { class: "ai-pick-reason", text: p.reason }),
+          ]),
+        );
+      }
+      out.push(box);
+    }
+
+    const s2 = section("리스크", a.risks, "ai-risk");
+    if (s2) out.push(s2);
+    const s3 = section("확인할 것", a.checklist);
+    if (s3) out.push(s3);
+
+    out.push(
+      el("p", {
+        class: "note",
+        text: `${a.disclaimer} · ${a.provider === "anthropic" ? "Claude" : "Workers AI"} (${a.model}) · ${new Date(
+          a.generatedAt,
+        ).toLocaleString("ko-KR")}`,
+      }),
+    );
+    return out;
   }
 
   private render(): void {
@@ -98,6 +209,7 @@ export class Panel {
     const defs: { id: Tab; label: string }[] = [
       { id: "news", label: `뉴스${this.news ? ` (${this.news.length})` : ""}` },
       { id: "reco", label: `추천${this.reco?.items.length ? ` (${this.reco.items.length})` : ""}` },
+      { id: "ai", label: "AI 분석" },
       { id: "order", label: "주문" },
     ];
     for (const d of defs) {
@@ -116,6 +228,7 @@ export class Panel {
     const body = el("div", { class: "tab-panel", role: "tabpanel" });
     if (this.tab === "news") body.append(this.renderNews());
     else if (this.tab === "reco") body.append(...this.renderReco());
+    else if (this.tab === "ai") body.append(...this.renderAnalysis());
     else body.append(this.renderOrder());
     root.append(body);
   }
@@ -294,12 +407,18 @@ export class Panel {
     );
 
     const actions = el("div", { class: "reco-actions" });
-    if (item.orderable && item.kis) {
+    const kis = this.deps.kis();
+    const overseasBlocked = Boolean(item.kis && item.kis.market !== "KRX" && kis && !kis.overseasEnabled);
+    if (item.orderable && item.kis && !overseasBlocked) {
       const buy = el("button", { class: "btn btn-buy", type: "button", text: "매수 주문 담기" });
       buy.addEventListener("click", () => this.intendOrder(item, "buy"));
       const sell = el("button", { class: "btn btn-sell", type: "button", text: "매도 주문 담기" });
       sell.addEventListener("click", () => this.intendOrder(item, "sell"));
       actions.append(buy, sell);
+    } else if (overseasBlocked) {
+      actions.append(
+        el("span", { class: "note", text: `해외주식 주문 불가 — ${kis?.overseasReason ?? "계좌 모드 제한"}` }),
+      );
     } else {
       actions.append(el("span", { class: "note", text: "이 종목은 한국투자증권 주문 대상이 아닙니다(조회 전용)." }));
     }
@@ -336,8 +455,25 @@ export class Panel {
     const status = el("div", { class: "order-est" }, [
       el("div", { text: `계좌 모드: ${kis.envKo} (${kis.env})` }),
       el("div", { text: `주문 스위치: ${kis.ordersEnabled ? "ON" : "OFF"} · 1회 한도 ${fmtKrw(kis.maxOrderNotionalKrw)}` }),
+      el("div", { text: `해외주식: ${kis.overseasEnabled ? "주문 가능" : "주문 불가"}` }),
     ]);
     wrap.append(status);
+
+    if (kis.dryRun) {
+      wrap.append(
+        el("div", {
+          class: "order-warn",
+          text: "검증 모드(ORDER_DRY_RUN=true): 주문 버튼을 눌러도 KIS에 주문이 전송되지 않고 인증·한도·TR_ID 검증만 수행합니다. 실주문은 이 값을 false 로 바꾼 뒤 가능합니다.",
+        }),
+      );
+    } else if (kis.env === "prod" && kis.ordersEnabled) {
+      wrap.append(
+        el("div", {
+          class: "order-warn",
+          text: "실전투자 계좌에 실제 주문이 전송되는 상태입니다. 수량과 가격을 반드시 확인하세요.",
+        }),
+      );
+    }
 
     if (!kis.configured) {
       wrap.append(
@@ -348,7 +484,7 @@ export class Panel {
       );
       return wrap;
     }
-    if (!kis.ordersEnabled) {
+    if (!kis.ordersEnabled && !kis.dryRun) {
       wrap.append(
         el("div", {
           class: "order-warn",
@@ -357,17 +493,44 @@ export class Panel {
       );
     }
 
-    const candidates = (this.reco?.items ?? []).filter((i) => i.orderable && i.kis);
-    if (!candidates.length && !this.orderDraft) {
-      wrap.append(el("p", { class: "note", text: "이 국가에는 한국투자증권으로 주문 가능한 등록 종목이 없습니다. 한국·미국·일본·홍콩·중국 시장을 선택해 보세요." }));
+    // 해외주식이 막힌 계좌 모드면 국내(KRX) 종목만 주문 후보로 둔다.
+    const candidates = (this.reco?.items ?? []).filter(
+      (i) => i.orderable && i.kis && (i.kis.market === "KRX" || kis.overseasEnabled),
+    );
+    const blockedOverseas = (this.reco?.items ?? []).some(
+      (i) => i.orderable && i.kis && i.kis.market !== "KRX" && !kis.overseasEnabled,
+    );
+    if (blockedOverseas) {
+      wrap.append(el("div", { class: "order-warn", text: `해외주식 주문이 막혀 있습니다 — ${kis.overseasReason}` }));
+    }
+    if (!candidates.length) {
+      wrap.append(
+        el("p", {
+          class: "note",
+          text: blockedOverseas
+            ? "지금 계좌 모드에서는 이 시장에 주문을 낼 수 없습니다. 뉴스·추천은 그대로 보시고, 주문은 국내(대한민국) 종목으로 하세요."
+            : "이 국가에는 한국투자증권으로 주문 가능한 등록 종목이 없습니다. 대한민국 시장을 선택해 보세요.",
+        }),
+      );
       wrap.append(this.renderBalanceBlock("KRX", "KRW"));
       return wrap;
     }
 
+    if (this.orderDraft && this.orderDraft.market !== "KRX" && !kis.overseasEnabled) this.orderDraft = null;
+
+    // 1주 금액이 한도 안에 드는 종목을 기본값으로 고른다.
+    // 점수 1위가 고가주여서 첫 화면부터 "한도 초과"가 뜨는 걸 막는다.
+    const fx = this.overview?.fxToKrw ?? 1;
+    const affordable =
+      candidates.find((c) => c.price * (c.currency === "KRW" ? 1 : fx) <= kis.maxOrderNotionalKrw) ??
+      [...candidates].sort(
+        (a, b) => a.price * (a.currency === "KRW" ? 1 : fx) - b.price * (b.currency === "KRW" ? 1 : fx),
+      )[0];
+
     const draft: OrderIntent =
       this.orderDraft ??
       (() => {
-        const c = candidates[0];
+        const c = affordable ?? candidates[0];
         return {
           market: c.kis!.market,
           code: c.kis!.code,
@@ -380,7 +543,8 @@ export class Panel {
       })();
     this.orderDraft = draft;
 
-    const form = el("form", { class: "order-form" });
+    // data-role 은 E2E 검증에서 폼을 찾는 안정적인 훅이다.
+    const form = el("form", { class: "order-form", "data-role": "order-form" });
 
     // 종목 선택
     const select = el("select", { id: "ord-symbol" });
@@ -489,11 +653,17 @@ export class Panel {
     });
 
     wrap.append(form);
-    wrap.append(this.renderBalanceBlock(draft.market, draft.currency));
+    wrap.append(
+      kis.overseasEnabled || draft.market === "KRX"
+        ? this.renderBalanceBlock(draft.market, draft.currency)
+        : this.renderBalanceBlock("KRX", "KRW"),
+    );
     wrap.append(
       el("p", {
         class: "note",
-        text: "모의투자(KIS_ENV=vts)에서 먼저 체결을 확인하세요. 실전 전환은 서버 환경변수 2개(KIS_ENV=prod, ORDER_ALLOW_REAL=true)를 모두 바꿔야 합니다.",
+        text: kis.env === "prod"
+          ? "실전 계좌입니다. 검증 모드(ORDER_DRY_RUN)로 전 과정을 먼저 확인하고, 실주문은 1주·최소 금액부터 시작하세요."
+          : "모의투자에서 먼저 체결을 확인하세요. 실전 전환은 KIS_ENV=prod 와 ORDER_ALLOW_REAL=true 를 함께 바꿔야 합니다.",
       }),
     );
     return wrap;

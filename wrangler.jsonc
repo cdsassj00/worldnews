@@ -13,21 +13,32 @@
   "kv_namespaces": [
     { "binding": "CACHE", "id": "38b0ce18a5b84fa69ff47b10c6648ad6" }
   ],
+  // Workers AI: ANTHROPIC_API_KEY 가 없을 때 AI 분석을 대신 처리한다(별도 키 불필요).
+  "ai": { "binding": "AI" },
   "vars": {
-    // "vts" = 한국투자증권 모의투자(기본값), "prod" = 실전투자
+    // "vts" = 모의투자 도메인(29443), "prod" = 실전투자 도메인(9443).
+    // 실전 계좌 앱키를 발급받았다면 반드시 "prod" 여야 토큰이 발급된다.
     "KIS_ENV": "vts",
     // 주문 API 전체 스위치. "true" 로 바꾸기 전에는 주문이 거부된다.
     "ORDER_ENABLED": "false",
     // KIS_ENV=prod 상태에서 실제 주문을 내려면 이 값도 "true" 여야 한다(이중 안전장치).
     "ORDER_ALLOW_REAL": "false",
     // 1회 주문 최대 금액(원). 초과 주문은 서버에서 거부.
-    "MAX_ORDER_NOTIONAL_KRW": "1000000",
+    // 실전 계좌로 처음 붙일 때는 작게 유지하고, 체결을 확인한 뒤 올린다.
+    "MAX_ORDER_NOTIONAL_KRW": "100000",
+    // "true" 면 인증·한도·TR_ID 검증까지만 하고 실제 주문은 보내지 않는다.
+    // 모의투자 계좌 없이 실전 키만 있을 때 위험 없이 전 과정을 점검하는 스위치.
+    "ORDER_DRY_RUN": "true",
     // KIS 호출 방식: auto | fetch | socket (9443 포트 차단 환경 대비)
-    "KIS_TRANSPORT": "auto"
+    "KIS_TRANSPORT": "auto",
+    // 해외주식 주문·잔고 사용 여부: auto | on | off
+    // auto = 모의투자에서는 해외 불가(한투 모의는 국내 위주), 실전에서는 가능
+    "KIS_OVERSEAS": "auto"
   }
   // 시크릿(대시보드/CLI로 등록, 저장소에 커밋하지 않는다):
   //   wrangler secret put KIS_APP_KEY
   //   wrangler secret put KIS_APP_SECRET
   //   wrangler secret put KIS_ACCOUNT        // 예: 12345678-01
   //   wrangler secret put TRADE_TOKEN        // 주문/잔고 API 접근 암호
+  //   wrangler secret put ANTHROPIC_API_KEY  // (선택) AI 분석을 Claude로 처리
 }

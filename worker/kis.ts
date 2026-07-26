@@ -104,6 +104,34 @@ export function kisConfig(env: Env): KisConfig {
   };
 }
 
+/**
+ * 해외주식 주문·잔고 사용 가능 여부.
+ *
+ * 한국투자증권 모의투자 계좌는 실무적으로 국내주식 위주여서 해외주식 주문이 막히는 경우가 많다.
+ * 그래서 기본값(auto)은 "모의투자 = 해외 불가 / 실전 = 해외 가능" 으로 보수적으로 잡는다.
+ * 본인 계좌가 모의에서도 해외 주문이 된다면 KIS_OVERSEAS=on 으로 열면 된다.
+ */
+export function overseasCapability(env: Env): { allowed: boolean; reason: string } {
+  const mode = (env.KIS_OVERSEAS ?? "auto").toLowerCase();
+  const isPaper = (env.KIS_ENV ?? "vts").toLowerCase() !== "prod";
+  if (mode === "on") return { allowed: true, reason: "KIS_OVERSEAS=on 으로 강제 허용됨" };
+  if (mode === "off") return { allowed: false, reason: "KIS_OVERSEAS=off 로 해외주식이 차단됨" };
+  if (isPaper) {
+    return {
+      allowed: false,
+      reason:
+        "모의투자 계좌에서는 해외주식 주문·잔고를 지원하지 않는 것으로 가정합니다(기본값). 실전 계좌로 전환하거나, 모의에서도 해외가 열려 있다면 KIS_OVERSEAS=on 으로 설정하세요.",
+    };
+  }
+  return { allowed: true, reason: "실전 계좌이므로 해외주식 주문을 허용합니다." };
+}
+
+export function assertOverseasAllowed(env: Env, market: OrderMarket): void {
+  if (market === "KRX") return;
+  const cap = overseasCapability(env);
+  if (!cap.allowed) throw new ApiError(400, "overseas_unavailable", { hint: cap.reason });
+}
+
 /** 주문/잔고 API 접근 인증 (Authorization: Bearer <TRADE_TOKEN>) */
 export function assertTradeAuth(env: Env, request: Request): void {
   const expected = env.TRADE_TOKEN;
@@ -247,9 +275,13 @@ export async function kisToken(env: Env, cfg: KisConfig): Promise<string> {
   if (res.status !== 200 || typeof token !== "string") {
     // 재발급 실패 시 만료 직전 토큰이라도 재사용
     if (cachedRaw && cachedRaw.expiresAt > Date.now()) return cachedRaw.token;
+    const message = res.json["error_description"] ?? res.json["msg1"] ?? null;
     throw new ApiError(502, "kis_token_failed", {
       status: res.status,
-      message: res.json["error_description"] ?? res.json["msg1"] ?? null,
+      message,
+      hint: cfg.isPaper
+        ? "모의투자 도메인(29443)으로 호출했습니다. 실전 계좌 앱키라면 KIS_ENV=prod 로 바꿔야 합니다."
+        : "실전 도메인(9443)으로 호출했습니다. 앱키·시크릿이 실전용인지, KIS Developers 에서 서비스 신청이 완료됐는지 확인하세요.",
     });
   }
   const expiresIn = num(res.json["expires_in"], 86400);
@@ -481,15 +513,19 @@ export interface OrderRequest {
 }
 
 export function assertOrderAllowed(env: Env, cfg: KisConfig, req: OrderRequest): void {
-  if ((env.ORDER_ENABLED ?? "false").toLowerCase() !== "true") {
-    throw new ApiError(403, "orders_disabled", {
-      hint: "주문 기능이 꺼져 있습니다. ORDER_ENABLED=true 로 배포해야 주문이 전송됩니다.",
-    });
-  }
-  if (!cfg.isPaper && (env.ORDER_ALLOW_REAL ?? "false").toLowerCase() !== "true") {
-    throw new ApiError(403, "real_orders_blocked", {
-      hint: "실전투자 주문은 ORDER_ALLOW_REAL=true 를 함께 설정해야 허용됩니다.",
-    });
+  // 검증 모드는 KIS에 아무것도 보내지 않으므로 주문 스위치 없이도 점검할 수 있게 한다.
+  // 값 검증(수량·가격·한도·시장)은 실주문과 동일하게 통과해야 한다.
+  if (!isDryRun(env)) {
+    if ((env.ORDER_ENABLED ?? "false").toLowerCase() !== "true") {
+      throw new ApiError(403, "orders_disabled", {
+        hint: "주문 기능이 꺼져 있습니다. ORDER_ENABLED=true 로 배포해야 주문이 전송됩니다.",
+      });
+    }
+    if (!cfg.isPaper && (env.ORDER_ALLOW_REAL ?? "false").toLowerCase() !== "true") {
+      throw new ApiError(403, "real_orders_blocked", {
+        hint: "실전투자 주문은 ORDER_ALLOW_REAL=true 를 함께 설정해야 허용됩니다.",
+      });
+    }
   }
   if (!Number.isInteger(req.qty) || req.qty <= 0) throw new ApiError(400, "invalid_qty");
   if (req.orderType === "limit" && !(req.price > 0)) throw new ApiError(400, "invalid_price");
@@ -498,7 +534,7 @@ export function assertOrderAllowed(env: Env, cfg: KisConfig, req: OrderRequest):
       hint: "해외주식은 지정가 주문만 지원합니다.",
     });
   }
-  const limit = num(env.MAX_ORDER_NOTIONAL_KRW, 1_000_000);
+  const limit = num(env.MAX_ORDER_NOTIONAL_KRW, 100_000);
   if (req.notionalKrw > limit) {
     throw new ApiError(400, "order_limit_exceeded", {
       hint: `1회 주문 한도 ${limit.toLocaleString("ko-KR")}원을 초과했습니다(요청 ${Math.round(req.notionalKrw).toLocaleString("ko-KR")}원).`,
@@ -508,6 +544,8 @@ export function assertOrderAllowed(env: Env, cfg: KisConfig, req: OrderRequest):
 
 export interface OrderResult {
   ok: true;
+  /** true 면 검증만 수행하고 KIS에 주문을 보내지 않았다 */
+  dryRun?: boolean;
   isPaper: boolean;
   market: OrderMarket;
   code: string;
@@ -521,9 +559,37 @@ export interface OrderResult {
   trId: string;
 }
 
+export function isDryRun(env: Env): boolean {
+  return (env.ORDER_DRY_RUN ?? "false").toLowerCase() === "true";
+}
+
 export async function placeOrder(env: Env, cfg: KisConfig, req: OrderRequest): Promise<OrderResult> {
+  assertOverseasAllowed(env, req.market);
   assertOrderAllowed(env, cfg, req);
   const tr = trId(env, orderTridKey(req.market, req.side), cfg.isPaper);
+
+  // 검증 모드: 토큰 발급까지 실제로 해서 연결·인증·한도·TR_ID를 확인하고 주문은 보내지 않는다.
+  // 실전 계좌만 있는 경우 위험 없이 전 과정을 점검하는 용도다.
+  if (isDryRun(env)) {
+    await kisToken(env, cfg); // 인증이 실제로 되는지 확인
+    return {
+      ok: true,
+      dryRun: true,
+      isPaper: cfg.isPaper,
+      market: req.market,
+      code: req.code,
+      side: req.side,
+      qty: req.qty,
+      price: req.price,
+      orderNo: "",
+      orgNo: "",
+      orderTime: "",
+      message: `검증 모드(ORDER_DRY_RUN=true) — 주문을 전송하지 않았습니다. 실제로는 ${
+        cfg.isPaper ? "모의" : "실전"
+      } ${req.market} ${req.code} ${req.side === "buy" ? "매수" : "매도"} ${req.qty}주 (tr_id ${tr}) 가 전송됩니다.`,
+      trId: tr,
+    };
+  }
 
   let out: Record<string, unknown>;
   if (req.market === "KRX") {
@@ -609,14 +675,18 @@ export async function cancelDomesticOrder(
 export function kisStatus(env: Env) {
   const configured = kisConfigured(env);
   const isPaper = (env.KIS_ENV ?? "vts").toLowerCase() !== "prod";
+  const overseas = overseasCapability(env);
   return {
+    overseasEnabled: overseas.allowed,
+    overseasReason: overseas.reason,
     configured,
     tradeTokenSet: Boolean(env.TRADE_TOKEN),
     env: isPaper ? "vts" : "prod",
     envKo: isPaper ? "모의투자" : "실전투자",
     ordersEnabled: (env.ORDER_ENABLED ?? "false").toLowerCase() === "true",
     realOrdersAllowed: (env.ORDER_ALLOW_REAL ?? "false").toLowerCase() === "true",
-    maxOrderNotionalKrw: num(env.MAX_ORDER_NOTIONAL_KRW, 1_000_000),
+    maxOrderNotionalKrw: num(env.MAX_ORDER_NOTIONAL_KRW, 100_000),
+    dryRun: isDryRun(env),
     transport: (env.KIS_TRANSPORT ?? "auto").toLowerCase(),
   };
 }

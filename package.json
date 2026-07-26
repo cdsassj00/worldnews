@@ -19,6 +19,7 @@
     "validate:symbols": "node scripts/validate-symbols.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "three": "^0.185.1"
   },
   "devDependencies": {

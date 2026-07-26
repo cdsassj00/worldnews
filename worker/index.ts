@@ -4,7 +4,9 @@ import { ApiError, cached, errorResponse, json, num, round } from "./util";
 import { getManySeries, getSeries, toSnapshot } from "./quotes";
 import { getGlobalNews, getNews } from "./news";
 import { DISCLAIMER, recommend } from "./recommend";
+import { aiStatus, getAnalysis } from "./analysis";
 import {
+  assertOverseasAllowed,
   assertTradeAuth,
   cancelDomesticOrder,
   domesticBalance,
@@ -12,6 +14,7 @@ import {
   kisConfig,
   kisStatus,
   overseasBalance,
+  overseasCapability,
   overseasPrice,
   placeOrder,
   type OrderMarket,
@@ -74,6 +77,7 @@ function regionIndexFor(cc: string) {
 }
 
 async function handleOverview(env: Env, cc: string, nameKo: string) {
+  const overseas = overseasCapability(env);
   const m = marketFor(cc);
   const symbols: { symbol: string; label: string }[] = [];
   let hasLocalMarket = false;
@@ -113,7 +117,8 @@ async function handleOverview(env: Env, cc: string, nameKo: string) {
     tz: m?.tz ?? null,
     indices: indexList,
     tickerCount: m?.tickers.length ?? 0,
-    orderableCount: m?.tickers.filter((t) => t.kis).length ?? 0,
+    orderableCount:
+      m?.tickers.filter((t) => t.kis && (t.kis.market === "KRX" || overseas.allowed)).length ?? 0,
     disclaimer: DISCLAIMER,
   };
 }
@@ -127,15 +132,23 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
   }
 
   if (path === "/api/config") {
+    const overseas = overseasCapability(env);
     return json({
       kis: kisStatus(env),
-      markets: Object.values(MARKETS).map((m) => ({
-        cc: m.cc,
-        nameKo: m.nameKo,
-        indexName: m.indexName ?? null,
-        tickers: m.tickers.length,
-        orderable: m.tickers.filter((t) => t.kis).length,
-      })),
+      ai: aiStatus(env),
+      markets: Object.values(MARKETS).map((m) => {
+        const withKis = m.tickers.filter((t) => t.kis);
+        // 지금 계좌 모드에서 실제로 주문이 나갈 수 있는 종목 수
+        const orderableNow = withKis.filter((t) => t.kis!.market === "KRX" || overseas.allowed).length;
+        return {
+          cc: m.cc,
+          nameKo: m.nameKo,
+          indexName: m.indexName ?? null,
+          tickers: m.tickers.length,
+          orderable: withKis.length,
+          orderableNow,
+        };
+      }),
       disclaimer: DISCLAIMER,
     });
   }
@@ -156,7 +169,7 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     return json({ items: data.items, sources: data.sources, fetchedAt, stale });
   }
 
-  const countryMatch = /^\/api\/country\/([A-Za-z]{2})(\/(overview|news|recommend))?$/.exec(path);
+  const countryMatch = /^\/api\/country\/([A-Za-z]{2})(\/(overview|news|recommend|analysis))?$/.exec(path);
   if (countryMatch) {
     const cc = countryMatch[1].toUpperCase();
     const section = countryMatch[3] ?? "overview";
@@ -190,6 +203,35 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
       return json(data);
     }
 
+    if (section === "analysis") {
+      const m = marketFor(cc);
+      if (!m) {
+        throw new ApiError(400, "analysis_unsupported", {
+          hint: "이 국가는 시장 데이터가 없어 AI 분석을 만들지 않습니다.",
+        });
+      }
+      const status = aiStatus(env);
+      if (!status.enabled) throw new ApiError(503, "ai_disabled", { hint: status.reason });
+
+      const [{ data: news }, ovw, recoResult] = await Promise.all([
+        getNews(env, cc, m.nameKo),
+        cached(env, `ovw:${cc}`, 120, () => handleOverview(env, cc, m.nameKo)),
+        m.tickers.length
+          ? cached(env, `reco:${cc}`, 300, async () => {
+              const [{ data: n }, indexSeries] = await Promise.all([
+                getNews(env, cc, m.nameKo),
+                m.index ? getSeries(env, m.index, "3mo").catch(() => undefined) : Promise.resolve(undefined),
+              ]);
+              return recommend(env, m, n.items, indexSeries);
+            })
+          : Promise.resolve(null),
+      ]);
+
+      const indices = (ovw.data.indices as { label: string; price: number; changePct: number }[]) ?? [];
+      const { data } = await getAnalysis(env, m, indices, news.items, recoResult ? recoResult.data : null);
+      return json(data);
+    }
+
     const { data } = await cached(env, `ovw:${cc}`, 120, () => handleOverview(env, cc, nameKo));
     return json(data);
   }
@@ -214,6 +256,7 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     const market = (url.searchParams.get("market") ?? "KRX") as OrderMarket;
     const code = url.searchParams.get("code");
     if (!code) throw new ApiError(400, "code_required");
+    assertOverseasAllowed(env, market);
     const data = market === "KRX" ? await domesticPrice(env, cfg, code) : await overseasPrice(env, cfg, market, code);
     return json(data);
   }
@@ -224,6 +267,7 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     const cfg = kisConfig(env);
     const body = (await request.json().catch(() => ({}))) as { market?: string; currency?: string };
     const market = (body.market ?? "KRX") as OrderMarket;
+    assertOverseasAllowed(env, market);
     const data =
       market === "KRX"
         ? await domesticBalance(env, cfg)

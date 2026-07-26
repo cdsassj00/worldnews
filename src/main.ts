@@ -33,6 +33,7 @@ const panel = new Panel({
   root: $("panel-body"),
   empty: $("panel-empty"),
   kis: () => kisStatus,
+  ai: () => config?.ai ?? null,
   requestOrder: (order, ctx) => openOrderModal(order, ctx.fxToKrw),
   onNeedAuth: () => openAuthModal(),
 });
@@ -53,9 +54,11 @@ function renderKisBadge(): void {
     return;
   }
   const real = kisStatus.env === "prod";
-  badge.textContent = `${kisStatus.envKo}${kisStatus.ordersEnabled ? " · 주문 ON" : " · 주문 OFF"}`;
+  badge.textContent = `${kisStatus.envKo}${kisStatus.dryRun ? " · 검증모드" : kisStatus.ordersEnabled ? " · 주문 ON" : " · 주문 OFF"}${
+    kisStatus.overseasEnabled ? "" : " · 국내만"
+  }`;
   badge.className = `badge ${real ? "badge-real" : "badge-paper"}`;
-  badge.title = `1회 한도 ${fmtKrw(kisStatus.maxOrderNotionalKrw)} · 전송방식 ${kisStatus.transport}`;
+  badge.title = `1회 한도 ${fmtKrw(kisStatus.maxOrderNotionalKrw)} · 전송방식 ${kisStatus.transport} · ${kisStatus.overseasReason}`;
 }
 
 function renderTape(items: Snapshot[]): void {
@@ -252,8 +255,23 @@ function openOrderModal(order: OrderDraft, fxToKrw: number | null): void {
     row("주문금액", `${fmtNum(notional)} ${order.currency}${krw ? ` ≈ ${fmtKrw(krw)}` : ""}`),
   );
   const status = $("order-status");
-  status.textContent = kisStatus?.env === "prod" ? "실전투자 계좌입니다. 실제 체결되며 취소가 어렵습니다." : "모의투자 계좌로 전송됩니다.";
-  status.className = `modal-status ${kisStatus?.env === "prod" ? "err" : ""}`;
+  const submitBtn = $<HTMLButtonElement>("order-submit");
+  if (kisStatus?.dryRun) {
+    status.textContent = "검증 모드입니다. 인증·한도·TR_ID만 확인하고 실제 주문은 전송하지 않습니다.";
+    status.className = "modal-status";
+    submitBtn.textContent = "검증 실행";
+    submitBtn.className = "btn btn-primary";
+  } else if (kisStatus?.env === "prod") {
+    status.textContent = "실전투자 계좌입니다. 실제 체결되며 취소가 어렵습니다.";
+    status.className = "modal-status err";
+    submitBtn.textContent = "실전 주문 전송";
+    submitBtn.className = "btn btn-danger";
+  } else {
+    status.textContent = "모의투자 계좌로 전송됩니다.";
+    status.className = "modal-status";
+    submitBtn.textContent = "주문 전송";
+    submitBtn.className = "btn btn-danger";
+  }
   const confirmInput = $<HTMLInputElement>("order-confirm-input");
   confirmInput.value = "";
   confirmInput.placeholder = order.code;
@@ -296,10 +314,12 @@ function setupOrderModal(): void {
         refPrice: pendingOrder.refPrice,
         confirm,
       });
-      status.textContent = `접수 완료 · 주문번호 ${res.orderNo || "-"} (${res.isPaper ? "모의" : "실전"}) ${res.message}`;
+      status.textContent = res.dryRun
+        ? res.message
+        : `접수 완료 · 주문번호 ${res.orderNo || "-"} (${res.isPaper ? "모의" : "실전"}) ${res.message}`;
       status.className = "modal-status ok";
       pendingOrder = null;
-      setTimeout(() => (modal.hidden = true), 2200);
+      setTimeout(() => (modal.hidden = true), res.dryRun ? 6000 : 2200);
     } catch (err) {
       const msg = err instanceof ApiFailure ? err.message : String(err);
       status.textContent = msg;
@@ -345,7 +365,9 @@ function setupGlobe(liveCodes: Set<string>, orderCodes: Set<string>): void {
         el("div", {
           class: "tt-meta",
           text: market
-            ? `${market.indexName ?? "지수"} · 종목 ${market.tickers}개${market.orderable ? ` · 주문 ${market.orderable}개` : ""}`
+            ? `${market.indexName ?? "지수"} · 종목 ${market.tickers}개${
+                market.orderableNow ? ` · 주문 ${market.orderableNow}개` : market.orderable ? " · 주문 불가(계좌 모드)" : ""
+              }`
             : "뉴스 제공",
         }),
       );
@@ -393,7 +415,8 @@ async function boot(): Promise<void> {
   $("disclaimer").textContent = config?.disclaimer ?? $("disclaimer").textContent;
 
   const liveCodes = new Set<string>((config?.markets ?? []).filter((m) => m.tickers > 0 || m.indexName).map((m) => m.cc));
-  const orderCodes = new Set<string>((config?.markets ?? []).filter((m) => m.orderable > 0).map((m) => m.cc));
+  // 앰버 마커는 "지금 실제로 주문 가능한" 시장만 표시한다(모의투자면 국내만).
+  const orderCodes = new Set<string>((config?.markets ?? []).filter((m) => m.orderableNow > 0).map((m) => m.cc));
 
   setupGlobe(liveCodes, orderCodes);
   setupSearch();
