@@ -26,11 +26,19 @@ const CHROME_CANDIDATES = [
 ].filter(Boolean);
 const executablePath = CHROME_CANDIDATES.find((p) => existsSync(p));
 
+// 원격 URL 검증 시에는 컨테이너 프록시를 통해야 한다(E2E_PROXY 또는 HTTPS_PROXY).
+const proxyServer = process.env.E2E_PROXY ?? (base.startsWith("http://127.0.0.1") ? undefined : process.env.HTTPS_PROXY);
+
 const browser = await chromium.launch({
   executablePath,
+  proxy: proxyServer ? { server: proxyServer } : undefined,
   args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--no-sandbox", "--disable-dev-shm-usage"],
 });
-const page = await browser.newPage({ viewport: { width: 1600, height: 950 }, deviceScaleFactor: 1 });
+const page = await browser.newPage({
+  viewport: { width: 1600, height: 950 },
+  deviceScaleFactor: 1,
+  ignoreHTTPSErrors: Boolean(proxyServer),
+});
 
 const consoleErrors = [];
 page.on("console", (m) => {

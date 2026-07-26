@@ -153,7 +153,7 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
 
   if (path === "/api/global/news") {
     const { data, fetchedAt, stale } = await getGlobalNews(env);
-    return json({ items: data, fetchedAt, stale });
+    return json({ items: data.items, sources: data.sources, fetchedAt, stale });
   }
 
   const countryMatch = /^\/api\/country\/([A-Za-z]{2})(\/(overview|news|recommend))?$/.exec(path);
@@ -164,7 +164,7 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
 
     if (section === "news") {
       const { data, fetchedAt, stale } = await getNews(env, cc, nameKo);
-      return json({ cc, items: data, fetchedAt, stale });
+      return json({ cc, items: data.items, sources: data.sources, fetchedAt, stale });
     }
 
     if (section === "recommend") {
@@ -185,7 +185,7 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
           getNews(env, cc, m.nameKo),
           m.index ? getSeries(env, m.index, "3mo").catch(() => undefined) : Promise.resolve(undefined),
         ]);
-        return recommend(env, m, news, indexSeries);
+        return recommend(env, m, news.items, indexSeries);
       });
       return json(data);
     }

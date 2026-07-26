@@ -48,20 +48,23 @@ export async function cached<T>(
   key: string,
   ttlSeconds: number,
   loader: () => Promise<T>,
+  /** 결과에 따라 TTL을 다르게 주고 싶을 때(예: 빈 결과는 짧게) */
+  ttlFor?: (data: T) => number,
 ): Promise<{ data: T; stale: boolean; fetchedAt: number }> {
   const raw = await env.CACHE.get(key, "json").catch(() => null);
-  const entry = raw as { data: T; fetchedAt: number } | null;
+  const entry = raw as { data: T; fetchedAt: number; ttl?: number } | null;
   const now = Date.now();
-  if (entry && now - entry.fetchedAt < ttlSeconds * 1000) {
+  if (entry && now - entry.fetchedAt < (entry.ttl ?? ttlSeconds) * 1000) {
     return { data: entry.data, stale: false, fetchedAt: entry.fetchedAt };
   }
   try {
     const data = await loader();
+    const effectiveTtl = ttlFor ? ttlFor(data) : ttlSeconds;
     await env.CACHE.put(
       key,
-      JSON.stringify({ data, fetchedAt: now }),
+      JSON.stringify({ data, fetchedAt: now, ttl: effectiveTtl }),
       // 만료 후에도 stale 폴백으로 쓰려고 TTL을 넉넉히 준다(최소 60초).
-      { expirationTtl: Math.max(60, ttlSeconds * 12) },
+      { expirationTtl: Math.max(60, effectiveTtl * 12) },
     ).catch(() => undefined);
     return { data, stale: false, fetchedAt: now };
   } catch (err) {

@@ -27,6 +27,13 @@ export interface ConfigResponse {
   disclaimer: string;
 }
 
+export interface ProviderStat {
+  provider: string;
+  ok: boolean;
+  count: number;
+  error?: string;
+}
+
 export interface NewsItem {
   title: string;
   url: string;
@@ -216,9 +223,10 @@ async function request<T>(path: string, init?: RequestInit & { auth?: boolean })
 export const api = {
   config: () => request<ConfigResponse>("/api/config"),
   tape: () => request<{ items: Snapshot[]; fetchedAt: number }>("/api/tape"),
-  globalNews: () => request<{ items: NewsItem[] }>("/api/global/news"),
+  globalNews: () => request<{ items: NewsItem[]; sources: ProviderStat[] }>("/api/global/news"),
   overview: (cc: string, name: string) => request<Overview>(`/api/country/${cc}/overview?name=${encodeURIComponent(name)}`),
-  news: (cc: string, name: string) => request<{ items: NewsItem[] }>(`/api/country/${cc}/news?name=${encodeURIComponent(name)}`),
+  news: (cc: string, name: string) =>
+    request<{ items: NewsItem[]; sources: ProviderStat[] }>(`/api/country/${cc}/news?name=${encodeURIComponent(name)}`),
   recommend: (cc: string) => request<RecommendResponse>(`/api/country/${cc}/recommend`),
   kisStatus: () => request<KisStatus>("/api/kis/status"),
   balance: (market: string, currency?: string) =>

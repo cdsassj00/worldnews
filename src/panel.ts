@@ -7,6 +7,7 @@ import {
   type KisStatus,
   type NewsItem,
   type Overview,
+  type ProviderStat,
   type Recommendation,
   type RecommendResponse,
 } from "./api";
@@ -41,6 +42,7 @@ export class Panel {
   private tab: Tab = "reco";
   private overview: Overview | null = null;
   private news: NewsItem[] | null = null;
+  private newsSources: ProviderStat[] = [];
   private reco: RecommendResponse | null = null;
   private expanded = new Set<string>();
   private loadToken = 0;
@@ -56,6 +58,7 @@ export class Panel {
     this.nameKo = nameKo;
     this.overview = null;
     this.news = null;
+    this.newsSources = [];
     this.reco = null;
     this.expanded.clear();
     this.orderDraft = null;
@@ -71,7 +74,10 @@ export class Panel {
     ]);
     if (token !== this.loadToken) return;
     if (ovw.status === "fulfilled") this.overview = ovw.value;
-    if (news.status === "fulfilled") this.news = news.value.items;
+    if (news.status === "fulfilled") {
+      this.news = news.value.items;
+      this.newsSources = news.value.sources ?? [];
+    }
     if (reco.status === "fulfilled") this.reco = reco.value;
     // 종목 유니버스가 없으면 뉴스 탭이 기본
     if (this.reco?.unsupported || !this.reco?.items.length) this.tab = "news";
@@ -165,7 +171,11 @@ export class Panel {
   private renderNews(): HTMLElement {
     if (!this.news) return el("div", { class: "skeleton-row" });
     if (!this.news.length) {
-      return el("p", { class: "note", text: "최근 7일 금융 관련 기사를 찾지 못했습니다." });
+      const tried = this.newsSources.map((s) => `${s.provider}${s.ok ? `(${s.count}건)` : `(실패: ${s.error ?? "?"})`}`).join(", ");
+      return el("div", {}, [
+        el("p", { class: "note", text: "최근 7일 금융 관련 기사를 찾지 못했습니다." }),
+        tried ? el("p", { class: "note", text: `시도한 제공처 — ${tried}` }) : null,
+      ]);
     }
     const list = el("ul", { class: "news-list" });
     for (const n of this.news) {
