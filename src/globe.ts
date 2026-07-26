@@ -79,23 +79,41 @@ function tracePath(ctx: CanvasRenderingContext2D, geometry: GeoJSON.Geometry, w:
 
   for (const poly of polys) {
     for (const ring of poly) {
-      // 경도 점프(>180°)가 있으면 링을 끊어서 그린다 → 지도 가로로 줄이 그어지는 현상 방지
-      const segments: number[][][] = [];
-      let current: number[][] = [];
-      let prevLon: number | null = null;
-      for (const [lon, lat] of ring) {
-        if (prevLon !== null && Math.abs(lon - prevLon) > 180) {
-          if (current.length > 1) segments.push(current);
-          current = [];
-        }
-        current.push([lon, lat]);
-        prevLon = lon;
-      }
-      if (current.length > 1) segments.push(current);
+      if (ring.length < 2) continue;
 
-      for (const seg of segments) {
-        ctx.moveTo(...project(seg[0][0], seg[0][1], w, h));
-        for (let i = 1; i < seg.length; i++) ctx.lineTo(...project(seg[i][0], seg[i][1], w, h));
+      // 날짜변경선(±180°)을 넘는 나라(러시아·피지 등)를 그대로 그리면
+      // 경도가 +179 → -179 로 튀면서 지도를 가로지르는 가짜 선이 생긴다.
+      // 링을 잘라 각각 닫으면 그 조각을 닫는 직선이 또 대륙을 가로지른다.
+      // 그래서 자르지 않고 경도를 "펴서"(unwrap) 연속되게 만든 뒤,
+      // 화면 밖으로 나간 부분은 ±360° 만큼 옮겨 한 번 더 그린다.
+      const unwrapped: number[][] = [];
+      let offset = 0;
+      let prevLon = ring[0][0];
+      for (const [lon, lat] of ring) {
+        const delta = lon - prevLon;
+        if (delta > 180) offset -= 360;
+        else if (delta < -180) offset += 360;
+        prevLon = lon;
+        unwrapped.push([lon + offset, lat]);
+      }
+
+      let minLon = Infinity;
+      let maxLon = -Infinity;
+      for (const [lon] of unwrapped) {
+        if (lon < minLon) minLon = lon;
+        if (lon > maxLon) maxLon = lon;
+      }
+
+      // 기본 위치 + 필요하면 반대편에 한 번 더(날짜변경선 양쪽 모두 채우기)
+      const shifts = [0];
+      if (minLon < -180) shifts.push(360);
+      if (maxLon > 180) shifts.push(-360);
+
+      for (const shift of shifts) {
+        ctx.moveTo(...project(unwrapped[0][0] + shift, unwrapped[0][1], w, h));
+        for (let i = 1; i < unwrapped.length; i++) {
+          ctx.lineTo(...project(unwrapped[i][0] + shift, unwrapped[i][1], w, h));
+        }
         ctx.closePath();
       }
     }
