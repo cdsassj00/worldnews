@@ -672,11 +672,33 @@ export async function cancelDomesticOrder(
   return out;
 }
 
+/**
+ * 시크릿 값을 노출하지 않으면서 흔한 입력 실수를 잡아내는 진단.
+ * (마스킹된 `****` 값 붙여넣기, 공백 포함, 계좌번호 형식 오류)
+ * 길이·불리언만 돌려주며 값 자체는 절대 반환하지 않는다.
+ */
+function secretChecks(env: Env) {
+  const key = env.KIS_APP_KEY ?? "";
+  const secret = env.KIS_APP_SECRET ?? "";
+  const account = (env.KIS_ACCOUNT ?? "").trim();
+  const bad = (v: string) => v.includes("*") || v.includes(" ") || v.includes("\n");
+  return {
+    appKeyLength: key.length,
+    appSecretLength: secret.length,
+    // KIS 앱키는 36자, 시크릿은 180자 내외다. 크게 벗어나면 잘린 값일 가능성이 높다.
+    appKeyLooksValid: key.length >= 30 && !bad(key),
+    appSecretLooksValid: secret.length >= 100 && !bad(secret),
+    accountFormatOk: /^\d{8}-?\d{2}$/.test(account),
+    maskedValueDetected: bad(key) || bad(secret),
+  };
+}
+
 export function kisStatus(env: Env) {
   const configured = kisConfigured(env);
   const isPaper = (env.KIS_ENV ?? "vts").toLowerCase() !== "prod";
   const overseas = overseasCapability(env);
   return {
+    checks: configured ? secretChecks(env) : null,
     overseasEnabled: overseas.allowed,
     overseasReason: overseas.reason,
     configured,
