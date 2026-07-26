@@ -1,0 +1,37 @@
+{
+  "name": "worldnews",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "3D globe world finance news + KIS trading terminal on Cloudflare Workers",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:41729/git/cdsassj00/worldnews"
+  },
+  "scripts": {
+    "data": "node scripts/build-data.mjs",
+    "dev:web": "vite",
+    "build": "npm run data && vite build",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "typecheck": "tsc --build tsconfig.json",
+    "validate:symbols": "node scripts/validate-symbols.mjs"
+  },
+  "dependencies": {
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260726.1",
+    "@types/geojson": "^7946.0.16",
+    "@types/three": "^0.185.1",
+    "@types/topojson-client": "^3.1.5",
+    "i18n-iso-countries": "^7.14.0",
+    "playwright": "^1.62.0",
+    "topojson-client": "^3.1.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5",
+    "world-atlas": "^2.0.2",
+    "wrangler": "^4.114.0"
+  }
+}

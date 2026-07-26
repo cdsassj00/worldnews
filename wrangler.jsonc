@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "worldnews",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "observability": { "enabled": true },
+  "kv_namespaces": [
+    { "binding": "CACHE", "id": "38b0ce18a5b84fa69ff47b10c6648ad6" }
+  ],
+  "vars": {
+    // "vts" = 한국투자증권 모의투자(기본값), "prod" = 실전투자
+    "KIS_ENV": "vts",
+    // 주문 API 전체 스위치. "true" 로 바꾸기 전에는 주문이 거부된다.
+    "ORDER_ENABLED": "false",
+    // KIS_ENV=prod 상태에서 실제 주문을 내려면 이 값도 "true" 여야 한다(이중 안전장치).
+    "ORDER_ALLOW_REAL": "false",
+    // 1회 주문 최대 금액(원). 초과 주문은 서버에서 거부.
+    "MAX_ORDER_NOTIONAL_KRW": "1000000",
+    // KIS 호출 방식: auto | fetch | socket (9443 포트 차단 환경 대비)
+    "KIS_TRANSPORT": "auto"
+  }
+  // 시크릿(대시보드/CLI로 등록, 저장소에 커밋하지 않는다):
+  //   wrangler secret put KIS_APP_KEY
+  //   wrangler secret put KIS_APP_SECRET
+  //   wrangler secret put KIS_ACCOUNT        // 예: 12345678-01
+  //   wrangler secret put TRADE_TOKEN        // 주문/잔고 API 접근 암호
+}

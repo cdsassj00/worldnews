@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>WORLD FINANCE GLOBE — 3D 세계지도 금융뉴스·시세·주문</title>
+    <meta
+      name="description"
+      content="3D 지구본에서 나라를 클릭하면 그 나라 금융뉴스와 지수, 종목 점수와 매매 계획을 보여주고 한국투자증권 계좌로 매수·매도까지 연결하는 터미널."
+    />
+    <meta name="color-scheme" content="dark" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      as="style"
+      crossorigin
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+    />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%23020617' stroke='%2322C55E' stroke-width='2'/%3E%3Cpath d='M3 16h26M16 3c5 5 5 21 0 26M16 3c-5 5-5 21 0 26' stroke='%2334D399' stroke-width='1.2' fill='none'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <a class="skip-link" href="#panel">본문(국가 상세 패널)로 건너뛰기</a>
+
+    <header class="topbar">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+          <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2" />
+          <path d="M3 16h26M16 3c5 5 5 21 0 26M16 3c-5 5-5 21 0 26" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".8" />
+        </svg>
+        <div class="brand-text">
+          <strong>WORLD FINANCE GLOBE</strong>
+          <span id="kis-badge" class="badge badge-muted" title="한국투자증권 연동 상태">연동 확인중…</span>
+        </div>
+      </div>
+      <div class="tape" id="tape" role="marquee" aria-label="글로벌 시세 티커">
+        <div class="tape-track" id="tape-track"></div>
+      </div>
+      <button class="btn btn-ghost" id="btn-auth" type="button">거래 암호</button>
+    </header>
+
+    <main class="layout">
+      <aside class="rail" aria-label="시장 요약">
+        <section class="card">
+          <h2 class="card-title">지금 움직이는 시장</h2>
+          <p class="card-sub">지수 변동률 상위. 클릭하면 지구본이 그 나라로 이동합니다.</p>
+          <ul class="hot-list" id="hot-list">
+            <li class="skeleton-row"></li>
+            <li class="skeleton-row"></li>
+            <li class="skeleton-row"></li>
+          </ul>
+        </section>
+
+        <section class="card">
+          <h2 class="card-title">글로벌 헤드라인</h2>
+          <ul class="news-list compact" id="global-news">
+            <li class="skeleton-row"></li>
+            <li class="skeleton-row"></li>
+            <li class="skeleton-row"></li>
+          </ul>
+        </section>
+
+        <section class="card card-guide">
+          <h2 class="card-title">쓰는 순서</h2>
+          <ol class="steps">
+            <li><b>지구본에서 나라를 클릭</b>한다. 초록 점은 종목·지수 데이터가 있는 시장이다.</li>
+            <li><b>뉴스</b> 탭에서 그 나라 금융 흐름을 읽는다.</li>
+            <li><b>추천</b> 탭에서 점수·근거·손절/목표가를 확인한다.</li>
+            <li><b>주문</b> 탭에서 수량을 넣고 모의투자로 먼저 체결해 본다.</li>
+          </ol>
+        </section>
+      </aside>
+
+      <section class="stage">
+        <div id="globe-host" class="globe-host">
+          <canvas id="globe" aria-label="3D 세계지도. 국가를 클릭해 해당 국가 금융정보를 봅니다."></canvas>
+          <div class="globe-hint" id="globe-hint">드래그로 지구를 돌리고, 나라를 클릭하세요</div>
+          <div class="globe-tooltip" id="globe-tooltip" hidden></div>
+          <div class="globe-controls">
+            <button class="icon-btn" id="btn-spin" type="button" aria-pressed="true" title="자동회전 켜기/끄기">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 1 1-7.7 5.9M12 4V1M12 4l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              <span class="sr-only">자동회전</span>
+            </button>
+            <button class="icon-btn" id="btn-zoom-in" type="button" title="확대">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <span class="sr-only">확대</span>
+            </button>
+            <button class="icon-btn" id="btn-zoom-out" type="button" title="축소">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <span class="sr-only">축소</span>
+            </button>
+          </div>
+          <label class="country-search">
+            <span class="sr-only">국가 검색</span>
+            <input id="country-search" type="search" placeholder="국가 검색 (예: 미국, Japan, DE)" autocomplete="off" />
+            <ul id="search-results" class="search-results" hidden></ul>
+          </label>
+        </div>
+      </section>
+
+      <section class="panel" id="panel" aria-live="polite">
+        <div class="panel-empty" id="panel-empty">
+          <h2>나라를 고르세요</h2>
+          <p>
+            어디를 볼지 모르겠으면 왼쪽 <b>지금 움직이는 시장</b>에서 변동률이 큰 나라부터 누르면 됩니다.
+            지구본의 초록 점이 있는 나라는 지수·종목·주문까지 연결됩니다.
+          </p>
+          <div class="empty-legend">
+            <span><i class="dot dot-live"></i> 시장 데이터 보유</span>
+            <span><i class="dot dot-order"></i> 한국투자증권 주문 가능</span>
+            <span><i class="dot dot-news"></i> 뉴스만 제공</span>
+          </div>
+        </div>
+        <div class="panel-body" id="panel-body" hidden></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span id="disclaimer">
+        점수·의견은 가격지표와 공개 뉴스 키워드로 계산한 참고 자료입니다. 투자 자문이 아니며 매매 판단과 책임은 이용자 본인에게 있습니다.
+      </span>
+      <span class="footer-meta" id="footer-meta"></span>
+    </footer>
+
+    <!-- 거래 암호 모달 -->
+    <div class="modal" id="auth-modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+        <h2 id="auth-title">거래 암호 입력</h2>
+        <p class="modal-desc">
+          주문·잔고 조회는 서버에 설정한 <code>TRADE_TOKEN</code> 을 아는 사람만 쓸 수 있습니다.
+          입력값은 이 브라우저 세션에만 저장되고 서버에 저장되지 않습니다.
+        </p>
+        <label class="field">
+          <span>거래 암호</span>
+          <input type="password" id="auth-input" autocomplete="current-password" />
+        </label>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="auth-clear" type="button">저장값 삭제</button>
+          <span class="spacer"></span>
+          <button class="btn btn-ghost" id="auth-cancel" type="button">취소</button>
+          <button class="btn btn-primary" id="auth-save" type="button">저장</button>
+        </div>
+        <p class="modal-status" id="auth-status"></p>
+      </div>
+    </div>
+
+    <!-- 주문 확인 모달 -->
+    <div class="modal" id="order-modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="order-title">
+        <h2 id="order-title">주문 확인</h2>
+        <div id="order-summary" class="order-summary"></div>
+        <label class="field">
+          <span>확인을 위해 종목코드를 다시 입력하세요</span>
+          <input type="text" id="order-confirm-input" autocomplete="off" spellcheck="false" />
+        </label>
+        <div class="modal-actions">
+          <span class="spacer"></span>
+          <button class="btn btn-ghost" id="order-cancel" type="button">취소</button>
+          <button class="btn btn-danger" id="order-submit" type="button">주문 전송</button>
+        </div>
+        <p class="modal-status" id="order-status"></p>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

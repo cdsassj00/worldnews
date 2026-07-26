@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+.env
+*.local
+src/data/generated/
+public/data/
+.DS_Store
+
+*.tsbuildinfo

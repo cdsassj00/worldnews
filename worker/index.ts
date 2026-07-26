@@ -1,0 +1,300 @@
+import type { Env } from "./env";
+import { GLOBAL_TAPE, MARKETS, REGION_FALLBACK, marketFor } from "../shared/markets";
+import { ApiError, cached, errorResponse, json, num, round } from "./util";
+import { getManySeries, getSeries, toSnapshot } from "./quotes";
+import { getGlobalNews, getNews } from "./news";
+import { DISCLAIMER, recommend } from "./recommend";
+import {
+  assertTradeAuth,
+  cancelDomesticOrder,
+  domesticBalance,
+  domesticPrice,
+  kisConfig,
+  kisStatus,
+  overseasBalance,
+  overseasPrice,
+  placeOrder,
+  type OrderMarket,
+} from "./kis";
+
+/** 국가명(한국어) — 지도 데이터와 별개로 Worker 쪽에서도 필요 */
+const CC_NAME_KO: Record<string, string> = Object.fromEntries(
+  Object.values(MARKETS).map((m) => [m.cc, m.nameKo]),
+);
+
+function marketOpen(tz: string, session?: [string, string]): { open: boolean; localTime: string; label: string } {
+  const fmt = new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    weekday: "short",
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(new Date());
+  const hour = parts.find((p) => p.type === "hour")?.value ?? "00";
+  const minute = parts.find((p) => p.type === "minute")?.value ?? "00";
+  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "Mon";
+  const localTime = `${hour}:${minute}`;
+  const isWeekend = weekday === "Sat" || weekday === "Sun";
+  if (!session) return { open: false, localTime, label: "장시간 정보 없음" };
+  const toMin = (s: string) => Number(s.slice(0, 2)) * 60 + Number(s.slice(3, 5));
+  const now = toMin(localTime);
+  const open = !isWeekend && now >= toMin(session[0]) && now <= toMin(session[1]);
+  return {
+    open,
+    localTime,
+    label: isWeekend ? "주말 휴장" : open ? `정규장 진행중 (${session[0]}~${session[1]})` : `장 마감 (${session[0]}~${session[1]})`,
+  };
+}
+
+async function fxToKrw(env: Env, currency: string): Promise<number> {
+  if (!currency || currency === "KRW") return 1;
+  try {
+    const s = await getSeries(env, `${currency}KRW=X`, "5d");
+    return s.price || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function regionIndexFor(cc: string) {
+  const eu = ["AL", "AD", "BA", "BY", "MD", "ME", "MK", "RS", "UA", "IS", "LU", "LT", "LV", "EE", "SK", "SI", "HR", "BG", "RO", "HU", "CZ", "CY", "MT", "IE"];
+  const asia = ["PK", "BD", "LK", "NP", "KH", "LA", "MM", "MN", "KZ", "UZ", "AZ", "GE", "AM", "IQ", "IR", "JO", "KW", "LB", "OM", "QA", "BH", "SY", "YE", "AF", "BN", "TL", "BT", "MV", "KG", "TJ", "TM"];
+  const africa = ["NG", "KE", "GH", "TZ", "ET", "UG", "MA", "DZ", "TN", "SN", "CI", "CM", "ZW", "ZM", "BW", "NA", "MZ", "AO", "CD", "SD", "LY", "MU", "RW", "ML", "BF", "NE", "TD", "SO", "MG", "GA", "GN", "BJ", "TG", "SL", "LR", "MR", "CG", "CF", "ER", "SS", "DJ", "GM", "GW", "LS", "SZ", "MW", "BI", "GQ", "CV", "KM", "ST", "SC", "EH"];
+  const northAm = ["GT", "CU", "HT", "DO", "HN", "NI", "CR", "PA", "JM", "TT", "BS", "BZ", "SV", "PR", "GL"];
+  const southAm = ["CO", "PE", "VE", "EC", "BO", "PY", "UY", "GY", "SR", "GF"];
+  const oceania = ["FJ", "PG", "SB", "VU", "NC", "WS", "TO", "FM", "PF"];
+  if (eu.includes(cc)) return REGION_FALLBACK.EU;
+  if (asia.includes(cc)) return REGION_FALLBACK.AS;
+  if (africa.includes(cc)) return REGION_FALLBACK.AF;
+  if (northAm.includes(cc)) return REGION_FALLBACK.NA;
+  if (southAm.includes(cc)) return REGION_FALLBACK.SA_REGION;
+  if (oceania.includes(cc)) return REGION_FALLBACK.OC;
+  return REGION_FALLBACK.WORLD;
+}
+
+async function handleOverview(env: Env, cc: string, nameKo: string) {
+  const m = marketFor(cc);
+  const symbols: { symbol: string; label: string }[] = [];
+  let hasLocalMarket = false;
+  let regionNote: string | null = null;
+
+  if (m?.index) {
+    hasLocalMarket = true;
+    symbols.push({ symbol: m.index, label: m.indexName ?? m.index });
+    if (m.index2) symbols.push({ symbol: m.index2, label: m.index2Name ?? m.index2 });
+  } else {
+    const region = regionIndexFor(cc);
+    symbols.push({ symbol: region.index, label: region.indexName });
+    regionNote = m
+      ? "이 국가의 대표지수는 공개 시세가 없어 지역 대표지수로 대체 표시합니다."
+      : "이 국가는 개별 시장 데이터가 없어 지역 대표지수와 뉴스만 제공합니다.";
+  }
+
+  const series = await getManySeries(env, symbols.map((s) => s.symbol), "3mo");
+  const indexList = symbols
+    .map((s) => {
+      const found = series.find((x) => x.symbol.toUpperCase() === s.symbol.toUpperCase());
+      return found ? { ...toSnapshot(found, s.label), sparkline: found.closes.slice(-40) } : null;
+    })
+    .filter(Boolean);
+
+  const fx = m ? await fxToKrw(env, m.currency) : 0;
+
+  return {
+    cc,
+    nameKo: m?.nameKo ?? nameKo,
+    hasLocalMarket,
+    regionNote,
+    proxyNote: m?.proxyNote ?? null,
+    currency: m?.currency ?? null,
+    fxToKrw: fx ? round(fx, 4) : null,
+    session: m ? marketOpen(m.tz, m.session) : null,
+    tz: m?.tz ?? null,
+    indices: indexList,
+    tickerCount: m?.tickers.length ?? 0,
+    orderableCount: m?.tickers.filter((t) => t.kis).length ?? 0,
+    disclaimer: DISCLAIMER,
+  };
+}
+
+async function router(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const url = new URL(request.url);
+  const path = url.pathname.replace(/\/+$/, "") || "/";
+
+  if (path === "/api/health") {
+    return json({ ok: true, now: Date.now(), markets: Object.keys(MARKETS).length });
+  }
+
+  if (path === "/api/config") {
+    return json({
+      kis: kisStatus(env),
+      markets: Object.values(MARKETS).map((m) => ({
+        cc: m.cc,
+        nameKo: m.nameKo,
+        indexName: m.indexName ?? null,
+        tickers: m.tickers.length,
+        orderable: m.tickers.filter((t) => t.kis).length,
+      })),
+      disclaimer: DISCLAIMER,
+    });
+  }
+
+  if (path === "/api/tape") {
+    const { data, fetchedAt } = await cached(env, "tape:global", 90, async () => {
+      const series = await getManySeries(env, GLOBAL_TAPE.map((t) => t.symbol), "5d");
+      return GLOBAL_TAPE.map((t) => {
+        const s = series.find((x) => x.symbol.toUpperCase() === t.symbol.toUpperCase());
+        return s ? toSnapshot(s, t.label) : null;
+      }).filter(Boolean);
+    });
+    return json({ items: data, fetchedAt });
+  }
+
+  if (path === "/api/global/news") {
+    const { data, fetchedAt, stale } = await getGlobalNews(env);
+    return json({ items: data, fetchedAt, stale });
+  }
+
+  const countryMatch = /^\/api\/country\/([A-Za-z]{2})(\/(overview|news|recommend))?$/.exec(path);
+  if (countryMatch) {
+    const cc = countryMatch[1].toUpperCase();
+    const section = countryMatch[3] ?? "overview";
+    const nameKo = url.searchParams.get("name") || CC_NAME_KO[cc] || cc;
+
+    if (section === "news") {
+      const { data, fetchedAt, stale } = await getNews(env, cc, nameKo);
+      return json({ cc, items: data, fetchedAt, stale });
+    }
+
+    if (section === "recommend") {
+      const m = marketFor(cc);
+      if (!m || m.tickers.length === 0) {
+        return json({
+          cc,
+          unsupported: true,
+          reason: m
+            ? "이 시장은 개별종목 시세 소스가 없어 추천을 계산하지 않습니다."
+            : "이 국가는 종목 유니버스가 등록되지 않았습니다. 뉴스만 확인하세요.",
+          items: [],
+          disclaimer: DISCLAIMER,
+        });
+      }
+      const { data } = await cached(env, `reco:${cc}`, 300, async () => {
+        const [{ data: news }, indexSeries] = await Promise.all([
+          getNews(env, cc, m.nameKo),
+          m.index ? getSeries(env, m.index, "3mo").catch(() => undefined) : Promise.resolve(undefined),
+        ]);
+        return recommend(env, m, news, indexSeries);
+      });
+      return json(data);
+    }
+
+    const { data } = await cached(env, `ovw:${cc}`, 120, () => handleOverview(env, cc, nameKo));
+    return json(data);
+  }
+
+  if (path === "/api/quote") {
+    const symbol = url.searchParams.get("symbol");
+    if (!symbol) throw new ApiError(400, "symbol_required");
+    const range = url.searchParams.get("range") ?? "3mo";
+    const s = await getSeries(env, symbol, range);
+    return json(s);
+  }
+
+  /* ── KIS ─────────────────────────────────────────────── */
+
+  if (path === "/api/kis/status") {
+    return json(kisStatus(env));
+  }
+
+  if (path === "/api/kis/price") {
+    assertTradeAuth(env, request);
+    const cfg = kisConfig(env);
+    const market = (url.searchParams.get("market") ?? "KRX") as OrderMarket;
+    const code = url.searchParams.get("code");
+    if (!code) throw new ApiError(400, "code_required");
+    const data = market === "KRX" ? await domesticPrice(env, cfg, code) : await overseasPrice(env, cfg, market, code);
+    return json(data);
+  }
+
+  if (path === "/api/kis/balance") {
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    const cfg = kisConfig(env);
+    const body = (await request.json().catch(() => ({}))) as { market?: string; currency?: string };
+    const market = (body.market ?? "KRX") as OrderMarket;
+    const data =
+      market === "KRX"
+        ? await domesticBalance(env, cfg)
+        : await overseasBalance(env, cfg, market, body.currency ?? "USD");
+    return json(data);
+  }
+
+  if (path === "/api/kis/order") {
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    const cfg = kisConfig(env);
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const market = String(body.market ?? "KRX") as OrderMarket;
+    const code = String(body.code ?? "").trim();
+    const side = String(body.side ?? "") === "sell" ? "sell" : "buy";
+    const qty = Math.floor(num(body.qty));
+    const orderType = String(body.orderType ?? "limit") === "market" ? "market" : "limit";
+    const price = num(body.price);
+    const currency = String(body.currency ?? (market === "KRX" ? "KRW" : "USD"));
+    if (!code) throw new ApiError(400, "code_required");
+    // 확인 절차: 프론트에서 종목코드를 다시 입력해 confirm 필드로 보낸다.
+    if (String(body.confirm ?? "").toUpperCase() !== code.toUpperCase()) {
+      throw new ApiError(400, "confirm_mismatch", { hint: "확인란에 종목코드를 정확히 입력해야 주문이 전송됩니다." });
+    }
+
+    const fx = await fxToKrw(env, currency);
+    const unit = orderType === "market" ? num(body.refPrice, price) : price;
+    const notionalKrw = unit * qty * (currency === "KRW" ? 1 : fx || 0);
+    if (currency !== "KRW" && !fx) throw new ApiError(502, "fx_unavailable", { hint: "환율 조회 실패로 한도 검증을 못 했습니다." });
+
+    const result = await placeOrder(env, cfg, { market, code, side, qty, price, orderType, notionalKrw });
+    return json({ ...result, notionalKrw: Math.round(notionalKrw), currency });
+  }
+
+  if (path === "/api/kis/cancel") {
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    const cfg = kisConfig(env);
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const out = await cancelDomesticOrder(env, cfg, {
+      orgNo: String(body.orgNo ?? ""),
+      orderNo: String(body.orderNo ?? ""),
+      qty: Math.floor(num(body.qty)),
+      all: Boolean(body.all),
+    });
+    return json({ ok: true, detail: out["msg1"] ?? null });
+  }
+
+  void ctx;
+  throw new ApiError(404, "not_found", { path });
+}
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+    if (!url.pathname.startsWith("/api/")) {
+      return env.ASSETS.fetch(request);
+    }
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        headers: {
+          "access-control-allow-origin": url.origin,
+          "access-control-allow-headers": "content-type, authorization",
+          "access-control-allow-methods": "GET, POST, OPTIONS",
+        },
+      });
+    }
+    try {
+      return await router(request, env, ctx);
+    } catch (err) {
+      return errorResponse(err);
+    }
+  },
+} satisfies ExportedHandler<Env>;
