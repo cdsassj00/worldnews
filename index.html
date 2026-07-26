@@ -40,6 +40,7 @@
       <div class="tape" id="tape" role="marquee" aria-label="글로벌 시세 티커">
         <div class="tape-track" id="tape-track"></div>
       </div>
+      <button class="btn btn-ghost" id="btn-auto" type="button">자동매매</button>
       <button class="btn btn-ghost" id="btn-auth" type="button">거래 암호</button>
     </header>
 
@@ -163,6 +164,20 @@
           <button class="btn btn-danger" id="order-submit" type="button">주문 전송</button>
         </div>
         <p class="modal-status" id="order-status"></p>
+      </div>
+    </div>
+
+    <!-- 자동매매 대시보드 -->
+    <div class="modal modal-wide" id="auto-modal" hidden>
+      <div class="modal-card auto-card" role="dialog" aria-modal="true" aria-labelledby="auto-title">
+        <div class="auto-head">
+          <h2 id="auto-title">AI 자동매매</h2>
+          <span id="auto-badge" class="badge badge-muted">상태 확인중…</span>
+          <span class="spacer"></span>
+          <button class="btn btn-ghost" id="auto-refresh" type="button">새로고침</button>
+          <button class="btn btn-ghost" id="auto-close" type="button">닫기</button>
+        </div>
+        <div class="auto-body" id="auto-body"></div>
       </div>
     </div>
 

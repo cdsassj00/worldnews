@@ -20,6 +20,20 @@ export interface Env {
   TRADE_TOKEN?: string; // 주문/잔고 API 접근용 비밀 토큰
   KIS_TRID_OVERRIDES?: string; // TR_ID 표를 덮어쓰는 JSON (선택)
 
+  // 자동매매 (autotrade.ts)
+  AUTOTRADE_ENABLED?: string; // "true" 여야 실제 주문이 나간다. 기본 false = 계획만 세움
+  AUTO_CAPITAL_KRW?: string; // 운용 원금 상한
+  AUTO_MAX_POSITION_PCT?: string; // 한 종목 최대 비중(%)
+  AUTO_STOP_LOSS_PCT?: string; // 종목별 손절(%)
+  AUTO_TAKE_PROFIT_PCT?: string; // 종목별 익절(%)
+  AUTO_DAILY_LOSS_HALT_PCT?: string; // 당일 손실 정지선(%)
+  AUTO_MAX_DRAWDOWN_PCT?: string; // 고점 대비 낙폭 영구 정지선(%)
+  AUTO_TARGET_PROFIT_KRW?: string; // 목표 수익
+  AUTO_MAX_TRADES_PER_DAY?: string;
+  AUTO_MAX_ORDERS_PER_CYCLE?: string;
+  AUTO_MIN_ORDER_KRW?: string;
+  AUTO_MAX_POSITIONS?: string;
+
   // AI 분석
   ANTHROPIC_API_KEY?: string; // 있으면 Claude 사용 (시크릿)
   AI_MODEL?: string; // 기본 claude-opus-5

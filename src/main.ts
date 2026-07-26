@@ -2,6 +2,7 @@ import "./style.css";
 import { Globe, type CountryRef } from "./globe";
 import { api, ApiFailure, getTradeToken, setTradeToken, type ConfigResponse, type KisStatus, type Snapshot } from "./api";
 import { Panel, type OrderDraft } from "./panel";
+import { AutoPanel } from "./autopanel";
 import { dirClass, el, fmtKrw, fmtNum, fmtPct, timeAgo } from "./format";
 
 /** 티커테이프 심볼 → 국가코드 (지금 움직이는 시장 목록용) */
@@ -37,6 +38,8 @@ const panel = new Panel({
   requestOrder: (order, ctx) => openOrderModal(order, ctx.fxToKrw),
   onNeedAuth: () => openAuthModal(),
 });
+
+let autoPanel: AutoPanel | null = null;
 
 /* ── 상단 상태/티커 ─────────────────────────────── */
 
@@ -241,6 +244,27 @@ function setupAuthModal(): void {
   });
 }
 
+function setupAutoModal(): void {
+  const modal = $("auto-modal");
+  autoPanel = new AutoPanel({
+    root: $("auto-body"),
+    badge: $("auto-badge"),
+    onNeedAuth: () => openAuthModal(),
+  });
+  const open = () => {
+    modal.hidden = false;
+    void autoPanel!.load();
+  };
+  $("btn-auto").addEventListener("click", open);
+  $("auto-refresh").addEventListener("click", () => void autoPanel!.load());
+  $("auto-close").addEventListener("click", () => (modal.hidden = true));
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) modal.hidden = true;
+  });
+  const w = window as unknown as { __wfg?: Record<string, unknown> };
+  w.__wfg = { ...(w.__wfg ?? {}), openAuto: open };
+}
+
 function openOrderModal(order: OrderDraft, fxToKrw: number | null): void {
   pendingOrder = { ...order, fxToKrw };
   const notional = order.qty * (order.orderType === "market" ? order.refPrice : order.price);
@@ -342,6 +366,7 @@ function setupOrderModal(): void {
     if (e.key !== "Escape") return;
     $("order-modal").hidden = true;
     $("auth-modal").hidden = true;
+    $("auto-modal").hidden = true;
   });
 }
 
@@ -422,6 +447,7 @@ async function boot(): Promise<void> {
   setupSearch();
   setupAuthModal();
   setupOrderModal();
+  setupAutoModal();
 
   await Promise.allSettled([loadTape(), loadGlobalNews()]);
   // 시세는 주기적으로 갱신(90초 캐시와 맞춤)

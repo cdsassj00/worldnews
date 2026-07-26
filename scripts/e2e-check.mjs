@@ -157,6 +157,23 @@ if (cfg.ai?.enabled) {
   console.log(`[참고] AI 분석 검사 건너뜀 — ${cfg.ai?.reason ?? "상태 불명"}`);
 }
 
+// 자동매매 대시보드
+await page.click("#btn-auto");
+await page.waitForSelector("#auto-body .auto-block", { timeout: 120000 });
+const autoBlocks = await page.locator("#auto-body .auto-block").count();
+const gateItems = await page.locator("#auto-body .gate-list li").count();
+const macroChips = await page.locator("#auto-body .macro-chip").count();
+const scoreRows = await page.locator("#auto-body .score-row").count();
+check(
+  "자동매매 대시보드 렌더",
+  autoBlocks >= 6 && gateItems >= 1 && macroChips >= 4 && scoreRows >= 3,
+  `블록 ${autoBlocks} · 게이트 ${gateItems} · 거시 ${macroChips} · 점수 ${scoreRows}`,
+);
+const autoBadge = (await page.locator("#auto-badge").textContent()) ?? "";
+check("자동매매 상태 배지", autoBadge.trim().length > 0 && !/확인중/.test(autoBadge), autoBadge.trim());
+await page.screenshot({ path: `${outDir}/08-autotrade.png` });
+await page.click("#auto-close");
+
 // 티커테이프 & 좌측 요약
 check("티커테이프", (await page.locator(".tape-item").count()) > 5);
 check("지금 움직이는 시장", (await page.locator("#hot-list button").count()) >= 3);

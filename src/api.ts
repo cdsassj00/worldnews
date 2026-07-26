@@ -183,6 +183,139 @@ export interface OrderResponse {
   currency: string;
 }
 
+/* ── 자동매매 ─────────────────────────────── */
+
+export interface AutoConfigView {
+  enabled: boolean;
+  capitalKrw: number;
+  maxPositionPct: number;
+  stopLossPct: number;
+  takeProfitPct: number;
+  dailyLossHaltPct: number;
+  maxDrawdownPct: number;
+  targetProfitKrw: number;
+  maxTradesPerDay: number;
+  maxOrdersPerCycle: number;
+  maxOrderNotionalKrw: number;
+  minOrderKrw: number;
+  maxPositions: number;
+}
+
+export interface MacroSignal {
+  id: string;
+  nameKo: string;
+  changePct: number;
+  value: number;
+  price: number;
+  upMeansKo: string;
+}
+
+export interface ScoreReason {
+  kind: "ontology" | "price" | "news";
+  text: string;
+  contribution: number;
+}
+
+export interface TickerScore {
+  code: string;
+  symbol: string;
+  nameKo: string;
+  price: number;
+  changePct: number;
+  score: number;
+  ontologyScore: number;
+  priceScore: number;
+  newsScore: number;
+  volatility: number;
+  atr: number;
+  reasons: ScoreReason[];
+}
+
+export interface PlannedOrder {
+  side: "buy" | "sell";
+  code: string;
+  nameKo: string;
+  qty: number;
+  price: number;
+  notionalKrw: number;
+  score: number;
+  reason: string;
+  detail: string[];
+}
+
+export interface BotPosition {
+  code: string;
+  nameKo: string;
+  qty: number;
+  avgPrice: number;
+  enteredAt: number;
+  lastAddedAt: number;
+  reason: string;
+  price?: number;
+  pnlPct?: number;
+  heldQty?: number;
+}
+
+export interface AutoPlan {
+  generatedAt: number;
+  kst: { date: string; hhmm: string; weekday: string; weekend: boolean };
+  market: { open: boolean; label: string };
+  config: AutoConfigView;
+  gate: { canTrade: boolean; reasons: string[] };
+  account: { connected: boolean; reason: string; cash: number; stockEval: number; totalEval: number; holdings: Holding[] };
+  equity: number;
+  deployedKrw: number;
+  budgetKrw: number;
+  pnlKrw: number;
+  targetProgressPct: number;
+  riskOff: number;
+  macro: MacroSignal[];
+  top: TickerScore[];
+  positions: BotPosition[];
+  orders: PlannedOrder[];
+  notes: string[];
+}
+
+export interface AutoStatus {
+  config: AutoConfigView;
+  kst: { date: string; hhmm: string; weekday: string; weekend: boolean };
+  market: { open: boolean; label: string };
+  kisConfigured: boolean;
+  dryRun: boolean;
+  universe: number;
+  state: {
+    baselineEquity: number;
+    lastEquity: number;
+    peakEquity: number;
+    pnlKrw: number;
+    day: string;
+    tradesToday: number;
+    haltedDay: string;
+    haltedPermanent: boolean;
+    haltReason: string;
+    targetReachedAt: number;
+    lastCycleAt: number;
+    positions: BotPosition[];
+  };
+}
+
+export interface JournalEntry {
+  at: number;
+  kstDate: string;
+  kind: "cycle" | "order" | "halt" | "resume" | "skip" | "error";
+  text: string;
+  detail?: unknown;
+}
+
+export interface CycleResponse {
+  ran: boolean;
+  shadow: boolean;
+  executed: number;
+  results: { code: string; side: string; ok: boolean; message: string }[];
+  gate: { canTrade: boolean; reasons: string[] };
+  orders: PlannedOrder[];
+}
+
 const TOKEN_KEY = "wfg.tradeToken";
 
 export function getTradeToken(): string {
@@ -288,4 +421,12 @@ export const api = {
     refPrice?: number;
     confirm: string;
   }) => request<OrderResponse>("/api/kis/order", { method: "POST", auth: true, body: JSON.stringify(payload) }),
+
+  autoStatus: () => request<AutoStatus>("/api/auto/status"),
+  autoPlan: () => request<AutoPlan>("/api/auto/plan"),
+  autoJournal: () => request<{ items: JournalEntry[] }>("/api/auto/journal"),
+  autoRun: (shadow: boolean) =>
+    request<CycleResponse>("/api/auto/run", { method: "POST", auth: true, body: JSON.stringify({ shadow }) }),
+  autoResume: () => request<{ ok: true }>("/api/auto/resume", { method: "POST", auth: true, body: "{}" }),
+  autoReset: () => request<{ ok: true }>("/api/auto/reset", { method: "POST", auth: true, body: "{}" }),
 };

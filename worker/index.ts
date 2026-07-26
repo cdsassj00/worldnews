@@ -19,6 +19,7 @@ import {
   placeOrder,
   type OrderMarket,
 } from "./kis";
+import { autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle } from "./autotrade";
 
 /** 국가명(한국어) — 지도 데이터와 별개로 Worker 쪽에서도 필요 */
 const CC_NAME_KO: Record<string, string> = Object.fromEntries(
@@ -316,6 +317,67 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     return json({ ok: true, detail: out["msg1"] ?? null });
   }
 
+  /* ── 자동매매 ─────────────────────────────────────────── */
+
+  if (path === "/api/auto/status") {
+    const state = await loadState(env);
+    return json({
+      ...autoStatus(env),
+      state: {
+        baselineEquity: state.baselineEquity,
+        lastEquity: state.lastEquity,
+        peakEquity: state.peakEquity,
+        pnlKrw: state.baselineEquity ? Math.round(state.lastEquity - state.baselineEquity) : 0,
+        day: state.day,
+        tradesToday: state.tradesToday,
+        haltedDay: state.haltedDay,
+        haltedPermanent: state.haltedPermanent,
+        haltReason: state.haltReason,
+        targetReachedAt: state.targetReachedAt,
+        lastCycleAt: state.lastCycleAt,
+        positions: Object.values(state.positions),
+      },
+    });
+  }
+
+  if (path === "/api/auto/plan") {
+    // 계획 조회는 주문을 내지 않으므로 공개한다(어떤 근거로 매매하는지 보이게).
+    const { data } = await cached(env, "auto:plan", 120, () => buildPlan(env));
+    return json(data);
+  }
+
+  if (path === "/api/auto/journal") {
+    return json({ items: await getJournal(env) });
+  }
+
+  if (path === "/api/auto/run") {
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    const body = (await request.json().catch(() => ({}))) as { shadow?: boolean };
+    // 명시적으로 shadow:false 를 보내야 실제 주문 경로를 탄다.
+    const result = await runCycle(env, { shadow: body.shadow !== false });
+    return json({
+      ran: result.ran,
+      shadow: result.shadow,
+      executed: result.executed,
+      results: result.results,
+      gate: result.plan.gate,
+      orders: result.plan.orders,
+    });
+  }
+
+  if (path === "/api/auto/resume") {
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    return json({ ok: true, state: await resumeAuto(env) });
+  }
+
+  if (path === "/api/auto/reset") {
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    return json({ ok: true, state: await resetLedger(env) });
+  }
+
   void ctx;
   throw new ApiError(404, "not_found", { path });
 }
@@ -340,5 +402,17 @@ export default {
     } catch (err) {
       return errorResponse(err);
     }
+  },
+
+  /**
+   * 정규장 시간대에 15분마다 자동매매 사이클을 돈다.
+   * AUTOTRADE_ENABLED 가 false 면 runCycle 이 그림자 실행으로 떨어져 일지만 남긴다.
+   */
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      runCycle(env).catch(() => {
+        /* 크론은 조용히 실패한다. 원인은 일지·tail 로 확인 */
+      }),
+    );
   },
 } satisfies ExportedHandler<Env>;
