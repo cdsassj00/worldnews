@@ -300,6 +300,22 @@ export interface OntoState {
   weights: { ontology: number; price: number; news: number };
 }
 
+export interface RadarItem {
+  code: string;
+  name: string;
+  sector: string | null;
+  market: string;
+  price: number;
+  changePct: number;
+  score: number;
+  onto: number;
+  priceScore: number;
+  volatility: number;
+  edges: { macroId: string; sector: string; contribution: number }[];
+  reasons: { kind: string; text: string; contribution: number }[];
+  updatedAt: number;
+}
+
 export interface AutoStatus {
   config: AutoConfigView;
   kst: { date: string; hhmm: string; weekday: string; weekend: boolean };
@@ -449,6 +465,8 @@ export const api = {
   autoStatus: () => request<AutoStatus>("/api/auto/status"),
   autoGraph: () => request<OntologyGraph>("/api/auto/graph"),
   ontoState: () => request<OntoState>("/api/onto/state"),
+  radarTop: (limit = 12) => request<{ available: boolean; items: RadarItem[] }>(`/api/radar/top?limit=${limit}`),
+  radarStatus: () => request<{ available: boolean; tickers?: number; scored?: number; newestScoreAt?: number }>("/api/radar/status"),
   autoPlan: () => request<AutoPlan>("/api/auto/plan"),
   autoJournal: () => request<{ items: JournalEntry[] }>("/api/auto/journal"),
   autoRun: (shadow: boolean) =>

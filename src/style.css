@@ -2057,3 +2057,13 @@ body {
   color: var(--down);
   border-color: #1e3a8a;
 }
+
+.card-tag {
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+  color: var(--fg-faint);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+  vertical-align: middle;
+}

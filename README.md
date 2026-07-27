@@ -71,6 +71,9 @@ scripts/
 | GET | `/api/onto/state` | 3D 화면용 살아 있는 그래프(거시 신호 + 전 종목 점수 + 간선) | - |
 | GET | `/api/auto/graph` | 온톨로지 그래프(거시·섹터 민감도·유니버스) | - |
 | GET | `/api/auto/tnews` | 종목별 뉴스 수집 상태(읽기 전용 진단) | - |
+| GET | `/api/radar/top` | 전 시장 레이더 점수 순위 (`limit`·`order`·`sector`) | - |
+| GET | `/api/radar/status` | 레이더 스캔 진행 상태 | - |
+| POST | `/api/radar/scan` | 레이더 조각 스캔(80종목) 수동 실행 | 거래 암호 또는 RADAR_TOKEN |
 | GET | `/api/auto/journal` | 매매 일지 | - |
 | POST | `/api/auto/run` | 사이클 실행(`{"shadow":false}` 여야 주문 시도) | 거래 암호 |
 | POST | `/api/auto/resume` | 정지 해제 | 거래 암호 |

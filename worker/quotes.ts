@@ -135,6 +135,20 @@ async function loadSpark(symbols: string[], range: string): Promise<SparkSeries[
   throw lastErr instanceof Error ? lastErr : new ApiError(502, "spark_failed");
 }
 
+/** 캐시 없이 바로 배치 조회 (레이더 스캔용 — 한 번 쓰고 버리는 데이터라 캐시가 낭비다) */
+export async function loadSparkFresh(symbols: string[], range = "6mo"): Promise<SparkSeries[]> {
+  const uniq = [...new Set(symbols.filter(Boolean))];
+  const out: SparkSeries[] = [];
+  for (let i = 0; i < uniq.length; i += 20) {
+    try {
+      out.push(...(await loadSpark(uniq.slice(i, i + 20), range)));
+    } catch {
+      /* 한 묶음 실패는 무시 */
+    }
+  }
+  return out;
+}
+
 /**
  * 확장 유니버스 배치 조회. 20심볼씩 묶어 fetch 하고 묶음 단위로 캐시한다.
  * TTL 30분 — 5일 변화율·모멘텀 계산엔 충분하고 KV 쓰기 예산을 지킨다.

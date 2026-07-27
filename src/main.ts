@@ -4,7 +4,7 @@ import { api, ApiFailure, getTradeToken, setTradeToken, type ConfigResponse, typ
 import { Panel, type OrderDraft } from "./panel";
 import { AutoPanel } from "./autopanel";
 import { Ontology3D } from "./ontology3d";
-import type { OntoState } from "./api";
+import type { OntoState, RadarItem, TickerScore } from "./api";
 import { dirClass, el, fmtKrw, fmtNum, fmtPct, timeAgo } from "./format";
 
 /** 티커테이프 심볼 → 국가코드 (지금 움직이는 시장 목록용) */
@@ -456,6 +456,59 @@ function renderScoreList(s: OntoState): void {
   );
 }
 
+async function loadRadar(): Promise<void> {
+  const list = $("radar-list");
+  const sub = $("radar-sub");
+  try {
+    const [{ available, items }, st] = await Promise.all([api.radarTop(10), api.radarStatus().catch(() => null)]);
+    if (!available) {
+      list.replaceChildren(el("li", { class: "note", text: "레이더 저장소가 아직 준비되지 않았습니다." }));
+      return;
+    }
+    if (!items.length) {
+      list.replaceChildren(el("li", { class: "note", text: "첫 스캔 대기 중 — 크론이 15분마다 80종목씩 채웁니다." }));
+      return;
+    }
+    if (st?.available && st.scored !== undefined) {
+      sub.textContent = `${st.tickers}종목 중 ${st.scored}개 스캔됨 · 갱신 ${st.newestScoreAt ? timeAgo(st.newestScoreAt) : "-"}`;
+    }
+    list.replaceChildren(
+      ...items.map((r) => {
+        const btn = el("button", { type: "button" }, [
+          el("span", { class: "hot-name" }, [
+            el("span", { text: r.name }),
+            el("span", { class: "hot-index", text: `${r.sector ?? "미분류"} · ${fmtNum(r.price, 0)}원` }),
+          ]),
+          el("span", { class: dirClass(r.score), text: r.score.toFixed(3) }),
+        ]);
+        btn.addEventListener("click", () => panel.openTicker(radarToTicker(r)));
+        return el("li", {}, [btn]);
+      }),
+    );
+  } catch {
+    list.replaceChildren(el("li", { class: "note", text: "레이더 로딩 실패" }));
+  }
+}
+
+/** 레이더 행을 종목 상세 화면이 이해하는 모양으로 변환 */
+function radarToTicker(r: RadarItem): TickerScore {
+  return {
+    code: r.code,
+    symbol: "",
+    nameKo: r.name,
+    price: r.price,
+    changePct: r.changePct,
+    score: r.score,
+    ontologyScore: r.onto,
+    priceScore: r.priceScore,
+    newsScore: 0,
+    volatility: r.volatility,
+    atr: 0,
+    reasons: r.reasons as TickerScore["reasons"],
+    edges: r.edges,
+  };
+}
+
 /* ── 지구본 (아이콘 + 세계 경제 모달) ─────────────────────────────── */
 
 function setupWorldModal(liveCodes: Set<string>): void {
@@ -597,10 +650,11 @@ async function boot(): Promise<void> {
   setupOrderModal();
   setupAutoModal();
 
-  await Promise.allSettled([loadOntology(), loadTape()]);
+  await Promise.allSettled([loadOntology(), loadTape(), loadRadar()]);
   // 시세는 주기적으로 갱신(90초 캐시와 맞춤), 온톨로지는 전략 캐시(5분)에 맞춘다
   setInterval(() => void loadTape(), 90_000);
   setInterval(() => void loadOntology(), 300_000);
+  setInterval(() => void loadRadar(), 300_000);
 }
 
 void boot();

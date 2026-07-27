@@ -1,6 +1,10 @@
+import type { RadarDB } from "./radar";
+
 export interface Env {
   ASSETS: Fetcher;
   CACHE: KVNamespace;
+  /** 전 시장 레이더 저장소 (SQLite Durable Object) */
+  RADAR?: DurableObjectNamespace<RadarDB>;
   /** Cloudflare Workers AI (선택). 있으면 Anthropic 키 없이도 AI 분석이 동작한다. */
   AI?: { run: (model: string, input: unknown) => Promise<unknown> };
 
@@ -18,6 +22,7 @@ export interface Env {
   KIS_APP_SECRET?: string;
   KIS_ACCOUNT?: string; // "12345678-01"
   TRADE_TOKEN?: string; // 주문/잔고 API 접근용 비밀 토큰
+  RADAR_TOKEN?: string; // 레이더 수동 스캔용 운영 토큰(주문 권한 없음)
   KIS_TRID_OVERRIDES?: string; // TR_ID 표를 덮어쓰는 JSON (선택)
 
   // 자동매매 (autotrade.ts)

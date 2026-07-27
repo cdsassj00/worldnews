@@ -15,6 +15,13 @@
   ],
   // Workers AI: ANTHROPIC_API_KEY 가 없을 때 AI 분석을 대신 처리한다(별도 키 불필요).
   "ai": { "binding": "AI" },
+  // 전 시장 레이더 저장소 — SQLite Durable Object.
+  // KV(쓰기 1,000/일)로는 350종목 주기 갱신이 불가능해서 DB를 썼다.
+  // D1이 아닌 이유: 배포 토큰에 D1 권한이 없고, DO는 Worker 배포에 딸려 나간다.
+  "durable_objects": {
+    "bindings": [{ "name": "RADAR", "class_name": "RadarDB" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RadarDB"] }],
   "vars": {
     // "vts" = 모의투자 도메인(29443), "prod" = 실전투자 도메인(9443).
     // 사용자 계좌가 실전 전용이므로 "prod". 주문은 아래 스위치들로 여전히 막혀 있다

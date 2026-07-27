@@ -24,6 +24,9 @@ import {
 import { autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle } from "./autotrade";
 import { runStrategy } from "./strategy";
 import { tickerNewsStatus } from "./tickernews";
+import { radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
+
+export { RadarDB } from "./radar";
 
 /** 국가명(한국어) — 지도 데이터와 별개로 Worker 쪽에서도 필요 */
 const CC_NAME_KO: Record<string, string> = Object.fromEntries(
@@ -367,6 +370,27 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     });
   }
 
+  if (path === "/api/radar/top") {
+    const limit = Math.min(100, num(url.searchParams.get("limit"), 30));
+    const order = url.searchParams.get("order") === "asc" ? "asc" as const : "desc" as const;
+    const sector = url.searchParams.get("sector") || undefined;
+    return json(await radarTop(env, limit, order, sector));
+  }
+
+  if (path === "/api/radar/status") {
+    return json(await radarStatus(env));
+  }
+
+  if (path === "/api/radar/scan") {
+    // 크론이 알아서 돌지만, 초기 적재·수동 갱신용으로 열어 둔다.
+    // 인증: 거래 암호(TRADE_TOKEN) 또는 운영용 RADAR_TOKEN — fetch 예산 남용 방지.
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    const bearer = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+    if (!env.RADAR_TOKEN || bearer !== env.RADAR_TOKEN) assertTradeAuth(env, request);
+    await radarSeedIfNeeded(env);
+    return json(await radarScanChunk(env));
+  }
+
   if (path === "/api/auto/tnews") {
     // 종목별 뉴스 수집 상태 (읽기 전용 진단)
     return json(await tickerNewsStatus(env));
@@ -453,5 +477,7 @@ export default {
         /* 크론은 조용히 실패한다. 원인은 일지·tail 로 확인 */
       }),
     );
+    // 전 시장 레이더: 한 번에 80종목씩, 75분에 전 시장 1바퀴
+    ctx.waitUntil(radarScanChunk(env).catch(() => undefined));
   },
 } satisfies ExportedHandler<Env>;
