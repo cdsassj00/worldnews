@@ -74,6 +74,25 @@ check(
 );
 await page.screenshot({ path: `${outDir}/12-onto3d.png` });
 
+// 종목 검색 → 상세 (레이더 DB가 있을 때만)
+const radarSt = await page.evaluate(async () => (await fetch("/api/radar/status")).json());
+if (radarSt.available && radarSt.scored > 0) {
+  await page.fill("#ticker-search", "삼성");
+  await page.waitForSelector("#ticker-results button", { timeout: 20000 });
+  const cnt = await page.locator("#ticker-results button").count();
+  await page.locator("#ticker-results button").first().click();
+  await page.waitForSelector(".verdict", { timeout: 10000 });
+  check("종목 검색 → 온톨로지 분석", cnt >= 1, `결과 ${cnt}건 · ${await page.locator(".panel-head h2").first().textContent()}`);
+} else {
+  console.log("[참고] 종목 검색 검사 건너뜀 (레이더 미적재)");
+}
+
+// 온톨로지 설명 모달
+await page.click("#btn-onto-help");
+await page.waitForSelector("#onto-help-modal .oh-table", { timeout: 5000 });
+check("온톨로지 설명 모달", (await page.locator("#onto-help-modal .oh-table tr").count()) >= 4);
+await page.click("#onto-help-close");
+
 // 지구본은 아이콘 → 클릭하면 세계 경제 지표 모달
 await page.click("#btn-world");
 await page.waitForSelector("#world-grid .world-cell", { timeout: 90000 });

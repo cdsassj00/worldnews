@@ -45,6 +45,7 @@ let autoPanel: AutoPanel | null = null;
 let onto: Ontology3D | null = null;
 let miniGlobe: Globe | null = null;
 let ontoState: OntoState | null = null;
+let exampleShown = false;
 
 /* ── 상단 상태/티커 ─────────────────────────────── */
 
@@ -356,6 +357,7 @@ function setupOrderModal(): void {
     $("order-modal").hidden = true;
     $("auth-modal").hidden = true;
     $("auto-modal").hidden = true;
+    $("onto-help-modal").hidden = true;
   });
 }
 
@@ -407,6 +409,12 @@ async function loadOntology(): Promise<void> {
     hint.style.opacity = "0.75";
     renderMacroList(ontoState);
     renderScoreList(ontoState);
+    // 첫 방문이면 최고 점수 종목의 분석을 예시로 열어 준다 — 빈 패널만 보고 나가지 않게.
+    if (!exampleShown && ontoState.scores.length && $("panel-body").hidden) {
+      exampleShown = true;
+      panel.openTicker({ ...ontoState.scores[0], asOf: ontoState.generatedAt });
+      onto?.setFocus(ontoState.scores[0].code);
+    }
     (window as unknown as { __wfg?: Record<string, unknown> }).__wfg = {
       ...((window as unknown as { __wfg?: Record<string, unknown> }).__wfg ?? {}),
       ontoReady: true,
@@ -506,7 +514,74 @@ function radarToTicker(r: RadarItem): TickerScore {
     atr: 0,
     reasons: r.reasons as TickerScore["reasons"],
     edges: r.edges,
+    sector: r.sector,
+    asOf: r.updatedAt,
   };
+}
+
+/* ── 종목 검색 (조회용 사용자의 첫 진입점) ─────────────── */
+
+function setupTickerSearch(): void {
+  const input = $<HTMLInputElement>("ticker-search");
+  const results = $<HTMLUListElement>("ticker-results");
+  let timer = 0;
+  const close = () => {
+    results.hidden = true;
+    results.replaceChildren();
+  };
+  const run = async () => {
+    const q = input.value.trim();
+    if (q.length < 1) return close();
+    try {
+      const { items } = await api.radarFind(q);
+      if (!items.length) {
+        results.replaceChildren(el("li", { class: "note", text: "일치하는 종목이 없습니다 (KOSPI200·KOSDAQ150 안에서 검색)" }));
+        results.hidden = false;
+        return;
+      }
+      results.replaceChildren(
+        ...items.map((r) => {
+          const btn = el("button", { type: "button" }, [
+            el("span", {}, [el("span", { text: r.name }), el("span", { class: "cc", text: ` ${r.code} · ${r.sector ?? "미분류"}` })]),
+            el("span", { class: dirClass(r.score), text: r.score.toFixed(3) }),
+          ]);
+          btn.addEventListener("click", () => {
+            panel.openTicker(radarToTicker(r));
+            onto?.setFocus(r.code);
+            input.value = "";
+            close();
+          });
+          return el("li", {}, [btn]);
+        }),
+      );
+      results.hidden = false;
+    } catch {
+      close();
+    }
+  };
+  input.addEventListener("input", () => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => void run(), 250);
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") close();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      results.querySelector("button")?.click();
+    }
+  });
+  document.addEventListener("click", (e) => {
+    if (!(e.target as HTMLElement).closest(".ticker-search")) close();
+  });
+}
+
+function setupOntoHelp(): void {
+  const modal = $("onto-help-modal");
+  $("btn-onto-help").addEventListener("click", () => (modal.hidden = false));
+  $("onto-help-close").addEventListener("click", () => (modal.hidden = true));
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) modal.hidden = true;
+  });
 }
 
 /* ── 지구본 (아이콘 + 세계 경제 모달) ─────────────────────────────── */
@@ -649,6 +724,8 @@ async function boot(): Promise<void> {
   setupAuthModal();
   setupOrderModal();
   setupAutoModal();
+  setupTickerSearch();
+  setupOntoHelp();
 
   await Promise.allSettled([loadOntology(), loadTape(), loadRadar()]);
   // 시세는 주기적으로 갱신(90초 캐시와 맞춤), 온톨로지는 전략 캐시(5분)에 맞춘다

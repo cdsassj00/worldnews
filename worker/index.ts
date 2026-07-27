@@ -24,7 +24,7 @@ import {
 import { autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle } from "./autotrade";
 import { runStrategy } from "./strategy";
 import { tickerNewsStatus } from "./tickernews";
-import { radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
+import { radarFind, radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
 
 export { RadarDB } from "./radar";
 
@@ -375,6 +375,10 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     const order = url.searchParams.get("order") === "asc" ? "asc" as const : "desc" as const;
     const sector = url.searchParams.get("sector") || undefined;
     return json(await radarTop(env, limit, order, sector));
+  }
+
+  if (path === "/api/radar/find") {
+    return json(await radarFind(env, url.searchParams.get("q") ?? "", num(url.searchParams.get("limit"), 8)));
   }
 
   if (path === "/api/radar/status") {

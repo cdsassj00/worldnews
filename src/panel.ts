@@ -217,8 +217,8 @@ export class Panel {
   }
 
   private renderTicker(t: TickerScore): HTMLElement[] {
-    const bar = (label: string, v: number, weight: number) =>
-      el("div", { class: "tscore-row" }, [
+    const bar = (label: string, v: number, weight: number, meaning: string) =>
+      el("div", { class: "tscore-row", title: meaning }, [
         el("span", { class: "k", text: label }),
         el("span", { class: "sbar" }, [
           el("i", { class: dirClass(v), style: `width:${Math.min(100, Math.abs(v) * 100)}%` }),
@@ -226,10 +226,26 @@ export class Panel {
         el("span", { class: `v ${dirClass(v)}`, text: `${v >= 0 ? "+" : ""}${v.toFixed(3)} ×${weight}` }),
       ]);
 
+    // 점수를 말로 풀어 준다 — 처음 온 사람이 숫자만 보고 나가지 않게
+    const verdict =
+      t.score >= 0.3
+        ? { cls: "up", text: "강한 상방 신호", desc: "거시 환경과 가격 흐름이 같은 방향을 가리키고 있습니다." }
+        : t.score >= 0.15
+          ? { cls: "up", text: "상방 신호 (매수 후보 기준 통과)", desc: "자동매매 기준선(0.15)을 넘는 신호입니다." }
+          : t.score > -0.15
+            ? { cls: "flat", text: "중립", desc: "뚜렷한 방향이 없습니다. 관망 구간입니다." }
+            : { cls: "down", text: "하방 신호", desc: "거시 환경 또는 가격 흐름이 불리한 방향입니다." };
+
+    const MACRO_KO: Record<string, string> = {
+      OIL: "유가", USDKRW: "원/달러 환율", US10Y: "미 10년 금리", SEMI: "반도체 업황",
+      KOSPI: "코스피", CHINA: "중국 증시", VIX: "변동성(공포지수)", GOLD: "금",
+    };
+
     const head = el("div", { class: "panel-head" }, [
       el("div", { class: "country" }, [
         el("h2", { text: t.nameKo }),
         el("span", { class: "cc-badge", text: t.code }),
+        ...(t.sector !== undefined ? [el("span", { class: "cc-badge", text: t.sector ?? "업종 미분류" })] : []),
       ]),
       el("div", { class: "head-meta" }, [
         el("span", { text: `${fmtNum(t.price, 0)}원` }),
@@ -240,23 +256,47 @@ export class Panel {
     const backBtn = el("button", { class: "btn btn-ghost", type: "button", text: "← 대한민국 시장 전체 보기" });
     backBtn.addEventListener("click", () => void this.open("KR", "대한민국"));
 
+    const edgeItems = (t.edges ?? []).map((e) =>
+      el("li", {
+        text: `${MACRO_KO[e.macroId] ?? e.macroId}의 최근 움직임이 ${e.sector} 섹터를 거쳐 이 종목 점수에 ${
+          e.contribution >= 0 ? "+" : ""
+        }${e.contribution} 만큼 ${e.contribution >= 0 ? "보탬" : "부담"}`,
+      }),
+    );
+
     return [
       head,
       el("div", { class: "tab-panel" }, [
+        el("div", { class: `verdict verdict-${verdict.cls}` }, [
+          el("b", { text: verdict.text }),
+          el("span", { text: verdict.desc }),
+        ]),
         el("div", { class: "tscore" }, [
           el("div", { class: "tscore-total" }, [
             el("span", { class: "k", text: "합성 점수" }),
             el("b", { class: dirClass(t.score), text: t.score.toFixed(3) }),
-            el("span", {
-              class: "note",
-              text: t.score >= 0.15 ? "매수 후보 기준(0.15) 통과" : "매수 기준(0.15) 미달",
-            }),
+            el("span", { class: "note", text: "-1(강한 하방) ~ +1(강한 상방)" }),
           ]),
-          bar("온톨로지", t.ontologyScore, 0.35),
-          bar("가격", t.priceScore, 0.45),
-          bar("뉴스", t.newsScore, 0.2),
+          bar("온톨로지", t.ontologyScore, 0.35, "거시 환경(유가·금리·환율 등)이 이 종목의 섹터에 주는 영향"),
+          bar("가격", t.priceScore, 0.45, "이 종목 자체의 최근 가격 흐름(모멘텀·추세·거래 위치)"),
+          bar("뉴스", t.newsScore, 0.2, "이 종목·섹터 관련 기사의 긍정/부정"),
         ]),
-        el("h3", { class: "card-title", text: "판단 근거" }),
+        ...(edgeItems.length
+          ? [
+              el("h3", { class: "card-title", text: "왜 이 점수인가 — 온톨로지 경로" }),
+              el("ul", { class: "plan-detail" }, edgeItems),
+            ]
+          : [
+              el("h3", { class: "card-title", text: "온톨로지 경로" }),
+              el("p", {
+                class: "note",
+                text:
+                  t.sector === null
+                    ? "이 종목은 업종이 자동 분류되지 않아 거시 전파 없이 가격 흐름만으로 점수를 냅니다."
+                    : "지금 유의미하게 움직인 거시요인이 없어 가격·뉴스 축이 점수를 이끕니다.",
+              }),
+            ]),
+        el("h3", { class: "card-title", text: "판단 근거 전체" }),
         el(
           "ul",
           { class: "plan-detail" },
@@ -264,15 +304,13 @@ export class Panel {
             el("li", { text: `[${r.kind === "ontology" ? "온톨로지" : r.kind === "price" ? "가격" : "뉴스"}] ${r.text}` }),
           ),
         ),
-        el("h3", { class: "card-title", text: "온톨로지 경로" }),
-        el(
-          "ul",
-          { class: "plan-detail" },
-          (t.edges ?? []).map((e) =>
-            el("li", { text: `${e.macroId} → ${e.sector} : ${e.contribution >= 0 ? "+" : ""}${e.contribution}` }),
-          ),
-        ),
-        el("p", { class: "note", text: `일변동성 ${t.volatility}% · ATR ${fmtNum(t.atr, 0)}` }),
+        el("p", {
+          class: "note",
+          text: `일변동성 ${t.volatility}%${t.atr ? ` · ATR ${fmtNum(t.atr, 0)}` : ""}${
+            t.asOf ? ` · 이 분석은 ${timeAgo(t.asOf)} 데이터 기준 (레이더는 종목당 약 75분 주기로 갱신)` : ""
+          }`,
+        }),
+        el("p", { class: "note", text: "참고 자료입니다. 투자 자문이 아니며 수익을 보장하지 않습니다." }),
         backBtn,
       ]),
     ];

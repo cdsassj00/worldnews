@@ -139,6 +139,25 @@ export class RadarDB extends DurableObject {
     }));
   }
 
+  /** 이름·코드 검색 (조회용 사용자를 위한 진입점) */
+  find(q: string, limit: number): RadarScoreRow[] {
+    const lim = Math.min(20, Math.max(1, limit));
+    const like = `%${q.replace(/[%_]/g, "")}%`;
+    const rows = this.sql
+      .exec(
+        `SELECT * FROM scores WHERE name LIKE ? OR code LIKE ? ORDER BY ABS(score) DESC LIMIT ?`,
+        like, `${q.replace(/[%_]/g, "")}%`, lim,
+      )
+      .toArray();
+    return rows.map((r) => ({
+      code: String(r.code), name: String(r.name), sector: (r.sector as string | null) ?? null,
+      market: String(r.market), price: Number(r.price), changePct: Number(r.change_pct),
+      score: Number(r.score), onto: Number(r.onto), priceScore: Number(r.price_score),
+      volatility: Number(r.volatility), edges: String(r.edges ?? "[]"), reasons: String(r.reasons ?? "[]"),
+      updatedAt: Number(r.updated_at),
+    }));
+  }
+
   status(): RadarStatus {
     const scored = Number(this.sql.exec(`SELECT COUNT(*) AS n FROM scores`).one().n ?? 0);
     const range = this.sql.exec(`SELECT MIN(updated_at) AS lo, MAX(updated_at) AS hi FROM scores`).one();

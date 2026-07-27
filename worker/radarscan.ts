@@ -134,6 +134,23 @@ export async function radarTop(env: Env, limit: number, order: "desc" | "asc", s
   };
 }
 
+export async function radarFind(env: Env, q: string, limit = 8) {
+  const s = stub(env);
+  if (!s || !q.trim()) return { available: Boolean(s), items: [] };
+  const rows = await s.find(q.trim(), limit);
+  return {
+    available: true,
+    items: rows.map((r) => ({
+      code: r.code, name: r.name, sector: r.sector, market: r.market,
+      price: r.price, changePct: r.changePct, score: r.score, onto: r.onto,
+      priceScore: r.priceScore, volatility: r.volatility,
+      edges: JSON.parse(r.edges) as { macroId: string; sector: string; contribution: number }[],
+      reasons: JSON.parse(r.reasons) as { kind: string; text: string; contribution: number }[],
+      updatedAt: r.updatedAt,
+    })),
+  };
+}
+
 export async function radarStatus(env: Env) {
   const s = stub(env);
   if (!s) return { available: false as const };

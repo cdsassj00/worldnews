@@ -234,6 +234,10 @@ export interface TickerScore {
   reasons: ScoreReason[];
   /** 온톨로지 그래프 간선 (거시 → 섹터 → 이 종목) */
   edges: { macroId: string; sector: string; contribution: number }[];
+  /** 섹터(레이더 종목 표시용) */
+  sector?: string | null;
+  /** 이 점수가 계산된 시각 (레이더 종목) */
+  asOf?: number;
 }
 
 export interface PlannedOrder {
@@ -466,6 +470,7 @@ export const api = {
   autoGraph: () => request<OntologyGraph>("/api/auto/graph"),
   ontoState: () => request<OntoState>("/api/onto/state"),
   radarTop: (limit = 12) => request<{ available: boolean; items: RadarItem[] }>(`/api/radar/top?limit=${limit}`),
+  radarFind: (q: string) => request<{ available: boolean; items: RadarItem[] }>(`/api/radar/find?q=${encodeURIComponent(q)}`),
   radarStatus: () => request<{ available: boolean; tickers?: number; scored?: number; newestScoreAt?: number }>("/api/radar/status"),
   autoPlan: () => request<AutoPlan>("/api/auto/plan"),
   autoJournal: () => request<{ items: JournalEntry[] }>("/api/auto/journal"),
