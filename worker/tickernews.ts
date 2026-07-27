@@ -12,6 +12,9 @@
  */
 import type { Env } from "./env";
 import { UNIVERSE } from "../shared/ontology";
+
+/** 종목 전용 검색은 코어 종목만 돈다. 확장층은 섹터 뉴스·거시 보정으로 커버한다(사용자 결정: 전 종목 검색은 과함). */
+const CORE = UNIVERSE.filter((t) => t.core);
 import { bingNews, type NewsItem } from "./news";
 import { scoreText } from "./sentiment";
 import { round } from "./util";
@@ -92,7 +95,7 @@ export async function refreshTickerNews(env: Env, budget = DEFAULT_BUDGET): Prom
   const map = await readTickerNews(env);
   const now = Date.now();
 
-  const stale = UNIVERSE
+  const stale = CORE
     .map((t) => ({ t, at: map[t.code]?.fetchedAt ?? 0 }))
     .filter((x) => now - x.at > FRESH_MS)
     .sort((a, b) => a.at - b.at)
@@ -131,9 +134,9 @@ export async function tickerNewsStatus(env: Env) {
   const now = Date.now();
   return {
     collected: Object.keys(map).length,
-    universe: UNIVERSE.length,
+    universe: CORE.length,
     lastPutError,
-    entries: UNIVERSE.map((t) => {
+    entries: CORE.map((t) => {
       const e = map[t.code];
       return {
         code: t.code,

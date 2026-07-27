@@ -419,8 +419,11 @@ async function loadOntology(): Promise<void> {
 function renderMacroList(s: OntoState): void {
   $("macro-list").replaceChildren(
     ...s.macro.map((m) =>
-      el("li", { class: "macro-row", title: m.upMeansKo }, [
-        el("span", { class: "m-name", text: m.nameKo }),
+      el("li", { class: "macro-row", title: m.newsReason ? `${m.upMeansKo}\n뉴스 보정 ${m.newsImpact! >= 0 ? "+" : ""}${m.newsImpact}: ${m.newsReason}` : m.upMeansKo }, [
+        el("span", { class: "m-name" }, [
+          el("span", { text: m.nameKo }),
+          m.newsImpact ? el("i", { class: `m-news ${m.newsImpact >= 0 ? "up" : "down"}`, text: "뉴스" }) : null,
+        ]),
         el("span", { class: "m-bar" }, [
           el("i", {
             class: dirClass(m.value),

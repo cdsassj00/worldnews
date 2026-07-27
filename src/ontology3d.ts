@@ -202,11 +202,16 @@ export class Ontology3D {
 
     const macroById = new Map(state.macro.map((m) => [m.id, m]));
 
-    // 지금 실제로 흐르는 간선만 모은다
-    const live = state.scores.flatMap((t) => (t.edges ?? []).map((e) => ({ ...e, code: t.code })));
+    // 유니버스가 커져(≈90) 전부 그리면 읽을 수 없다. |점수| 상위 24개만 노드로 세운다.
+    // 나머지는 좌측 목록·검색으로 접근한다 — 그래프는 "지금 신호가 강한 곳"을 보여주는 화면이다.
+    const shown = state.scores
+      .filter((t) => (t.edges ?? []).length > 0)
+      .sort((a, b) => Math.abs(b.score) - Math.abs(a.score))
+      .slice(0, 24);
+    const live = shown.flatMap((t) => (t.edges ?? []).map((e) => ({ ...e, code: t.code })));
     const sectors = [...new Set(live.map((e) => e.sector))];
     const macroIds = [...new Set(live.map((e) => e.macroId))];
-    const tickers = state.scores.filter((t) => (t.edges ?? []).length > 0);
+    const tickers = shown;
 
     const place = (i: number, n: number, radius: number, y: number) => {
       const a = (i / Math.max(1, n)) * Math.PI * 2;
@@ -242,7 +247,7 @@ export class Ontology3D {
       const k = `${e.sector}|${e.code}`;
       if (stSeen.has(k)) continue;
       stSeen.add(k);
-      const t = state.scores.find((x) => x.code === e.code);
+      const t = shown.find((x) => x.code === e.code);
       this.addEdge(e.sector, "sector", e.code, "ticker", t?.ontologyScore ?? 0);
     }
 

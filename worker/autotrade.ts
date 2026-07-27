@@ -360,10 +360,13 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   const riskScale = 1 - Math.min(0.5, strategy.riskOff * 0.5);
   let remaining = budget;
 
+  const coreCodes = new Set(UNIVERSE.filter((t) => t.core).map((t) => t.code));
   if (!targetHit) {
     for (const sc of strategy.scores) {
       if (orders.filter((o) => o.side === "buy").length >= cfg.maxOrdersPerCycle) break;
       if (sc.score < BUY_SCORE) break; // 점수 내림차순이라 여기서 끊어도 된다
+      // 확장 유니버스는 분석·표시 전용이다. 거래량·ATR 없는 데이터에 돈을 태우지 않는다.
+      if (!coreCodes.has(sc.code)) continue;
       if (sellingCodes.has(sc.code)) continue;
 
       const pos = state.positions[sc.code];

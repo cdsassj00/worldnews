@@ -208,6 +208,9 @@ export interface MacroSignal {
   value: number;
   price: number;
   upMeansKo: string;
+  /** 1면 뉴스 AI 보정 (-1~1) */
+  newsImpact?: number;
+  newsReason?: string;
 }
 
 export interface ScoreReason {
@@ -291,6 +294,7 @@ export interface OntoState {
   scores: TickerScore[];
   riskOff: number;
   note: string;
+  macroNews: { provider: string | null; headlinesUsed: number; adjustments: { id: string; impact: number; reasonKo: string }[] };
   sectors: { sector: string; sensitivity: Record<string, number> }[];
   universe: { code: string; nameKo: string; sectors: Record<string, number> }[];
   weights: { ontology: number; price: number; news: number };

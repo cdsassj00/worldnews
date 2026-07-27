@@ -33,10 +33,18 @@ export interface MacroSignal {
   id: MacroId;
   nameKo: string;
   changePct: number;
-  /** -1 ~ 1 로 정규화한 신호 세기 */
+  /** -1 ~ 1 로 정규화한 신호 세기 (가격 관측) */
   value: number;
   price: number;
   upMeansKo: string;
+  /** 1면·거시 뉴스를 AI가 해석한 보정 (-1~1). 가격은 이미 일어난 일, 뉴스는 일어나는 중인 일이다. */
+  newsImpact?: number;
+  newsReason?: string;
+}
+
+/** 전파에 쓰는 유효 신호 = 가격 관측 + 뉴스 보정×0.4 (백테스트에는 뉴스 보정이 없어 가격 관측만 쓰인다) */
+export function effectiveValue(m: MacroSignal): number {
+  return clamp(m.value + 0.4 * (m.newsImpact ?? 0), -1, 1);
 }
 
 export interface ScoreReason {
@@ -129,8 +137,10 @@ export function propagate(
     const sens = SENSITIVITY[sectorName] ?? {};
     for (const [macroId, sensitivity] of Object.entries(sens) as [MacroId, number][]) {
       const signal = byId.get(macroId);
-      if (!signal || Math.abs(signal.value) < 0.05) continue;
-      const contribution = weight * sensitivity * signal.value;
+      if (!signal) continue;
+      const v = effectiveValue(signal);
+      if (Math.abs(v) < 0.05) continue;
+      const contribution = weight * sensitivity * v;
       total += contribution;
       edges.push({ macroId, sector: sectorName, contribution: round(contribution, 3) });
       if (Math.abs(contribution) >= 0.05) {

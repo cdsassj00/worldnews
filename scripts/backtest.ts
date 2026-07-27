@@ -19,7 +19,10 @@
  *
  * 실행: npx esbuild scripts/backtest.ts --bundle --platform=node --format=esm --outfile=/tmp/bt.mjs && node /tmp/bt.mjs
  */
-import { MACRO, UNIVERSE, roundToTick, type MacroFactor, type UniverseTicker } from "../shared/ontology";
+import { MACRO, UNIVERSE as FULL_UNIVERSE, roundToTick, type MacroFactor, type UniverseTicker } from "../shared/ontology";
+
+// 백테스트는 자동매매와 같은 대상(코어)만 돈다 — 확장층은 분석 전용이라 시뮬레이션 대상이 아니다.
+const UNIVERSE = FULL_UNIVERSE.filter((t) => t.core);
 import { composite, macroSignal, priceSignal, propagate, riskOffFrom, type MacroSignal, type PriceHistory } from "../shared/scoring";
 
 /* ── 설정 ─────────────────────────── */

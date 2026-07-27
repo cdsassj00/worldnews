@@ -360,6 +360,7 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
       scores: data.scores,
       riskOff: data.riskOff,
       note: data.note,
+      macroNews: data.macroNews ?? { provider: null, headlinesUsed: 0, adjustments: [] },
       sectors: Object.entries(SENSITIVITY).map(([sector, sensitivity]) => ({ sector, sensitivity })),
       universe: UNIVERSE.map((t) => ({ code: t.code, nameKo: t.nameKo, sectors: t.sectors })),
       weights: WEIGHTS,

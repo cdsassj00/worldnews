@@ -17,6 +17,7 @@
 import type { Env } from "./env";
 import { MACRO, SECTOR_KEYWORDS, UNIVERSE, type SectorId } from "../shared/ontology";
 import { readTickerNews, refreshTickerNews } from "./tickernews";
+import { getMacroNewsAdjust } from "./macronews";
 import {
   clamp,
   composite,
@@ -28,7 +29,7 @@ import {
   type MacroSignal,
   type ScoreReason,
 } from "../shared/scoring";
-import { getManySeries, getSeries } from "./quotes";
+import { getManySeries, getSeries, getSparkMany } from "./quotes";
 import { getNews, type NewsItem } from "./news";
 import { scoreForTicker, scoreText } from "./sentiment";
 
@@ -60,19 +61,44 @@ export interface StrategyResult {
   /** 시장 전반 위험도 (VIX·지수 기반). 1에 가까울수록 위험회피 */
   riskOff: number;
   note: string;
+  /** 1면 뉴스 AI 해석 (거시요인 보정) */
+  macroNews: { provider: string | null; headlinesUsed: number; adjustments: { id: string; impact: number; reasonKo: string }[] };
 }
 
 export async function runStrategy(env: Env): Promise<StrategyResult> {
-  const [macroSeries, priceSeries, newsResult, tickerNews] = await Promise.all([
-    getManySeries(env, MACRO.map((m) => m.symbol), "3mo"),
-    getManySeries(env, UNIVERSE.map((t) => t.symbol), "6mo"),
+  const CORE = UNIVERSE.filter((t) => t.core);
+  const EXTENDED = UNIVERSE.filter((t) => !t.core);
+
+  const [macroSpark, priceSeries, extendedSpark, newsResult, tickerNews, mnews] = await Promise.all([
+    // 거시 지표는 종가만 필요하다 — 8개를 fetch 한 번에
+    getSparkMany(env, MACRO.map((m) => m.symbol), "3mo"),
+    // 코어 20종목: OHLCV 전체 (거래량·ATR가 자동매매 품질을 좌우한다)
+    getManySeries(env, CORE.map((t) => t.symbol), "6mo"),
+    // 확장 ~69종목: 종가 배치 (20심볼/fetch)
+    getSparkMany(env, EXTENDED.map((t) => t.symbol), "6mo"),
     getNews(env, "KR", "대한민국").catch(() => null),
     // 종목별 뉴스: 오래된 4종목만 새로 검색하고(fetch 예산) 나머지는 KV에서 읽는다
     refreshTickerNews(env).catch(() => readTickerNews(env)),
+    // 1면·거시 뉴스 AI 해석 (30분 캐시)
+    getMacroNewsAdjust(env).catch(() => null),
   ]);
 
-  const macroBySymbol = new Map(macroSeries.map((s) => [s.symbol.toUpperCase(), s]));
+  const macroBySymbol = new Map(
+    macroSpark.map((s) => [s.symbol.toUpperCase(), { price: s.price, closes: s.closes, highs: [], lows: [], volumes: [] }]),
+  );
   const macro = macroSignals((symbol) => macroBySymbol.get(symbol.toUpperCase()));
+
+  // 1면 뉴스 보정을 거시 신호에 얹는다 (전파는 value + 0.4×impact 를 쓴다)
+  if (mnews?.adjustments.length) {
+    const byId = new Map(mnews.adjustments.map((a) => [a.id, a]));
+    for (const m of macro) {
+      const adj = byId.get(m.id);
+      if (adj) {
+        m.newsImpact = adj.impact;
+        m.newsReason = adj.reasonKo;
+      }
+    }
+  }
 
   const news: NewsItem[] = newsResult?.data.items ?? [];
   const bySymbol = new Map(priceSeries.map((s) => [s.symbol.toUpperCase(), s]));
@@ -91,9 +117,18 @@ export async function runStrategy(env: Env): Promise<StrategyResult> {
     sectorSent.set(sector, { score: s.score, hits: matched.length });
   }
 
+  const sparkBySymbol = new Map(extendedSpark.map((s) => [s.symbol.toUpperCase(), s]));
+
   const scores: TickerScore[] = [];
   for (const t of UNIVERSE) {
-    const s = bySymbol.get(t.symbol.toUpperCase());
+    let s: { price: number; changePct: number; closes: number[]; highs: number[]; lows: number[]; volumes: number[]; symbol: string } | undefined;
+    if (t.core) {
+      s = bySymbol.get(t.symbol.toUpperCase());
+    } else {
+      const sp = sparkBySymbol.get(t.symbol.toUpperCase());
+      // 종가만 있는 시리즈 — ATR·거래량 신호는 자동으로 중립 폴백된다(shared/scoring.ts)
+      if (sp) s = { ...sp, highs: [], lows: [], volumes: [], symbol: sp.symbol };
+    }
     if (!s || s.closes.length < 30) continue;
 
     const onto = propagate(t, macro);
@@ -168,7 +203,12 @@ export async function runStrategy(env: Env): Promise<StrategyResult> {
     macro,
     scores,
     riskOff,
-    note: `거시 상위 변동: ${top || "없음"} · 위험회피 지수 ${riskOff}`,
+    note: `거시 상위 변동: ${top || "없음"} · 위험회피 지수 ${riskOff}${mnews?.adjustments.length ? ` · 뉴스 보정 ${mnews.adjustments.length}건` : ""}`,
+    macroNews: {
+      provider: mnews?.provider ?? null,
+      headlinesUsed: mnews?.headlinesUsed ?? 0,
+      adjustments: mnews?.adjustments ?? [],
+    },
   };
 }
 

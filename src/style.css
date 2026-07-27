@@ -2034,3 +2034,26 @@ body {
     animation: none;
   }
 }
+
+/* 거시 신호 뉴스 보정 마커 */
+.m-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.m-name .m-news {
+  font-style: normal;
+  font-size: 9px;
+  padding: 0 4px;
+  border-radius: 3px;
+  border: 1px solid var(--border-strong);
+  color: var(--fg-faint);
+}
+.m-name .m-news.up {
+  color: var(--up);
+  border-color: #7f1d1d;
+}
+.m-name .m-news.down {
+  color: var(--down);
+  border-color: #1e3a8a;
+}

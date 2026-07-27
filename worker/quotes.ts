@@ -93,6 +93,67 @@ export async function getManySeries(env: Env, symbols: string[], range = "3mo"):
   return out;
 }
 
+/* ── 배치 시세 (spark) ─────────────────────────────── */
+
+/** 종가만 있는 경량 시리즈. 확장 유니버스(수십 종목)용 — fetch 한 번에 최대 20심볼. */
+export interface SparkSeries {
+  symbol: string;
+  price: number;
+  changePct: number;
+  closes: number[];
+}
+
+/** 응답은 { "005930.KS": { close: [...], timestamp: [...] }, ... } 형태의 평면 맵이다 */
+type YahooSpark = Record<string, { symbol?: string; close?: (number | null)[] } | undefined>;
+
+async function loadSpark(symbols: string[], range: string): Promise<SparkSeries[]> {
+  let lastErr: unknown = null;
+  for (const host of YAHOO_HOSTS) {
+    try {
+      const url = `https://${host}/v8/finance/spark?symbols=${encodeURIComponent(symbols.join(","))}&range=${range}&interval=1d`;
+      const data = await fetchJson<YahooSpark>(url, undefined, 9000);
+      const out: SparkSeries[] = [];
+      for (const sym of symbols) {
+        const r = data[sym];
+        const closes = (r?.close ?? []).filter((v): v is number => typeof v === "number");
+        if (closes.length < 2) continue;
+        const price = closes.at(-1)!;
+        const prev = num(closes.at(-2), price);
+        out.push({
+          symbol: sym,
+          price: round(price, 4),
+          changePct: prev ? round(((price - prev) / prev) * 100, 2) : 0,
+          closes: closes.map((v) => round(v, 4)),
+        });
+      }
+      if (out.length) return out;
+      throw new ApiError(502, "spark_empty", { symbols: symbols.length });
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new ApiError(502, "spark_failed");
+}
+
+/**
+ * 확장 유니버스 배치 조회. 20심볼씩 묶어 fetch 하고 묶음 단위로 캐시한다.
+ * TTL 30분 — 5일 변화율·모멘텀 계산엔 충분하고 KV 쓰기 예산을 지킨다.
+ */
+export async function getSparkMany(env: Env, symbols: string[], range = "6mo"): Promise<SparkSeries[]> {
+  const uniq = [...new Set(symbols.filter(Boolean))].sort();
+  const out: SparkSeries[] = [];
+  for (let i = 0; i < uniq.length; i += 20) {
+    const batch = uniq.slice(i, i + 20);
+    try {
+      const { data } = await cached(env, `spark:${range}:${batch[0]}:${batch.length}`, 1800, () => loadSpark(batch, range));
+      out.push(...data);
+    } catch {
+      /* 한 묶음이 죽어도 나머지는 살린다 */
+    }
+  }
+  return out;
+}
+
 /** 지수/티커테이프용 경량 표현 */
 export interface Snapshot {
   symbol: string;
