@@ -22,6 +22,7 @@ import {
   type OrderMarket,
 } from "./kis";
 import { autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle } from "./autotrade";
+import { runStrategy } from "./strategy";
 
 /** 국가명(한국어) — 지도 데이터와 별개로 Worker 쪽에서도 필요 */
 const CC_NAME_KO: Record<string, string> = Object.fromEntries(
@@ -346,6 +347,22 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     // 계획 조회는 주문을 내지 않으므로 공개한다(어떤 근거로 매매하는지 보이게).
     const { data } = await cached(env, "auto:plan", 120, () => buildPlan(env));
     return json(data);
+  }
+
+  if (path === "/api/onto/state") {
+    // 메인 화면(3D 온톨로지)이 쓰는 살아 있는 그래프 상태.
+    // 매매 계획과 분리한 이유는 이건 "분석 화면"이지 "주문 화면"이 아니기 때문이다.
+    const { data } = await cached(env, "auto:strategy", 300, () => runStrategy(env));
+    return json({
+      generatedAt: data.generatedAt,
+      macro: data.macro,
+      scores: data.scores,
+      riskOff: data.riskOff,
+      note: data.note,
+      sectors: Object.entries(SENSITIVITY).map(([sector, sensitivity]) => ({ sector, sensitivity })),
+      universe: UNIVERSE.map((t) => ({ code: t.code, nameKo: t.nameKo, sectors: t.sectors })),
+      weights: WEIGHTS,
+    });
   }
 
   if (path === "/api/auto/graph") {

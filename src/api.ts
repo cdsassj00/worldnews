@@ -285,6 +285,17 @@ export interface OntologyGraph {
   weights: { ontology: number; price: number; news: number };
 }
 
+export interface OntoState {
+  generatedAt: number;
+  macro: MacroSignal[];
+  scores: TickerScore[];
+  riskOff: number;
+  note: string;
+  sectors: { sector: string; sensitivity: Record<string, number> }[];
+  universe: { code: string; nameKo: string; sectors: Record<string, number> }[];
+  weights: { ontology: number; price: number; news: number };
+}
+
 export interface AutoStatus {
   config: AutoConfigView;
   kst: { date: string; hhmm: string; weekday: string; weekend: boolean };
@@ -433,6 +444,7 @@ export const api = {
 
   autoStatus: () => request<AutoStatus>("/api/auto/status"),
   autoGraph: () => request<OntologyGraph>("/api/auto/graph"),
+  ontoState: () => request<OntoState>("/api/onto/state"),
   autoPlan: () => request<AutoPlan>("/api/auto/plan"),
   autoJournal: () => request<{ items: JournalEntry[] }>("/api/auto/journal"),
   autoRun: (shadow: boolean) =>

@@ -52,20 +52,58 @@ const isExternalAsset = (u) => /fonts\.googleapis|fonts\.gstatic|jsdelivr/.test(
 
 await page.goto(base, { waitUntil: "domcontentloaded" });
 
-// 지구본 초기화 대기
-await page.waitForFunction(() => window.__wfg?.ready === true, { timeout: 45000 });
+// 메인 화면 = 3D 온톨로지 그래프
+await page.waitForFunction(() => window.__wfg?.ontoReady === true, { timeout: 120000 });
+await page.waitForTimeout(900);
+const ontoStats = await page.evaluate(() => window.__wfg.onto.stats());
+check(
+  "3D 온톨로지 렌더",
+  ontoStats.frames > 3 && ontoStats.nodes >= 20 && ontoStats.edges >= 20,
+  `frames ${ontoStats.frames} · 노드 ${ontoStats.nodes} · 간선 ${ontoStats.edges} · calls ${ontoStats.calls}`,
+);
+check("좌측 거시 신호", (await page.locator("#macro-list .macro-row").count()) >= 6);
+check("좌측 종목 점수", (await page.locator("#score-list button").count()) >= 5);
+
+// 종목 노드를 고르면 오른쪽에 점수 구성이 뜬다
+await page.locator("#score-list button").first().click();
+await page.waitForSelector(".tscore", { timeout: 15000 });
+check(
+  "종목 상세(점수 구성)",
+  (await page.locator(".tscore-row").count()) === 3,
+  `막대 ${await page.locator(".tscore-row").count()}개`,
+);
+await page.screenshot({ path: `${outDir}/12-onto3d.png` });
+
+// 지구본은 아이콘 → 클릭하면 세계 경제 지표 모달
+await page.click("#btn-world");
+await page.waitForSelector("#world-grid .world-cell", { timeout: 90000 });
+check("세계 경제 지표", (await page.locator("#world-grid .world-cell").count()) >= 6, `${await page.locator("#world-grid .world-cell").count()}개 지표`);
+check("모달 글로벌 헤드라인", (await page.locator("#world-news a").count()) >= 3);
+
+// 지구본 초기화 대기(모달 안)
+await page.waitForFunction(() => window.__wfg?.ready === true, { timeout: 120000 });
 check("지구본 초기화", true);
 
 // WebGL 렌더 확인: 실제 드로우콜/삼각형이 나가는지 (readPixels 는 더블버퍼 때문에 신뢰 못 함)
 await page.waitForTimeout(800);
 const stats = await page.evaluate(() => window.__wfg.globe.renderStats());
 check("WebGL 렌더 동작", stats.frames > 3 && stats.triangles > 1000, `frames ${stats.frames} · calls ${stats.calls} · tri ${stats.triangles}`);
+await page.screenshot({ path: `${outDir}/13-world.png` });
 
 // 국가 클릭 정확도: 여러 나라를 정면으로 돌린 뒤 캔버스 중앙 클릭 → 같은 나라가 잡혀야 한다
+// (나라를 고르면 모달이 닫히는 게 정상 동작이라 매 회 다시 연다)
+const openWorld = async () => {
+  if (await page.locator("#world-modal").evaluate((n) => n.hidden)) {
+    await page.click("#btn-world");
+    await page.waitForTimeout(250);
+  }
+};
+await openWorld();
 const canvas = await page.locator("#globe").boundingBox();
 const center = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 };
 
 for (const cc of ["KR", "US", "BR", "DE", "AU", "IN", "ZA", "RU", "CA", "JP", "AR", "CN", "GB", "MX"]) {
+  await openWorld();
   await page.evaluate((code) => window.__wfg.globe.selectByIso2(code), cc);
   await page.waitForFunction(() => window.__wfg.globe.isFlying() === false, { timeout: 15000 });
   await page.waitForTimeout(120);
@@ -76,7 +114,9 @@ for (const cc of ["KR", "US", "BR", "DE", "AU", "IN", "ZA", "RU", "CA", "JP", "A
 }
 
 // 한국 패널 확인
+await openWorld();
 await page.evaluate(() => window.__wfg.globe.selectByIso2("KR"));
+await page.waitForTimeout(300);
 await page.waitForSelector(".panel-head h2", { timeout: 20000 });
 await page.waitForFunction(() => document.querySelectorAll(".index-card").length > 0, { timeout: 30000 });
 const title = await page.locator(".panel-head h2").first().textContent();
@@ -115,6 +155,7 @@ await page.screenshot({ path: `${outDir}/03-order.png` });
 // 해외주식 차단 상태에서 미국 주문 탭이 이유를 보여주는지
 const kisState = kisState0;
 if (kisState.configured && !kisState.overseasEnabled) {
+  await openWorld();
   await page.evaluate(() => window.__wfg.globe.selectByIso2("US"));
   await page.waitForFunction(() => document.querySelector(".panel-head h2")?.textContent?.includes("미국"), { timeout: 20000 });
   await page.getByRole("tab", { name: "주문" }).click();
@@ -127,6 +168,7 @@ if (kisState.configured && !kisState.overseasEnabled) {
     `form ${formCount} · ${warnText.slice(0, 60)}`,
   );
   await page.screenshot({ path: `${outDir}/05-overseas-blocked.png` });
+  await openWorld();
   await page.evaluate(() => window.__wfg.globe.selectByIso2("KR"));
   await page.waitForFunction(() => document.querySelector(".panel-head h2")?.textContent?.includes("대한민국"), { timeout: 20000 });
 } else {
@@ -145,6 +187,7 @@ if (kisState.configured && kisState.dryRun) {
 // AI 분석 탭 (제공자가 설정돼 있을 때만)
 const cfg = await page.evaluate(async () => (await fetch("/api/config")).json());
 if (cfg.ai?.enabled) {
+  await openWorld();
   await page.evaluate(() => window.__wfg.globe.selectByIso2("KR"));
   await page.waitForFunction(() => document.querySelector(".panel-head h2")?.textContent?.includes("대한민국"), { timeout: 20000 });
   await page.getByRole("tab", { name: "AI 분석" }).click();
@@ -195,9 +238,10 @@ await page.click("#auto-close");
 // 티커테이프 & 좌측 요약
 check("티커테이프", (await page.locator(".tape-item").count()) > 5);
 check("지금 움직이는 시장", (await page.locator("#hot-list button").count()) >= 3);
-check("글로벌 헤드라인", (await page.locator("#global-news a").count()) >= 3);
 
-// 검색
+// 검색 (세계 경제 모달 안)
+await page.click("#btn-world");
+await page.waitForTimeout(400);
 await page.fill("#country-search", "일본");
 await page.waitForSelector("#search-results button");
 await page.locator("#search-results button").first().click();

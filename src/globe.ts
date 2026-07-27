@@ -35,12 +35,20 @@ export interface GlobeOptions {
   orderCodes: Set<string>;
   onSelect: (c: CountryRef) => void;
   onHover: (c: CountryRef | null, clientX: number, clientY: number) => void;
+  /**
+   * 아이콘 모드 — 작게 돌아가기만 하는 장식용 지구본.
+   * 픽 텍스처·오버레이·마커·이벤트를 전부 만들지 않는다(그 비용이 대부분이다).
+   */
+  mini?: boolean;
 }
 
 const BASE_W = 4096;
 const BASE_H = 2048;
 const PICK_W = 2048;
 const PICK_H = 1024;
+/** 아이콘 모드 텍스처. 64px 남짓으로 보이므로 이 정도면 충분하다. */
+const MINI_W = 1024;
+const MINI_H = 512;
 
 const COLOR = {
   oceanTop: "#08152c",
@@ -200,9 +208,11 @@ export class Globe {
     this.buildRenderer();
     this.buildEarth();
     this.buildAtmosphere();
-    this.buildStars();
-    this.buildMarkers();
-    this.bindEvents();
+    if (!this.opts.mini) {
+      this.buildStars();
+      this.buildMarkers();
+      this.bindEvents();
+    }
     this.animate();
   }
 
@@ -210,11 +220,14 @@ export class Globe {
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     this.camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+    // 아이콘은 작은 원 안을 채워야 하므로 가까이 붙인다
+    if (this.opts.mini) this.targetZoom = 2.75;
     this.camera.position.set(0, 0, this.targetZoom);
     this.group.rotation.order = "XYZ";
     this.scene.add(this.group);
-    this.scene.add(new THREE.AmbientLight(0xa8c4ff, 1.05));
-    const key = new THREE.DirectionalLight(0xffffff, 1.15);
+    // 아이콘은 작고 어두워 보이기 쉬워 주변광을 올린다
+    this.scene.add(new THREE.AmbientLight(0xa8c4ff, this.opts.mini ? 1.9 : 1.05));
+    const key = new THREE.DirectionalLight(0xffffff, this.opts.mini ? 1.6 : 1.15);
     key.position.set(-1.4, 0.9, 2.2);
     this.scene.add(key);
     const rim = new THREE.DirectionalLight(0x3b82f6, 0.5);
@@ -224,31 +237,34 @@ export class Globe {
   }
 
   private buildEarth(): void {
+    const mini = Boolean(this.opts.mini);
+    const TW = mini ? MINI_W : BASE_W;
+    const TH = mini ? MINI_H : BASE_H;
     // 시각 텍스처
     const base = document.createElement("canvas");
-    base.width = BASE_W;
-    base.height = BASE_H;
+    base.width = TW;
+    base.height = TH;
     const ctx = base.getContext("2d")!;
-    const grad = ctx.createLinearGradient(0, 0, 0, BASE_H);
+    const grad = ctx.createLinearGradient(0, 0, 0, TH);
     grad.addColorStop(0, COLOR.oceanBottom);
     grad.addColorStop(0.5, COLOR.oceanTop);
     grad.addColorStop(1, COLOR.oceanBottom);
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, BASE_W, BASE_H);
+    ctx.fillRect(0, 0, TW, TH);
 
     // 경위선
     ctx.strokeStyle = COLOR.graticule;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = mini ? 0.6 : 1.5;
     ctx.beginPath();
     for (let lon = -180; lon <= 180; lon += 30) {
-      const [x] = project(lon, 0, BASE_W, BASE_H);
+      const [x] = project(lon, 0, TW, TH);
       ctx.moveTo(x, 0);
-      ctx.lineTo(x, BASE_H);
+      ctx.lineTo(x, TH);
     }
     for (let lat = -60; lat <= 60; lat += 30) {
-      const [, y] = project(0, lat, BASE_W, BASE_H);
+      const [, y] = project(0, lat, TW, TH);
       ctx.moveTo(0, y);
-      ctx.lineTo(BASE_W, y);
+      ctx.lineTo(TW, y);
     }
     ctx.stroke();
 
@@ -257,11 +273,11 @@ export class Globe {
       const iso2 = this.refs[i]?.iso2 ?? "";
       const live = iso2 ? this.opts.liveCodes.has(iso2) : false;
       ctx.beginPath();
-      tracePath(ctx, f.geometry, BASE_W, BASE_H);
+      tracePath(ctx, f.geometry, TW, TH);
       ctx.fillStyle = live ? COLOR.landLive : COLOR.land;
       ctx.fill();
       ctx.strokeStyle = COLOR.border;
-      ctx.lineWidth = 1.4;
+      ctx.lineWidth = mini ? 0.5 : 1.4;
       ctx.stroke();
     });
 
@@ -270,10 +286,13 @@ export class Globe {
     baseTex.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
 
     this.earth = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 128, 72),
+      new THREE.SphereGeometry(1, mini ? 48 : 128, mini ? 32 : 72),
       new THREE.MeshPhongMaterial({ map: baseTex, shininess: 6, specular: new THREE.Color(0x16273f) }),
     );
     this.group.add(this.earth);
+
+    // 아이콘 모드는 클릭 판정도 하이라이트도 없으므로 여기서 끝낸다.
+    if (mini) return;
 
     // 픽 텍스처(화면에 그리지 않음)
     const pick = document.createElement("canvas");
@@ -589,7 +608,8 @@ export class Globe {
       this.group.rotation.y = f.fromY + (f.toY - f.fromY) * k;
       if (f.t >= 1) this.flying = null;
     } else if (this.autoRotate && !this.dragging) {
-      this.group.rotation.y += dt * 0.06;
+      // 아이콘은 눈에 띄게 돌아야 "살아 있다"는 느낌이 난다
+      this.group.rotation.y += dt * (this.opts.mini ? 0.28 : 0.06);
     }
 
     this.camera.position.z += (this.targetZoom - this.camera.position.z) * 0.12;

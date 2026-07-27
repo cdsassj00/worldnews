@@ -3,6 +3,8 @@ import { Globe, type CountryRef } from "./globe";
 import { api, ApiFailure, getTradeToken, setTradeToken, type ConfigResponse, type KisStatus, type Snapshot } from "./api";
 import { Panel, type OrderDraft } from "./panel";
 import { AutoPanel } from "./autopanel";
+import { Ontology3D } from "./ontology3d";
+import type { OntoState } from "./api";
 import { dirClass, el, fmtKrw, fmtNum, fmtPct, timeAgo } from "./format";
 
 /** 티커테이프 심볼 → 국가코드 (지금 움직이는 시장 목록용) */
@@ -40,6 +42,9 @@ const panel = new Panel({
 });
 
 let autoPanel: AutoPanel | null = null;
+let onto: Ontology3D | null = null;
+let miniGlobe: Globe | null = null;
+let ontoState: OntoState | null = null;
 
 /* ── 상단 상태/티커 ─────────────────────────────── */
 
@@ -120,32 +125,14 @@ async function loadTape(): Promise<void> {
   }
 }
 
-async function loadGlobalNews(): Promise<void> {
-  const list = $("global-news");
-  try {
-    const { items } = await api.globalNews();
-    list.replaceChildren(
-      ...items.slice(0, 8).map((n) =>
-        el("li", {}, [
-          el("a", { href: n.url, target: "_blank", rel: "noopener noreferrer", text: n.title }),
-          el("div", { class: "news-meta" }, [el("span", { text: n.source }), el("span", { text: timeAgo(n.publishedAt) })]),
-        ]),
-      ),
-    );
-  } catch {
-    list.replaceChildren(el("li", { class: "note", text: "헤드라인 로딩 실패" }));
-  }
-}
-
 /* ── 국가 선택 ─────────────────────────────── */
 
 function selectCountry(cc: string, nameKo: string): void {
-  if (globe && !globe.selectByIso2(cc)) {
-    // 지도에 없는 코드(예: 소규모 영토)라도 패널은 열어준다
+  if (!globe || !globe.selectByIso2(cc)) {
+    // 지도에 없는 코드(예: 소규모 영토)이거나 지구본이 아직 없으면 패널만 연다
     void panel.open(cc, nameKo);
   }
-  const hint = $("globe-hint");
-  hint.style.opacity = "0";
+  $("world-modal").hidden = true;
 }
 
 function onCountryPicked(c: CountryRef): void {
@@ -160,6 +147,8 @@ function onCountryPicked(c: CountryRef): void {
   }
   void panel.open(c.iso2, c.ko);
   history.replaceState(null, "", `#${c.iso2}`);
+  // 나라를 골랐으면 모달의 목적은 끝났다. 오른쪽 상세로 시선을 넘긴다.
+  $("world-modal").hidden = true;
 }
 
 /* ── 검색 ─────────────────────────────── */
@@ -370,7 +359,170 @@ function setupOrderModal(): void {
   });
 }
 
-/* ── 지구본 ─────────────────────────────── */
+/* ── 3D 온톨로지 (메인) ─────────────────────────────── */
+
+function setupOntology(): void {
+  const canvas = $<HTMLCanvasElement>("onto3d");
+  const tooltip = $("onto-tooltip");
+  onto = new Ontology3D(canvas, {
+    onSelect: (kind, id) => {
+      if (kind !== "ticker") return;
+      const sc = ontoState?.scores.find((s) => s.code === id);
+      if (sc) panel.openTicker(sc);
+    },
+    onHover: (label, x, y) => {
+      if (!label) {
+        tooltip.hidden = true;
+        return;
+      }
+      tooltip.replaceChildren(el("div", { class: "tt-name", text: label }));
+      const host = $("onto-host").getBoundingClientRect();
+      tooltip.style.left = `${x - host.left}px`;
+      tooltip.style.top = `${y - host.top}px`;
+      tooltip.hidden = false;
+    },
+  });
+  onto.init();
+
+  const w = window as unknown as { __wfg?: Record<string, unknown> };
+  w.__wfg = { ...(w.__wfg ?? {}), onto };
+
+  const spinBtn = $("btn-spin");
+  spinBtn.addEventListener("click", () => {
+    const next = !onto!.isAutoRotating();
+    onto!.setAutoRotate(next);
+    spinBtn.setAttribute("aria-pressed", next ? "true" : "false");
+  });
+  $("btn-zoom-in").addEventListener("click", () => onto?.zoom(-1.4));
+  $("btn-zoom-out").addEventListener("click", () => onto?.zoom(1.4));
+}
+
+async function loadOntology(): Promise<void> {
+  const hint = $("onto-hint");
+  try {
+    ontoState = await api.ontoState();
+    onto?.setState({ macro: ontoState.macro, scores: ontoState.scores, riskOff: ontoState.riskOff });
+    $("onto-note").textContent = ontoState.note;
+    hint.textContent = `${ontoState.scores.length}개 종목 · 갱신 ${timeAgo(ontoState.generatedAt)}`;
+    hint.style.opacity = "0.75";
+    renderMacroList(ontoState);
+    renderScoreList(ontoState);
+    (window as unknown as { __wfg?: Record<string, unknown> }).__wfg = {
+      ...((window as unknown as { __wfg?: Record<string, unknown> }).__wfg ?? {}),
+      ontoReady: true,
+    };
+  } catch (err) {
+    hint.textContent = `온톨로지 로드 실패: ${err instanceof ApiFailure ? err.message : String(err)}`;
+  }
+}
+
+function renderMacroList(s: OntoState): void {
+  $("macro-list").replaceChildren(
+    ...s.macro.map((m) =>
+      el("li", { class: "macro-row", title: m.upMeansKo }, [
+        el("span", { class: "m-name", text: m.nameKo }),
+        el("span", { class: "m-bar" }, [
+          el("i", {
+            class: dirClass(m.value),
+            style: `width:${Math.min(100, Math.abs(m.value) * 100)}%;${m.value < 0 ? "margin-left:auto" : ""}`,
+          }),
+        ]),
+        el("span", { class: `m-val ${dirClass(m.changePct)}`, text: fmtPct(m.changePct) }),
+      ]),
+    ),
+  );
+}
+
+function renderScoreList(s: OntoState): void {
+  const rows = s.scores.slice(0, 8);
+  $("score-list").replaceChildren(
+    ...rows.map((t) => {
+      const btn = el("button", { type: "button" }, [
+        el("span", { class: "hot-name" }, [
+          el("span", { text: t.nameKo }),
+          el("span", { class: "hot-index", text: `${fmtNum(t.price, 0)}원 · 온톨 ${t.ontologyScore}` }),
+        ]),
+        el("span", { class: dirClass(t.score), text: t.score.toFixed(3) }),
+      ]);
+      btn.addEventListener("click", () => {
+        onto?.setFocus(t.code);
+        panel.openTicker(t);
+      });
+      return el("li", {}, [btn]);
+    }),
+  );
+}
+
+/* ── 지구본 (아이콘 + 세계 경제 모달) ─────────────────────────────── */
+
+function setupWorldModal(liveCodes: Set<string>): void {
+  const modal = $("world-modal");
+  const open = () => {
+    modal.hidden = false;
+    // 모달이 열린 뒤에야 캔버스 크기가 잡히므로 그때 초기화한다
+    if (!globe) setupGlobe(liveCodes, new Set());
+    window.dispatchEvent(new Event("resize"));
+    void loadWorldIndicators();
+  };
+  $("btn-world").addEventListener("click", open);
+  $("world-close").addEventListener("click", () => (modal.hidden = true));
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) modal.hidden = true;
+  });
+
+  // 돌아가는 지구본 아이콘
+  miniGlobe = new Globe($<HTMLCanvasElement>("mini-globe"), {
+    liveCodes,
+    orderCodes: new Set(),
+    onSelect: () => {},
+    onHover: () => {},
+    mini: true,
+  });
+  miniGlobe.init().catch(() => {
+    $("btn-world").classList.add("orb-fallback");
+  });
+
+  const w = window as unknown as { __wfg?: Record<string, unknown> };
+  w.__wfg = { ...(w.__wfg ?? {}), openWorld: open };
+}
+
+async function loadWorldIndicators(): Promise<void> {
+  const grid = $("world-grid");
+  const news = $("world-news");
+  grid.replaceChildren(el("p", { class: "note", text: "지표를 불러오는 중…" }));
+  news.replaceChildren(el("li", { class: "note", text: "헤드라인을 불러오는 중…" }));
+  // 둘을 따로 처리한다 — 뉴스가 죽었다고 지표까지 비우면 안 된다
+  const [tape, headlines] = await Promise.allSettled([api.tape(), api.globalNews()]);
+
+  if (tape.status === "fulfilled") {
+    $("world-time").textContent = `갱신 ${timeAgo(tape.value.fetchedAt)}`;
+    grid.replaceChildren(
+      ...tape.value.items.map((i) =>
+        el("div", { class: "world-cell" }, [
+          el("span", { class: "w-label", text: i.label }),
+          el("span", { class: "w-price", text: fmtNum(i.price) }),
+          el("span", { class: `w-chg ${dirClass(i.changePct)}`, text: fmtPct(i.changePct) }),
+        ]),
+      ),
+    );
+  } else {
+    $("world-time").textContent = "지표 로드 실패";
+    grid.replaceChildren(el("p", { class: "note", text: "지표를 불러오지 못했습니다." }));
+  }
+
+  if (headlines.status === "fulfilled") {
+    news.replaceChildren(
+      ...headlines.value.items.slice(0, 8).map((n) =>
+        el("li", {}, [
+          el("a", { href: n.url, target: "_blank", rel: "noopener noreferrer", text: n.title }),
+          el("div", { class: "news-meta" }, [el("span", { text: n.source }), el("span", { text: timeAgo(n.publishedAt) })]),
+        ]),
+      ),
+    );
+  } else {
+    news.replaceChildren(el("li", { class: "note", text: "헤드라인을 불러오지 못했습니다." }));
+  }
+}
 
 function setupGlobe(liveCodes: Set<string>, orderCodes: Set<string>): void {
   const canvas = $<HTMLCanvasElement>("globe");
@@ -416,15 +568,6 @@ function setupGlobe(liveCodes: Set<string>, orderCodes: Set<string>): void {
     .catch((err) => {
       $("globe-hint").textContent = `지구본 로드 실패: ${err instanceof Error ? err.message : String(err)}`;
     });
-
-  const spinBtn = $("btn-spin");
-  spinBtn.addEventListener("click", () => {
-    const next = !globe!.isAutoRotating();
-    globe!.setAutoRotate(next);
-    spinBtn.setAttribute("aria-pressed", next ? "true" : "false");
-  });
-  $("btn-zoom-in").addEventListener("click", () => globe?.zoom(-0.5));
-  $("btn-zoom-out").addEventListener("click", () => globe?.zoom(0.5));
 }
 
 /* ── 부트스트랩 ─────────────────────────────── */
@@ -443,15 +586,18 @@ async function boot(): Promise<void> {
   // 앰버 마커는 "지금 실제로 주문 가능한" 시장만 표시한다(모의투자면 국내만).
   const orderCodes = new Set<string>((config?.markets ?? []).filter((m) => m.orderableNow > 0).map((m) => m.cc));
 
-  setupGlobe(liveCodes, orderCodes);
+  void orderCodes;
+  setupOntology();
+  setupWorldModal(liveCodes);
   setupSearch();
   setupAuthModal();
   setupOrderModal();
   setupAutoModal();
 
-  await Promise.allSettled([loadTape(), loadGlobalNews()]);
-  // 시세는 주기적으로 갱신(90초 캐시와 맞춤)
+  await Promise.allSettled([loadOntology(), loadTape()]);
+  // 시세는 주기적으로 갱신(90초 캐시와 맞춤), 온톨로지는 전략 캐시(5분)에 맞춘다
   setInterval(() => void loadTape(), 90_000);
+  setInterval(() => void loadOntology(), 300_000);
 }
 
 void boot();

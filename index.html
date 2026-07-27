@@ -45,11 +45,11 @@
     </header>
 
     <main class="layout">
-      <aside class="rail" aria-label="시장 요약">
+      <aside class="rail" aria-label="온톨로지 요약">
         <section class="card">
-          <h2 class="card-title">지금 움직이는 시장</h2>
-          <p class="card-sub">지수 변동률 상위. 클릭하면 지구본이 그 나라로 이동합니다.</p>
-          <ul class="hot-list" id="hot-list">
+          <h2 class="card-title">거시 신호</h2>
+          <p class="card-sub">5일 변화율을 요인별 기준폭으로 나눈 -1~1 신호. 이게 그래프의 입력입니다.</p>
+          <ul class="macro-list" id="macro-list">
             <li class="skeleton-row"></li>
             <li class="skeleton-row"></li>
             <li class="skeleton-row"></li>
@@ -57,9 +57,18 @@
         </section>
 
         <section class="card">
-          <h2 class="card-title">글로벌 헤드라인</h2>
-          <ul class="news-list compact" id="global-news">
+          <h2 class="card-title">종목 점수 상위</h2>
+          <p class="card-sub">클릭하면 3D 그래프가 그 종목의 경로만 남깁니다.</p>
+          <ul class="hot-list" id="score-list">
             <li class="skeleton-row"></li>
+            <li class="skeleton-row"></li>
+            <li class="skeleton-row"></li>
+          </ul>
+        </section>
+
+        <section class="card">
+          <h2 class="card-title">지금 움직이는 시장</h2>
+          <ul class="hot-list" id="hot-list">
             <li class="skeleton-row"></li>
             <li class="skeleton-row"></li>
           </ul>
@@ -68,19 +77,30 @@
         <section class="card card-guide">
           <h2 class="card-title">쓰는 순서</h2>
           <ol class="steps">
-            <li><b>지구본에서 나라를 클릭</b>한다. 초록 점은 종목·지수 데이터가 있는 시장이다.</li>
-            <li><b>뉴스</b> 탭에서 그 나라 금융 흐름을 읽는다.</li>
-            <li><b>추천</b> 탭에서 점수·근거·손절/목표가를 확인한다.</li>
-            <li><b>주문</b> 탭에서 수량을 넣고 모의투자로 먼저 체결해 본다.</li>
+            <li><b>가운데 3D 그래프</b>가 거시요인 → 섹터 → 종목으로 신호가 흐르는 구조다. 노드를 누르면 그 경로만 남는다.</li>
+            <li>오른쪽 아래 <b>돌아가는 지구본</b>을 누르면 세계 경제 지표와 지도가 열린다. 나라를 클릭하면 그 나라 상세가 뜬다.</li>
+            <li>상단 <b>자동매매</b>에서 계획·근거·백테스트 결과를 확인한다.</li>
           </ol>
         </section>
       </aside>
 
       <section class="stage">
-        <div id="globe-host" class="globe-host">
-          <canvas id="globe" aria-label="3D 세계지도. 국가를 클릭해 해당 국가 금융정보를 봅니다."></canvas>
-          <div class="globe-hint" id="globe-hint">드래그로 지구를 돌리고, 나라를 클릭하세요</div>
-          <div class="globe-tooltip" id="globe-tooltip" hidden></div>
+        <div id="onto-host" class="onto-host">
+          <canvas id="onto3d" aria-label="3D 온톨로지 그래프. 거시요인에서 섹터를 거쳐 종목까지 신호가 전파되는 구조입니다."></canvas>
+          <div class="onto-legend">
+            <div class="onto-title">
+              <b>온톨로지 분석</b>
+              <span id="onto-note">거시 신호를 불러오는 중…</span>
+            </div>
+            <div class="onto-layers">
+              <span><i class="layer layer-macro"></i>거시요인</span>
+              <span><i class="layer layer-sector"></i>섹터</span>
+              <span><i class="layer layer-ticker"></i>종목</span>
+            </div>
+            <p class="onto-help">노드를 클릭하면 그와 이어진 경로만 남습니다. 드래그로 회전, 휠로 확대.</p>
+          </div>
+          <div class="globe-hint" id="onto-hint">불러오는 중…</div>
+          <div class="globe-tooltip" id="onto-tooltip" hidden></div>
           <div class="globe-controls">
             <button class="icon-btn" id="btn-spin" type="button" aria-pressed="true" title="자동회전 켜기/끄기">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 1 1-7.7 5.9M12 4V1M12 4l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
@@ -95,25 +115,30 @@
               <span class="sr-only">축소</span>
             </button>
           </div>
-          <label class="country-search">
-            <span class="sr-only">국가 검색</span>
-            <input id="country-search" type="search" placeholder="국가 검색 (예: 미국, Japan, DE)" autocomplete="off" />
-            <ul id="search-results" class="search-results" hidden></ul>
-          </label>
+
+          <!-- 돌아가는 지구본 아이콘 — 누르면 세계 경제 지표 모달 -->
+          <button class="globe-orb" id="btn-world" type="button" title="세계 경제 지표 열기">
+            <canvas id="mini-globe" aria-hidden="true"></canvas>
+            <span class="orb-label">세계 경제</span>
+          </button>
         </div>
       </section>
 
       <section class="panel" id="panel" aria-live="polite">
         <div class="panel-empty" id="panel-empty">
-          <h2>나라를 고르세요</h2>
+          <h2>무엇을 볼지 고르세요</h2>
           <p>
-            어디를 볼지 모르겠으면 왼쪽 <b>지금 움직이는 시장</b>에서 변동률이 큰 나라부터 누르면 됩니다.
-            지구본의 초록 점이 있는 나라는 지수·종목·주문까지 연결됩니다.
+            가운데 <b>3D 온톨로지 그래프</b>에서 종목 노드를 누르면 그 종목의 점수 구성과 근거가 여기에 뜹니다.
+            왼쪽 <b>종목 점수 상위</b> 목록을 눌러도 같습니다.
+          </p>
+          <p>
+            나라별 뉴스·지수·추천이 보고 싶으면 오른쪽 아래 <b>돌아가는 지구본</b>을 눌러
+            세계 경제 지표를 열고 지도에서 나라를 클릭하세요.
           </p>
           <div class="empty-legend">
-            <span><i class="dot dot-live"></i> 시장 데이터 보유</span>
-            <span><i class="dot dot-order"></i> 한국투자증권 주문 가능</span>
-            <span><i class="dot dot-news"></i> 뉴스만 제공</span>
+            <span><i class="dot dot-live"></i> 거시요인 (그래프 위층)</span>
+            <span><i class="dot dot-news"></i> 섹터 (가운데층)</span>
+            <span><i class="dot dot-order"></i> 종목 (아래층)</span>
           </div>
         </div>
         <div class="panel-body" id="panel-body" hidden></div>
@@ -164,6 +189,36 @@
           <button class="btn btn-danger" id="order-submit" type="button">주문 전송</button>
         </div>
         <p class="modal-status" id="order-status"></p>
+      </div>
+    </div>
+
+    <!-- 세계 경제 지표 (지구본 아이콘 클릭) -->
+    <div class="modal modal-wide" id="world-modal" hidden>
+      <div class="modal-card world-card" role="dialog" aria-modal="true" aria-labelledby="world-title">
+        <div class="auto-head">
+          <h2 id="world-title">세계 경제 지표</h2>
+          <span id="world-time" class="badge badge-muted">불러오는 중…</span>
+          <span class="spacer"></span>
+          <button class="btn btn-ghost" id="world-close" type="button">닫기</button>
+        </div>
+        <div class="world-body">
+          <div class="world-globe" id="globe-host">
+            <canvas id="globe" aria-label="3D 세계지도. 국가를 클릭해 해당 국가 금융정보를 봅니다."></canvas>
+            <div class="globe-hint" id="globe-hint">드래그로 지구를 돌리고, 나라를 클릭하세요</div>
+            <div class="globe-tooltip" id="globe-tooltip" hidden></div>
+            <label class="country-search">
+              <span class="sr-only">국가 검색</span>
+              <input id="country-search" type="search" placeholder="국가 검색 (예: 미국, Japan, DE)" autocomplete="off" />
+              <ul id="search-results" class="search-results" hidden></ul>
+            </label>
+          </div>
+          <div class="world-side">
+            <h3 class="card-title">주요 지수 · 환율 · 원자재</h3>
+            <div class="world-grid" id="world-grid"></div>
+            <h3 class="card-title">글로벌 헤드라인</h3>
+            <ul class="news-list compact" id="world-news"></ul>
+          </div>
+        </div>
       </div>
     </div>
 

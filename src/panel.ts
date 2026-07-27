@@ -12,6 +12,7 @@ import {
   type ProviderStat,
   type Recommendation,
   type RecommendResponse,
+  type TickerScore,
 } from "./api";
 import { dirClass, el, fmtKrw, fmtNum, fmtPct, sparkline, timeAgo } from "./format";
 
@@ -53,6 +54,8 @@ export class Panel {
   private expanded = new Set<string>();
   private loadToken = 0;
   private orderDraft: OrderIntent | null = null;
+  /** 3D 그래프에서 고른 종목 상세 (국가 패널 대신 표시) */
+  private tickerView: TickerScore | null = null;
 
   constructor(deps: PanelDeps) {
     this.deps = deps;
@@ -71,6 +74,7 @@ export class Panel {
     this.analysisLoading = false;
     this.expanded.clear();
     this.orderDraft = null;
+    this.tickerView = null;
     this.tab = "reco"; // 국가를 새로 고르면 항상 추천부터 보여준다
     this.deps.empty.hidden = true;
     this.deps.root.hidden = false;
@@ -200,9 +204,89 @@ export class Panel {
     return out;
   }
 
+  /**
+   * 3D 그래프에서 종목 노드를 눌렀을 때 여는 상세.
+   * 국가 패널과 달리 네트워크를 타지 않는다 — 점수는 이미 그래프가 들고 있다.
+   */
+  openTicker(t: TickerScore): void {
+    this.loadToken++; // 진행 중인 국가 로딩이 화면을 덮어쓰지 않게 무효화
+    this.tickerView = t;
+    this.deps.empty.hidden = true;
+    this.deps.root.hidden = false;
+    this.render();
+  }
+
+  private renderTicker(t: TickerScore): HTMLElement[] {
+    const bar = (label: string, v: number, weight: number) =>
+      el("div", { class: "tscore-row" }, [
+        el("span", { class: "k", text: label }),
+        el("span", { class: "sbar" }, [
+          el("i", { class: dirClass(v), style: `width:${Math.min(100, Math.abs(v) * 100)}%` }),
+        ]),
+        el("span", { class: `v ${dirClass(v)}`, text: `${v >= 0 ? "+" : ""}${v.toFixed(3)} ×${weight}` }),
+      ]);
+
+    const head = el("div", { class: "panel-head" }, [
+      el("div", { class: "country" }, [
+        el("h2", { text: t.nameKo }),
+        el("span", { class: "cc-badge", text: t.code }),
+      ]),
+      el("div", { class: "head-meta" }, [
+        el("span", { text: `${fmtNum(t.price, 0)}원` }),
+        el("span", { class: dirClass(t.changePct), text: fmtPct(t.changePct) }),
+      ]),
+    ]);
+
+    const backBtn = el("button", { class: "btn btn-ghost", type: "button", text: "← 대한민국 시장 전체 보기" });
+    backBtn.addEventListener("click", () => void this.open("KR", "대한민국"));
+
+    return [
+      head,
+      el("div", { class: "tab-panel" }, [
+        el("div", { class: "tscore" }, [
+          el("div", { class: "tscore-total" }, [
+            el("span", { class: "k", text: "합성 점수" }),
+            el("b", { class: dirClass(t.score), text: t.score.toFixed(3) }),
+            el("span", {
+              class: "note",
+              text: t.score >= 0.15 ? "매수 후보 기준(0.15) 통과" : "매수 기준(0.15) 미달",
+            }),
+          ]),
+          bar("온톨로지", t.ontologyScore, 0.35),
+          bar("가격", t.priceScore, 0.45),
+          bar("뉴스", t.newsScore, 0.2),
+        ]),
+        el("h3", { class: "card-title", text: "판단 근거" }),
+        el(
+          "ul",
+          { class: "plan-detail" },
+          (t.reasons ?? []).map((r) =>
+            el("li", { text: `[${r.kind === "ontology" ? "온톨로지" : r.kind === "price" ? "가격" : "뉴스"}] ${r.text}` }),
+          ),
+        ),
+        el("h3", { class: "card-title", text: "온톨로지 경로" }),
+        el(
+          "ul",
+          { class: "plan-detail" },
+          (t.edges ?? []).map((e) =>
+            el("li", { text: `${e.macroId} → ${e.sector} : ${e.contribution >= 0 ? "+" : ""}${e.contribution}` }),
+          ),
+        ),
+        el("p", { class: "note", text: `일변동성 ${t.volatility}% · ATR ${fmtNum(t.atr, 0)}` }),
+        backBtn,
+      ]),
+    ];
+  }
+
   private render(): void {
     const root = this.deps.root;
     root.replaceChildren();
+
+    if (this.tickerView) {
+      root.append(...this.renderTicker(this.tickerView));
+      return;
+    }
+
     root.append(this.renderHead());
 
     const tabs = el("div", { class: "tabs", role: "tablist" });

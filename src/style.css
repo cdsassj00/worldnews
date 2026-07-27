@@ -1495,6 +1495,311 @@ body {
 .sbar > i.down {
   background: var(--down);
 }
+/* ── 3D 온톨로지 스테이지 ─────────────────────────── */
+
+.onto-host {
+  position: absolute;
+  inset: 0;
+}
+#onto3d {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+#onto3d.dragging {
+  cursor: grabbing;
+}
+.onto-legend {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  max-width: 300px;
+  padding: var(--space-3);
+  background: rgba(9, 15, 28, 0.72);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+.onto-title {
+  display: grid;
+  gap: 2px;
+}
+.onto-title b {
+  font-size: 14px;
+  letter-spacing: 0.02em;
+}
+.onto-title span {
+  font-size: 11.5px;
+  color: var(--fg-dim);
+  font-family: var(--font-mono);
+}
+.onto-layers {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  font-size: 11.5px;
+  color: var(--fg-dim);
+}
+.onto-layers i.layer {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 5px;
+}
+.layer-macro {
+  background: var(--up);
+}
+.layer-sector {
+  background: #94a3b8;
+}
+.layer-ticker {
+  background: var(--accent);
+}
+.onto-help {
+  margin: var(--space-2) 0 0;
+  font-size: 11px;
+  color: var(--fg-faint);
+  line-height: 1.45;
+}
+
+/* 돌아가는 지구본 아이콘 */
+.globe-orb {
+  position: absolute;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  width: 96px;
+  height: 96px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: radial-gradient(circle at 50% 40%, rgba(37, 99, 235, 0.22), rgba(2, 6, 23, 0.9));
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+  transition: transform 0.16s ease, border-color 0.16s ease;
+}
+.globe-orb:hover {
+  transform: scale(1.06);
+  border-color: var(--ring);
+}
+.globe-orb canvas {
+  position: absolute;
+  inset: 6px;
+  width: calc(100% - 12px);
+  height: calc(100% - 12px);
+  border-radius: 50%;
+}
+.orb-label {
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10.5px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+}
+.globe-orb.orb-fallback::after {
+  content: "🌐";
+  font-size: 34px;
+}
+
+/* 세계 경제 모달 */
+.world-card {
+  width: min(1100px, 100%);
+  max-height: min(88vh, 860px);
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+}
+.world-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+  min-height: 0;
+  overflow: hidden;
+}
+.world-globe {
+  position: relative;
+  min-height: 380px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: radial-gradient(circle at 50% 45%, #0a1426 0%, #020617 70%);
+  overflow: hidden;
+}
+.world-globe #globe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+.world-side {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.world-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: var(--space-2);
+}
+.world-cell {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: var(--space-2);
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.world-cell .w-label {
+  font-size: 10.5px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.world-cell .w-price {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.world-cell .w-chg {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.world-cell .w-chg.up {
+  color: var(--up);
+}
+.world-cell .w-chg.down {
+  color: var(--down);
+}
+
+/* 좌측 거시 신호 리스트 */
+.macro-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+}
+.macro-row {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) 54px;
+  gap: var(--space-2);
+  align-items: center;
+  font-size: 11.5px;
+}
+.macro-row .m-name {
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.m-bar {
+  display: flex;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--muted);
+  overflow: hidden;
+}
+.m-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--fg-faint);
+}
+.m-bar > i.up {
+  background: var(--up);
+}
+.m-bar > i.down {
+  background: var(--down);
+}
+.macro-row .m-val {
+  font-family: var(--font-mono);
+  text-align: right;
+}
+.macro-row .m-val.up {
+  color: var(--up);
+}
+.macro-row .m-val.down {
+  color: var(--down);
+}
+
+/* 종목 상세(3D 노드 클릭) */
+.tscore {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.tscore-total {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.tscore-total b {
+  font-family: var(--font-mono);
+  font-size: 22px;
+}
+.tscore-total b.up {
+  color: var(--up);
+}
+.tscore-total b.down {
+  color: var(--down);
+}
+.tscore-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 100px;
+  gap: var(--space-2);
+  align-items: center;
+  font-size: 11.5px;
+}
+.tscore-row .k {
+  color: var(--fg-faint);
+}
+.tscore-row .v {
+  font-family: var(--font-mono);
+  text-align: right;
+}
+.tscore-row .v.up {
+  color: var(--up);
+}
+.tscore-row .v.down {
+  color: var(--down);
+}
+
+@media (max-width: 900px) {
+  .world-body {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+  .world-globe {
+    min-height: 300px;
+  }
+  .globe-orb {
+    width: 72px;
+    height: 72px;
+  }
+  /* 좁은 화면에서 범례가 그래프를 절반이나 덮는다 */
+  .onto-legend {
+    max-width: 190px;
+    padding: var(--space-2);
+  }
+  .onto-help,
+  .onto-title span {
+    display: none;
+  }
+}
+
 /* 백테스트 경고 */
 .bt-block {
   border-color: #78350f;
