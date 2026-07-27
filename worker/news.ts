@@ -98,8 +98,9 @@ function plainQuery(query: string): string {
 /**
  * 2순위: Bing News RSS.
  * 빈 결과가 간헐적으로 나오므로 파라미터 조합을 바꿔 한 번 더 시도한다.
+ * (tickernews.ts 의 종목별 검색도 이 함수를 그대로 쓴다 — CF egress 에서 유일하게 안정적인 한국어 제공처다)
  */
-async function bingNews(query: string, hl: string, gl: string, lang: NewsItem["lang"]): Promise<NewsItem[]> {
+export async function bingNews(query: string, hl: string, gl: string, lang: NewsItem["lang"]): Promise<NewsItem[]> {
   const q = encodeURIComponent(plainQuery(query));
   const short = hl.split("-")[0];
   const variants = [
@@ -202,11 +203,20 @@ async function collect(env: Env, stages: Attempt[][], minItems = 5): Promise<New
 
   if (Object.keys(healthUpdates).length) {
     const next = { ...health };
+    let changed = false;
     for (const [fam, until] of Object.entries(healthUpdates)) {
-      if (until === null) delete next[fam];
-      else next[fam] = until;
+      if (until === null) {
+        // 성공 기록은 "차단 해제"일 때만 의미가 있다. 없는 항목을 지우려고 쓰지 않는다(KV 쓰기 한도 절약).
+        if (fam in next) {
+          delete next[fam];
+          changed = true;
+        }
+      } else {
+        next[fam] = until;
+        changed = true;
+      }
     }
-    await env.CACHE.put(HEALTH_KEY, JSON.stringify(next), { expirationTtl: 3600 }).catch(() => undefined);
+    if (changed) await env.CACHE.put(HEALTH_KEY, JSON.stringify(next), { expirationTtl: 3600 }).catch(() => undefined);
   }
 
   const seen = new Set<string>();

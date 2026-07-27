@@ -39,8 +39,42 @@ export function errorResponse(err: unknown): Response {
   return json({ error: "internal_error", detail: message }, { status: 500 });
 }
 
+interface CacheEntry<T> {
+  data: T;
+  fetchedAt: number;
+  ttl?: number;
+}
+
 /**
- * KV 기반 read-through 캐시. 같은 키에 대한 결과를 ttl초 동안 재사용한다.
+ * 1층: 아이솔레이트 메모리 캐시.
+ *
+ * KV 무료 플랜은 **쓰기가 하루 1,000회**뿐이다. 시세처럼 TTL이 짧은 캐시를 KV에 쓰면
+ * 그것만으로 하루 수천 회를 태워 한도를 소진하고, 그 뒤로는 모든 캐시 저장이 실패한다
+ * (실제로 겪었다 — "KV put() limit exceeded for the day").
+ * 그래서 짧은 캐시는 메모리에만 두고, KV에는 5분 이상짜리만 쓴다.
+ * 아이솔레이트가 바뀌면 메모리는 비지만, 그 비용은 업스트림 fetch 한 번이다.
+ */
+const MEM = new Map<string, CacheEntry<unknown>>();
+const MEM_MAX = 500;
+/** 이 TTL(초) 미만짜리는 KV에 쓰지 않는다 */
+const KV_WRITE_MIN_TTL = 300;
+
+function memGet<T>(key: string): CacheEntry<T> | null {
+  return (MEM.get(key) as CacheEntry<T> | undefined) ?? null;
+}
+
+function memSet<T>(key: string, entry: CacheEntry<T>): void {
+  if (MEM.size >= MEM_MAX) {
+    // 가장 오래된 것부터 버린다 (Map 은 삽입 순서를 보존한다)
+    const first = MEM.keys().next().value;
+    if (first !== undefined) MEM.delete(first);
+  }
+  MEM.delete(key);
+  MEM.set(key, entry);
+}
+
+/**
+ * read-through 캐시 (메모리 → KV → loader). 같은 키의 결과를 ttl초 동안 재사용한다.
  * 실패 시(예: 업스트림 장애) 만료된 값이라도 stale 로 돌려준다.
  */
 export async function cached<T>(
@@ -51,24 +85,38 @@ export async function cached<T>(
   /** 결과에 따라 TTL을 다르게 주고 싶을 때(예: 빈 결과는 짧게) */
   ttlFor?: (data: T) => number,
 ): Promise<{ data: T; stale: boolean; fetchedAt: number }> {
-  const raw = await env.CACHE.get(key, "json").catch(() => null);
-  const entry = raw as { data: T; fetchedAt: number; ttl?: number } | null;
   const now = Date.now();
-  if (entry && now - entry.fetchedAt < (entry.ttl ?? ttlSeconds) * 1000) {
-    return { data: entry.data, stale: false, fetchedAt: entry.fetchedAt };
+  const fresh = (e: CacheEntry<T> | null) => e && now - e.fetchedAt < (e.ttl ?? ttlSeconds) * 1000;
+
+  const mem = memGet<T>(key);
+  if (fresh(mem)) return { data: mem!.data, stale: false, fetchedAt: mem!.fetchedAt };
+
+  let kv: CacheEntry<T> | null = null;
+  if (ttlSeconds >= KV_WRITE_MIN_TTL) {
+    kv = (await env.CACHE.get(key, "json").catch(() => null)) as CacheEntry<T> | null;
+    if (fresh(kv)) {
+      memSet(key, kv!);
+      return { data: kv!.data, stale: false, fetchedAt: kv!.fetchedAt };
+    }
   }
+
   try {
     const data = await loader();
     const effectiveTtl = ttlFor ? ttlFor(data) : ttlSeconds;
-    await env.CACHE.put(
-      key,
-      JSON.stringify({ data, fetchedAt: now, ttl: effectiveTtl }),
-      // 만료 후에도 stale 폴백으로 쓰려고 TTL을 넉넉히 준다(최소 60초).
-      { expirationTtl: Math.max(60, effectiveTtl * 12) },
-    ).catch(() => undefined);
+    const entry: CacheEntry<T> = { data, fetchedAt: now, ttl: effectiveTtl };
+    memSet(key, entry);
+    if (effectiveTtl >= KV_WRITE_MIN_TTL) {
+      await env.CACHE.put(
+        key,
+        JSON.stringify(entry),
+        // 만료 후에도 stale 폴백으로 쓰려고 TTL을 넉넉히 준다(최소 60초).
+        { expirationTtl: Math.max(60, effectiveTtl * 12) },
+      ).catch(() => undefined);
+    }
     return { data, stale: false, fetchedAt: now };
   } catch (err) {
-    if (entry) return { data: entry.data, stale: true, fetchedAt: entry.fetchedAt };
+    const fallback = mem ?? kv;
+    if (fallback) return { data: fallback.data, stale: true, fetchedAt: fallback.fetchedAt };
     throw err;
   }
 }

@@ -23,6 +23,7 @@ import {
 } from "./kis";
 import { autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle } from "./autotrade";
 import { runStrategy } from "./strategy";
+import { tickerNewsStatus } from "./tickernews";
 
 /** 국가명(한국어) — 지도 데이터와 별개로 Worker 쪽에서도 필요 */
 const CC_NAME_KO: Record<string, string> = Object.fromEntries(
@@ -363,6 +364,11 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
       universe: UNIVERSE.map((t) => ({ code: t.code, nameKo: t.nameKo, sectors: t.sectors })),
       weights: WEIGHTS,
     });
+  }
+
+  if (path === "/api/auto/tnews") {
+    // 종목별 뉴스 수집 상태 (읽기 전용 진단)
+    return json(await tickerNewsStatus(env));
   }
 
   if (path === "/api/auto/graph") {

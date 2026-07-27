@@ -15,7 +15,8 @@
  * 백테스트(scripts/backtest.ts)가 같은 계산을 쓰게 하려는 분리다 — 여기서 갈라지면 검증이 무의미해진다.
  */
 import type { Env } from "./env";
-import { MACRO, UNIVERSE } from "../shared/ontology";
+import { MACRO, SECTOR_KEYWORDS, UNIVERSE, type SectorId } from "../shared/ontology";
+import { readTickerNews, refreshTickerNews } from "./tickernews";
 import {
   clamp,
   composite,
@@ -29,7 +30,7 @@ import {
 } from "../shared/scoring";
 import { getManySeries, getSeries } from "./quotes";
 import { getNews, type NewsItem } from "./news";
-import { scoreForTicker } from "./sentiment";
+import { scoreForTicker, scoreText } from "./sentiment";
 
 export type { MacroSignal, ScoreReason };
 
@@ -62,10 +63,12 @@ export interface StrategyResult {
 }
 
 export async function runStrategy(env: Env): Promise<StrategyResult> {
-  const [macroSeries, priceSeries, newsResult] = await Promise.all([
+  const [macroSeries, priceSeries, newsResult, tickerNews] = await Promise.all([
     getManySeries(env, MACRO.map((m) => m.symbol), "3mo"),
     getManySeries(env, UNIVERSE.map((t) => t.symbol), "6mo"),
     getNews(env, "KR", "대한민국").catch(() => null),
+    // 종목별 뉴스: 오래된 4종목만 새로 검색하고(fetch 예산) 나머지는 KV에서 읽는다
+    refreshTickerNews(env).catch(() => readTickerNews(env)),
   ]);
 
   const macroBySymbol = new Map(macroSeries.map((s) => [s.symbol.toUpperCase(), s]));
@@ -75,6 +78,19 @@ export async function runStrategy(env: Env): Promise<StrategyResult> {
   const bySymbol = new Map(priceSeries.map((s) => [s.symbol.toUpperCase(), s]));
   const riskOff = riskOffFrom(macro);
 
+  // 시장 피드에서 섹터 키워드가 걸린 기사만 골라 섹터 감성을 만든다.
+  // "코스피 하락" 같은 시장 일반 기사는 어느 섹터에도 안 걸려 자연히 빠진다.
+  const sectorSent = new Map<SectorId, { score: number; hits: number }>();
+  for (const [sector, keywords] of Object.entries(SECTOR_KEYWORDS) as [SectorId, string[]][]) {
+    const matched = news.filter((it) => {
+      const hay = `${it.title} ${it.summary}`;
+      return keywords.some((k) => hay.includes(k));
+    });
+    if (!matched.length) continue;
+    const s = scoreText(matched.map((it) => `${it.title} ${it.summary}`));
+    sectorSent.set(sector, { score: s.score, hits: matched.length });
+  }
+
   const scores: TickerScore[] = [];
   for (const t of UNIVERSE) {
     const s = bySymbol.get(t.symbol.toUpperCase());
@@ -82,15 +98,42 @@ export async function runStrategy(env: Env): Promise<StrategyResult> {
 
     const onto = propagate(t, macro);
     const price = priceSignal(s);
-    const sent = scoreForTicker(news, [t.nameKo, ...t.aliases]);
-    const newsScore = sent.hits ? clamp(sent.score, -1, 1) : 0;
+
+    // 1) 종목 직접 뉴스 — 전용 검색 피드가 우선, 없으면 국가 피드에서 이름 매칭
+    const tn = tickerNews[t.code];
+    const fallback = scoreForTicker(news, [t.nameKo, ...t.aliases]);
+    const direct = tn?.hits ? clamp(tn.score, -1, 1) : fallback.hits ? clamp(fallback.score, -1, 1) : 0;
+    const directHits = tn?.hits || fallback.hits || 0;
+
+    // 2) 섹터 경유 뉴스 — 소속 비중을 곱하고 0.4로 감쇠(간접 신호는 약하게)
+    let sectorScore = 0;
+    const sectorNotes: string[] = [];
+    for (const [sector, weight] of Object.entries(t.sectors) as [SectorId, number][]) {
+      const ss = sectorSent.get(sector);
+      if (!ss) continue;
+      sectorScore += weight * ss.score;
+      if (Math.abs(ss.score) >= 0.05) {
+        sectorNotes.push(`${sector} ${ss.hits}건 ${ss.score >= 0 ? "+" : ""}${round(ss.score, 2)}`);
+      }
+    }
+    const newsScore = clamp(direct + 0.4 * clamp(sectorScore, -1, 1), -1, 1);
 
     const reasons = [...onto.reasons, ...price.reasons];
-    if (sent.hits) {
+    if (directHits) {
+      const top = tn?.headlines?.[0];
       reasons.push({
         kind: "news",
-        text: `관련 기사 ${sent.hits}건 (긍정 ${sent.positive}·부정 ${sent.negative})`,
-        contribution: round(newsScore * 0.2, 3),
+        text: `종목 기사 ${directHits}건 (긍정 ${tn?.positive ?? fallback.positive}·부정 ${tn?.negative ?? fallback.negative})${
+          top ? ` — “${top.title.slice(0, 42)}”` : ""
+        }`,
+        contribution: round(direct * 0.2, 3),
+      });
+    }
+    if (sectorNotes.length) {
+      reasons.push({
+        kind: "news",
+        text: `섹터 기사 반영: ${sectorNotes.join(" · ")} (감쇠 0.4)`,
+        contribution: round(clamp(sectorScore, -1, 1) * 0.4 * 0.2, 3),
       });
     }
 

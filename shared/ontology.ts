@@ -81,6 +81,30 @@ export const SENSITIVITY: Record<SectorId, Partial<Record<MacroId, number>>> = {
   건설: { US10Y: -0.5, KOSPI: 0.3, OIL: -0.15 },
 };
 
+/**
+ * 섹터별 뉴스 매칭 키워드.
+ * "삼성전자"라는 글자가 없어도 "반도체株 방어 기대" 같은 기사가 반도체 섹터를 거쳐
+ * 소속 종목에 (비중×0.4 로 감쇠되어) 반영되게 한다. 시장 일반 기사("코스피 하락")는
+ * 어떤 키워드에도 걸리지 않으므로 자연히 배제된다 — 그게 의도다.
+ * 주의: "은행" 단독은 "한국은행"에 걸리므로 넣지 않는다.
+ */
+export const SECTOR_KEYWORDS: Record<SectorId, string[]> = {
+  반도체: ["반도체", "메모리", "D램", "HBM", "낸드", "파운드리"],
+  "2차전지": ["2차전지", "이차전지", "배터리", "양극재", "전고체"],
+  자동차: ["완성차", "전기차", "자동차주", "자동차 판매"],
+  바이오: ["바이오", "제약", "신약", "임상"],
+  금융: ["금융주", "은행주", "금융지주", "시중은행", "실적주"],
+  정유화학: ["정유", "석유화학", "화학주", "나프타", "정제마진"],
+  조선: ["조선주", "조선업", "수주잔고", "선박 수주", "LNG선"],
+  방산: ["방산", "방위산업", "수출 계약"],
+  인터넷: ["플랫폼주", "포털", "인터넷주", "커머스"],
+  철강: ["철강", "제철", "철강주", "후판"],
+  항공: ["항공주", "항공사", "여객 수요", "국제선"],
+  유통소비: ["유통주", "소비재", "면세", "리오프닝"],
+  통신유틸: ["통신주", "전력요금", "전기요금", "한전"],
+  건설: ["건설주", "건설업", "분양", "부동산 PF", "재건축"],
+};
+
 export interface UniverseTicker {
   /** 한국투자증권 주문용 종목코드 */
   code: string;
@@ -101,24 +125,24 @@ export interface UniverseTicker {
  * 20종목으로 제한한 이유는 Workers 의 요청당 서브리퀘스트 한도 때문이기도 하다.
  */
 export const UNIVERSE: UniverseTicker[] = [
-  { code: "005930", symbol: "005930.KS", nameKo: "삼성전자", sectors: { 반도체: 1 }, aliases: ["삼성전자"] },
+  { code: "005930", symbol: "005930.KS", nameKo: "삼성전자", sectors: { 반도체: 1 }, aliases: ["삼성전자", "삼전"] },
   { code: "000660", symbol: "000660.KS", nameKo: "SK하이닉스", sectors: { 반도체: 1 }, aliases: ["SK하이닉스", "하이닉스"] },
   { code: "042700", symbol: "042700.KS", nameKo: "한미반도체", sectors: { 반도체: 1 }, aliases: ["한미반도체"] },
-  { code: "373220", symbol: "373220.KS", nameKo: "LG에너지솔루션", sectors: { "2차전지": 1 }, aliases: ["LG에너지솔루션", "엘지엔솔"] },
+  { code: "373220", symbol: "373220.KS", nameKo: "LG에너지솔루션", sectors: { "2차전지": 1 }, aliases: ["LG에너지솔루션", "엘지엔솔", "LG엔솔"] },
   { code: "006400", symbol: "006400.KS", nameKo: "삼성SDI", sectors: { "2차전지": 1 }, aliases: ["삼성SDI"] },
   { code: "005380", symbol: "005380.KS", nameKo: "현대차", sectors: { 자동차: 1 }, aliases: ["현대차", "현대자동차"] },
   { code: "000270", symbol: "000270.KS", nameKo: "기아", sectors: { 자동차: 1 }, aliases: ["기아"] },
-  { code: "207940", symbol: "207940.KS", nameKo: "삼성바이오로직스", sectors: { 바이오: 1 }, aliases: ["삼성바이오로직스"] },
+  { code: "207940", symbol: "207940.KS", nameKo: "삼성바이오로직스", sectors: { 바이오: 1 }, aliases: ["삼성바이오로직스", "삼바"] },
   { code: "068270", symbol: "068270.KS", nameKo: "셀트리온", sectors: { 바이오: 1 }, aliases: ["셀트리온"] },
-  { code: "105560", symbol: "105560.KS", nameKo: "KB금융", sectors: { 금융: 1 }, aliases: ["KB금융", "국민은행"] },
+  { code: "105560", symbol: "105560.KS", nameKo: "KB금융", sectors: { 금융: 1 }, aliases: ["KB금융", "국민은행", "KB금융지주"] },
   { code: "055550", symbol: "055550.KS", nameKo: "신한지주", sectors: { 금융: 1 }, aliases: ["신한지주", "신한금융"] },
-  { code: "010950", symbol: "010950.KS", nameKo: "S-Oil", sectors: { 정유화학: 1 }, aliases: ["S-Oil", "에쓰오일"] },
+  { code: "010950", symbol: "010950.KS", nameKo: "S-Oil", sectors: { 정유화학: 1 }, aliases: ["S-Oil", "에쓰오일", "S오일"] },
   { code: "051910", symbol: "051910.KS", nameKo: "LG화학", sectors: { 정유화학: 0.6, "2차전지": 0.4 }, aliases: ["LG화학"] },
-  { code: "009540", symbol: "009540.KS", nameKo: "HD한국조선해양", sectors: { 조선: 1 }, aliases: ["HD한국조선해양", "한국조선해양"] },
+  { code: "009540", symbol: "009540.KS", nameKo: "HD한국조선해양", sectors: { 조선: 1 }, aliases: ["HD한국조선해양", "한국조선해양", "HD현대"] },
   { code: "042660", symbol: "042660.KS", nameKo: "한화오션", sectors: { 조선: 1 }, aliases: ["한화오션"] },
   { code: "012450", symbol: "012450.KS", nameKo: "한화에어로스페이스", sectors: { 방산: 1 }, aliases: ["한화에어로스페이스", "한화에어로"] },
   { code: "035420", symbol: "035420.KS", nameKo: "NAVER", sectors: { 인터넷: 1 }, aliases: ["네이버", "NAVER"] },
-  { code: "005490", symbol: "005490.KS", nameKo: "POSCO홀딩스", sectors: { 철강: 1 }, aliases: ["POSCO", "포스코"] },
+  { code: "005490", symbol: "005490.KS", nameKo: "POSCO홀딩스", sectors: { 철강: 1 }, aliases: ["POSCO홀딩스", "포스코", "POSCO"] },
   { code: "003490", symbol: "003490.KS", nameKo: "대한항공", sectors: { 항공: 1 }, aliases: ["대한항공"] },
   { code: "015760", symbol: "015760.KS", nameKo: "한국전력", sectors: { 통신유틸: 1 }, aliases: ["한국전력", "한전"] },
 ];
