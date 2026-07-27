@@ -169,6 +169,24 @@ check(
   autoBlocks >= 6 && gateItems >= 1 && macroChips >= 4 && scoreRows >= 3,
   `블록 ${autoBlocks} · 게이트 ${gateItems} · 거시 ${macroChips} · 점수 ${scoreRows}`,
 );
+// 온톨로지 경로도 — 종목을 바꾸면 그림이 다시 그려져야 한다
+const ontoChips = await page.locator("#auto-body .onto-chip").count();
+const ontoNodes = await page.locator("#auto-body .onto-svg .onto-node").count();
+const ontoMath = (await page.locator("#auto-body .onto-math").first().textContent()) ?? "";
+check(
+  "온톨로지 경로도",
+  ontoChips >= 3 && ontoNodes >= 3 && /×0\.35/.test(ontoMath),
+  `칩 ${ontoChips} · 노드 ${ontoNodes} · ${ontoMath.replace(/\s+/g, " ").slice(0, 48)}`,
+);
+if (ontoChips > 1) {
+  const before = await page.locator("#auto-body .onto-node .n1").last().textContent();
+  await page.locator("#auto-body .onto-chip").nth(1).click();
+  await page.waitForTimeout(300);
+  const after = await page.locator("#auto-body .onto-node .n1").last().textContent();
+  check("온톨로지 종목 전환", before !== after, `${before} → ${after}`);
+}
+check("백테스트 결과 고지", (await page.locator("#auto-body .bt-block .bt-row").count()) >= 3);
+
 const autoBadge = (await page.locator("#auto-badge").textContent()) ?? "";
 check("자동매매 상태 배지", autoBadge.trim().length > 0 && !/확인중/.test(autoBadge), autoBadge.trim());
 await page.screenshot({ path: `${outDir}/08-autotrade.png` });

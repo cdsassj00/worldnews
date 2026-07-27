@@ -168,7 +168,8 @@ export class Globe {
   private dragging = false;
   private dragMoved = 0;
   private lastPointer = { x: 0, y: 0 };
-  private targetZoom = 3.4;
+  // 카메라를 멀리 둘수록 지구본이 작게 보인다. 화면을 꽉 채우면 답답해서 여백을 준다.
+  private targetZoom = 4.2;
   private hoverIndex = -1;
   private selectedIndex = -1;
   private flying: { fromX: number; fromY: number; toX: number; toY: number; t: number; dur: number } | null = null;
@@ -554,7 +555,7 @@ export class Globe {
   }
 
   zoom(delta: number): void {
-    this.targetZoom = THREE.MathUtils.clamp(this.targetZoom + delta, 1.9, 7.0);
+    this.targetZoom = THREE.MathUtils.clamp(this.targetZoom + delta, 2.2, 8.0);
   }
 
   private resize(): void {

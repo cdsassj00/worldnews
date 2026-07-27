@@ -1,6 +1,8 @@
 import type { Env } from "./env";
 import { GLOBAL_TAPE, MARKETS, REGION_FALLBACK, marketFor } from "../shared/markets";
-import { ApiError, cached, errorResponse, json, num, round } from "./util";
+import { ApiError, cached, errorResponse, json, jsonCached, num, round } from "./util";
+import { MACRO, SENSITIVITY, UNIVERSE } from "../shared/ontology";
+import { WEIGHTS } from "../shared/scoring";
 import { getManySeries, getSeries, toSnapshot } from "./quotes";
 import { getGlobalNews, getNews } from "./news";
 import { DISCLAIMER, recommend } from "./recommend";
@@ -344,6 +346,19 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     // 계획 조회는 주문을 내지 않으므로 공개한다(어떤 근거로 매매하는지 보이게).
     const { data } = await cached(env, "auto:plan", 120, () => buildPlan(env));
     return json(data);
+  }
+
+  if (path === "/api/auto/graph") {
+    // 온톨로지 그래프 자체(정적 지식)를 그대로 노출한다. 판단 근거를 감출 이유가 없다.
+    return jsonCached(
+      {
+        macro: MACRO.map((m) => ({ id: m.id, nameKo: m.nameKo, symbol: m.symbol, scale: m.scale, upMeansKo: m.upMeansKo })),
+        sectors: Object.entries(SENSITIVITY).map(([sector, sens]) => ({ sector, sensitivity: sens })),
+        universe: UNIVERSE.map((t) => ({ code: t.code, nameKo: t.nameKo, sectors: t.sectors })),
+        weights: WEIGHTS,
+      },
+      3600,
+    );
   }
 
   if (path === "/api/auto/journal") {

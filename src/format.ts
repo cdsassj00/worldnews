@@ -53,6 +53,24 @@ export function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** SVG 노드 생성 (el 의 SVG 판) */
+export function svgEl<K extends keyof SVGElementTagNameMap>(
+  tag: K,
+  attrs: Record<string, string | number | null | undefined> = {},
+  children: (Node | string)[] = [],
+): SVGElementTagNameMap[K] {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined) continue;
+    if (k === "text") node.textContent = String(v);
+    else node.setAttribute(k, String(v));
+  }
+  for (const c of children) node.append(typeof c === "string" ? document.createTextNode(c) : c);
+  return node;
+}
+
 /** 인라인 스파크라인 SVG */
 export function sparkline(values: number[], width = 130, height = 26): SVGSVGElement | null {
   if (values.length < 3) return null;

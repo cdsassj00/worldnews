@@ -229,6 +229,8 @@ export interface TickerScore {
   volatility: number;
   atr: number;
   reasons: ScoreReason[];
+  /** 온톨로지 그래프 간선 (거시 → 섹터 → 이 종목) */
+  edges: { macroId: string; sector: string; contribution: number }[];
 }
 
 export interface PlannedOrder {
@@ -274,6 +276,13 @@ export interface AutoPlan {
   positions: BotPosition[];
   orders: PlannedOrder[];
   notes: string[];
+}
+
+export interface OntologyGraph {
+  macro: { id: string; nameKo: string; symbol: string; scale: number; upMeansKo: string }[];
+  sectors: { sector: string; sensitivity: Record<string, number> }[];
+  universe: { code: string; nameKo: string; sectors: Record<string, number> }[];
+  weights: { ontology: number; price: number; news: number };
 }
 
 export interface AutoStatus {
@@ -423,6 +432,7 @@ export const api = {
   }) => request<OrderResponse>("/api/kis/order", { method: "POST", auth: true, body: JSON.stringify(payload) }),
 
   autoStatus: () => request<AutoStatus>("/api/auto/status"),
+  autoGraph: () => request<OntologyGraph>("/api/auto/graph"),
   autoPlan: () => request<AutoPlan>("/api/auto/plan"),
   autoJournal: () => request<{ items: JournalEntry[] }>("/api/auto/journal"),
   autoRun: (shadow: boolean) =>

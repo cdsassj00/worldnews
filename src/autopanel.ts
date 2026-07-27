@@ -10,10 +10,11 @@ import {
   type AutoPlan,
   type AutoStatus,
   type JournalEntry,
+  type OntologyGraph,
   type PlannedOrder,
   type TickerScore,
 } from "./api";
-import { dirClass, el, fmtKrw, fmtNum, fmtPct, timeAgo } from "./format";
+import { dirClass, el, fmtKrw, fmtNum, fmtPct, svgEl, timeAgo } from "./format";
 
 export interface AutoPanelDeps {
   root: HTMLElement;
@@ -26,6 +27,9 @@ export class AutoPanel {
   private plan: AutoPlan | null = null;
   private status: AutoStatus | null = null;
   private journal: JournalEntry[] = [];
+  private graph: OntologyGraph | null = null;
+  /** 온톨로지 경로도에서 지금 펼쳐 보고 있는 종목 */
+  private focusCode = "";
   private busy = false;
 
   constructor(deps: AutoPanelDeps) {
@@ -34,10 +38,16 @@ export class AutoPanel {
 
   async load(): Promise<void> {
     this.deps.root.replaceChildren(el("p", { class: "note", text: "자동매매 상태를 불러오는 중… (거시지표·종목 시세를 계산하느라 10초 정도 걸릴 수 있습니다)" }));
-    const [status, plan, journal] = await Promise.allSettled([api.autoStatus(), api.autoPlan(), api.autoJournal()]);
+    const [status, plan, journal, graph] = await Promise.allSettled([
+      api.autoStatus(),
+      api.autoPlan(),
+      api.autoJournal(),
+      this.graph ? Promise.resolve(this.graph) : api.autoGraph(),
+    ]);
     this.status = status.status === "fulfilled" ? status.value : null;
     this.plan = plan.status === "fulfilled" ? plan.value : null;
     this.journal = journal.status === "fulfilled" ? journal.value.items : [];
+    if (graph.status === "fulfilled") this.graph = graph.value;
     if (!this.plan && plan.status === "rejected") {
       const msg = plan.reason instanceof ApiFailure ? plan.reason.message : String(plan.reason);
       this.deps.root.replaceChildren(el("p", { class: "note err", text: `계획을 만들지 못했습니다: ${msg}` }));
@@ -78,10 +88,13 @@ export class AutoPanel {
     const p = this.plan;
     if (!p) return;
     this.renderBadge();
+    if (!this.focusCode && p.top.length) this.focusCode = p.top[0].code;
     this.deps.root.replaceChildren(
+      this.backtestBlock(),
       this.gateBlock(p),
       this.moneyBlock(p),
       this.macroBlock(p),
+      this.ontologyBlock(p),
       this.positionsBlock(p),
       this.ordersBlock(p),
       this.scoresBlock(p),
@@ -92,6 +105,46 @@ export class AutoPanel {
   }
 
   /* ── 블록들 ─────────────────────────────── */
+
+  /**
+   * 백테스트 결과를 대시보드 맨 위에 고정한다.
+   * 불리한 결과라서 더더욱 숨기면 안 된다 — 이 화면을 보고 실매매를 켜기 때문이다.
+   */
+  private backtestBlock(): HTMLElement {
+    const row = (period: string, mine: string, bench: string, dd: string, verdict: string) =>
+      el("div", { class: "bt-row" }, [
+        el("span", { class: "bt-period", text: period }),
+        el("span", { class: "bt-num down", text: mine }),
+        el("span", { class: "bt-num", text: bench }),
+        el("span", { class: "bt-num", text: dd }),
+        el("span", { class: "bt-verdict", text: verdict }),
+      ]);
+    return el("section", { class: "auto-block bt-block" }, [
+      el("h3", {}, [
+        el("span", { text: "과거 검증 결과 (반드시 읽을 것)" }),
+        el("span", { class: "gate-pill off", text: "실매매 비권장" }),
+      ]),
+      el("div", { class: "bt-table" }, [
+        el("div", { class: "bt-row bt-head" }, [
+          el("span", { text: "기간" }),
+          el("span", { text: "이 전략" }),
+          el("span", { text: "코스피 보유" }),
+          el("span", { text: "최대낙폭" }),
+          el("span", { text: "결과" }),
+        ]),
+        row("최근 2년", "+50.2%", "+156.3%", "-18.9%", "크게 뒤짐"),
+        row("최근 5년", "-23.3%", "+119.9%", "-24.0%", "원금 손실 · 2022-03 영구정지"),
+      ]),
+      el("p", {
+        class: "note err",
+        text: "5년 구간에서는 2022년 하락장에 영구정지선(-20%)이 걸려 그 뒤로 4년간 매매가 멈췄습니다. 손절 완화·추적손절 등 8가지 변형을 모두 시험했지만 어느 것도 지수 보유를 이기지 못했습니다.",
+      }),
+      el("p", {
+        class: "note",
+        text: "즉 이 시스템은 '설명 가능한 판단 근거를 만드는 도구'로는 작동하지만, 지금 규칙 그대로 돈을 맡길 근거는 없습니다. npm run backtest 로 언제든 직접 재현할 수 있습니다.",
+      }),
+    ]);
+  }
 
   private gateBlock(p: AutoPlan): HTMLElement {
     const items = p.gate.canTrade
@@ -148,6 +201,193 @@ export class AutoPanel {
         ),
       ),
       el("p", { class: "note", text: "5일 변화율을 요인별 기준폭으로 나눠 -1~1 로 정규화한 값입니다. 이 신호가 섹터 민감도를 거쳐 종목 점수로 전파됩니다." }),
+    ]);
+  }
+
+  /**
+   * 온톨로지 경로도 — "왜 이 종목인가"를 그림으로 보여 준다.
+   * 거시요인 → 섹터 → 종목 세 열을 잇고, 선 굵기·색이 기여도의 크기와 방향이다.
+   */
+  private ontologyBlock(p: AutoPlan): HTMLElement {
+    const focus = p.top.find((t) => t.code === this.focusCode) ?? p.top[0];
+    const chips = el(
+      "div",
+      { class: "onto-chips" },
+      p.top.slice(0, 8).map((t) => {
+        const btn = el("button", {
+          type: "button",
+          class: `onto-chip${t.code === focus?.code ? " on" : ""}`,
+          text: t.nameKo,
+        });
+        btn.addEventListener("click", () => {
+          this.focusCode = t.code;
+          this.render();
+        });
+        return btn;
+      }),
+    );
+
+    const body = focus
+      ? this.ontologyDiagram(focus, p)
+      : el("p", { class: "note", text: "표시할 종목이 없습니다." });
+
+    return el("section", { class: "auto-block" }, [
+      el("h3", {}, [el("span", { text: "온톨로지 경로 — 왜 이 종목인가" })]),
+      chips,
+      body,
+    ]);
+  }
+
+  private ontologyDiagram(t: TickerScore, p: AutoPlan): HTMLElement {
+    const macroById = new Map(p.macro.map((m) => [m.id, m]));
+    const sectorWeights = this.graph?.universe.find((u) => u.code === t.code)?.sectors ?? {};
+    const edges = t.edges;
+
+    // 배포 직후에는 이전 버전이 만든 캐시(경로 정보 없음)가 잠깐 남을 수 있다. 둘을 구분해서 알린다.
+    if (!edges) {
+      return el("p", {
+        class: "note",
+        text: "이전 계산 결과라 경로 정보가 없습니다. 몇 분 뒤 새 사이클이 돌면 표시됩니다.",
+      });
+    }
+
+    // 실제로 신호가 흐른 요인·섹터만 그린다. 0인 간선을 그리면 그림만 복잡해진다.
+    const macroIds = [...new Set(edges.map((e) => e.macroId))].slice(0, 6);
+    const sectors = [...new Set(edges.map((e) => e.sector))];
+    if (!macroIds.length) {
+      return el("p", {
+        class: "note",
+        text: `${t.nameKo}: 지금 유의미하게 움직인 거시요인이 없습니다(모든 신호 세기 0.05 미만). 이 종목의 점수는 가격·뉴스 축에서 나왔습니다.`,
+      });
+    }
+
+    const W = 660;
+    const rowH = 46;
+    const rows = Math.max(macroIds.length, sectors.length, 1);
+    const H = 34 + rows * rowH + 26;
+    const colX = { macro: 6, sector: 248, ticker: 486 };
+    const colW = 168;
+    const yOf = (i: number, n: number) => 34 + (rows * rowH) / 2 - (n * rowH) / 2 + i * rowH + rowH / 2;
+
+    const svg = svgEl("svg", {
+      viewBox: `0 0 ${W} ${H}`,
+      class: "onto-svg",
+      role: "img",
+      "aria-label": `${t.nameKo} 온톨로지 경로도`,
+    });
+
+    // 열 제목
+    for (const [x, label] of [
+      [colX.macro, "거시요인 (5일 변화 → 신호)"],
+      [colX.sector, "섹터 민감도"],
+      [colX.ticker, "종목"],
+    ] as [number, string][]) {
+      svg.append(svgEl("text", { x: x + 4, y: 18, class: "onto-col", text: label }));
+    }
+
+    const macroY = new Map(macroIds.map((id, i) => [id, yOf(i, macroIds.length)]));
+    const sectorY = new Map(sectors.map((s, i) => [s, yOf(i, sectors.length)]));
+    const tickerY = yOf(0, 1);
+
+    // 간선을 먼저 그려 노드 뒤로 보낸다
+    for (const e of edges) {
+      const y1 = macroY.get(e.macroId);
+      const y2 = sectorY.get(e.sector);
+      if (y1 === undefined || y2 === undefined) continue;
+      const w = 1 + Math.min(6, Math.abs(e.contribution) * 8);
+      const cls = e.contribution >= 0 ? "up" : "down";
+      const x1 = colX.macro + colW;
+      const x2 = colX.sector;
+      svg.append(
+        svgEl("path", {
+          d: `M${x1},${y1} C${x1 + 40},${y1} ${x2 - 40},${y2} ${x2},${y2}`,
+          class: `onto-edge ${cls}`,
+          "stroke-width": w.toFixed(1),
+        }),
+      );
+      svg.append(
+        svgEl("text", {
+          x: (x1 + x2) / 2,
+          y: (y1 + y2) / 2 - 5,
+          class: `onto-edge-label ${cls}`,
+          "text-anchor": "middle",
+          text: (e.contribution >= 0 ? "+" : "") + e.contribution,
+        }),
+      );
+    }
+    for (const [s, y] of sectorY) {
+      const weight = sectorWeights[s] ?? 1;
+      const x1 = colX.sector + colW;
+      const x2 = colX.ticker;
+      svg.append(
+        svgEl("path", {
+          d: `M${x1},${y} C${x1 + 30},${y} ${x2 - 30},${tickerY} ${x2},${tickerY}`,
+          class: "onto-edge neutral",
+          "stroke-width": (1 + weight * 3).toFixed(1),
+        }),
+      );
+      svg.append(
+        svgEl("text", {
+          x: (x1 + x2) / 2,
+          y: (y + tickerY) / 2 - 5,
+          class: "onto-edge-label",
+          "text-anchor": "middle",
+          text: `비중 ${Math.round(weight * 100)}%`,
+        }),
+      );
+    }
+
+    const node = (x: number, y: number, title: string, sub: string, cls: string) => {
+      const g = svgEl("g", { class: `onto-node ${cls}` });
+      g.append(svgEl("rect", { x, y: y - 17, width: colW, height: 34, rx: 6 }));
+      g.append(svgEl("text", { x: x + 10, y: y - 2, class: "n1", text: title }));
+      g.append(svgEl("text", { x: x + 10, y: y + 12, class: "n2", text: sub }));
+      return g;
+    };
+
+    for (const [id, y] of macroY) {
+      const m = macroById.get(id);
+      if (!m) continue;
+      svg.append(
+        node(
+          colX.macro,
+          y,
+          m.nameKo,
+          `${m.changePct >= 0 ? "+" : ""}${m.changePct}% → 신호 ${m.value >= 0 ? "+" : ""}${m.value}`,
+          m.value >= 0 ? "up" : "down",
+        ),
+      );
+    }
+    for (const [s, y] of sectorY) {
+      svg.append(node(colX.sector, y, s, `민감도 경로 ${edges.filter((e) => e.sector === s).length}개`, "sector"));
+    }
+    svg.append(
+      node(colX.ticker, tickerY, t.nameKo, `온톨로지 점수 ${t.ontologyScore >= 0 ? "+" : ""}${t.ontologyScore}`, t.ontologyScore >= 0 ? "up" : "down"),
+    );
+
+    const w = this.graph?.weights ?? { ontology: 0.35, price: 0.45, news: 0.2 };
+    const term = (label: string, v: number, weight: number) =>
+      el("span", { class: "term" }, [
+        el("b", { class: dirClass(v), text: (v >= 0 ? "+" : "") + v.toFixed(3) }),
+        el("i", { text: `×${weight}` }),
+        el("u", { text: label }),
+      ]);
+
+    return el("div", { class: "onto-wrap" }, [
+      svg,
+      el("div", { class: "onto-math" }, [
+        term("온톨로지", t.ontologyScore, w.ontology),
+        el("span", { class: "op", text: "+" }),
+        term("가격", t.priceScore, w.price),
+        el("span", { class: "op", text: "+" }),
+        term("뉴스", t.newsScore, w.news),
+        el("span", { class: "op", text: "=" }),
+        el("b", { class: `total ${dirClass(t.score)}`, text: t.score.toFixed(3) }),
+      ]),
+      el("p", {
+        class: "note",
+        text: "선 굵기 = 기여도 크기, 빨강 = 점수를 올리는 방향, 파랑 = 내리는 방향. 합성 점수가 0.15 이상이어야 매수 후보가 됩니다.",
+      }),
     ]);
   }
 

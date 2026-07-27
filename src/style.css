@@ -1495,6 +1495,180 @@ body {
 .sbar > i.down {
   background: var(--down);
 }
+/* 백테스트 경고 */
+.bt-block {
+  border-color: #78350f;
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.06), transparent 60%), var(--panel-2);
+}
+.bt-table {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  overflow-x: auto;
+}
+.bt-row {
+  display: grid;
+  grid-template-columns: 72px 76px 88px 76px minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: 3px 0;
+  min-width: 420px;
+}
+.bt-head {
+  color: var(--fg-faint);
+  font-size: 11px;
+  border-bottom: 1px solid var(--border);
+}
+.bt-num {
+  font-family: var(--font-mono);
+}
+.bt-num.down {
+  color: var(--warn);
+}
+.bt-verdict {
+  color: var(--fg-dim);
+  font-size: 11.5px;
+}
+.note.err {
+  color: #fca5a5;
+}
+
+/* 온톨로지 경로도 */
+.onto-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.onto-chip {
+  font: inherit;
+  font-size: 11.5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+.onto-chip:hover {
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+.onto-chip.on {
+  border-color: var(--accent-dim);
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.1);
+}
+.onto-wrap {
+  overflow-x: auto;
+}
+.onto-svg {
+  display: block;
+  width: 100%;
+  min-width: 560px;
+  height: auto;
+}
+.onto-col {
+  fill: var(--fg-faint);
+  font-size: 10px;
+  font-family: var(--font-ui);
+  letter-spacing: 0.02em;
+}
+.onto-edge {
+  fill: none;
+  stroke: var(--fg-faint);
+  opacity: 0.55;
+}
+.onto-edge.up {
+  stroke: var(--up);
+}
+.onto-edge.down {
+  stroke: var(--down);
+}
+.onto-edge.neutral {
+  stroke: var(--border-strong);
+  opacity: 0.8;
+}
+.onto-edge-label {
+  fill: var(--fg-faint);
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+}
+.onto-edge-label.up {
+  fill: var(--up);
+}
+.onto-edge-label.down {
+  fill: var(--down);
+}
+.onto-node rect {
+  fill: var(--panel);
+  stroke: var(--border);
+}
+.onto-node.up rect {
+  stroke: #7f1d1d;
+}
+.onto-node.down rect {
+  stroke: #1e3a8a;
+}
+.onto-node.sector rect {
+  fill: var(--muted);
+  stroke: var(--border-strong);
+}
+.onto-node .n1 {
+  fill: var(--fg);
+  font-size: 11.5px;
+  font-family: var(--font-ui);
+  font-weight: 600;
+}
+.onto-node .n2 {
+  fill: var(--fg-faint);
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+}
+.onto-math {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: var(--space-2);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.onto-math .term {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+}
+.onto-math .term b.up {
+  color: var(--up);
+}
+.onto-math .term b.down {
+  color: var(--down);
+}
+.onto-math .term i {
+  font-style: normal;
+  color: var(--fg-faint);
+}
+.onto-math .term u {
+  text-decoration: none;
+  color: var(--fg-faint);
+  font-size: 10.5px;
+}
+.onto-math .op {
+  color: var(--fg-faint);
+}
+.onto-math .total {
+  font-size: 14px;
+}
+.onto-math .total.up {
+  color: var(--up);
+}
+.onto-math .total.down {
+  color: var(--down);
+}
+
 .auto-controls {
   display: flex;
   flex-wrap: wrap;
