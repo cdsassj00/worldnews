@@ -145,6 +145,10 @@ export class Ontology3D {
   private clock = new THREE.Clock();
   private frames = 0;
 
+  /** 그래프 상시 노드가 아닌 종목을 골랐을 때 임시로 꽂아 넣은 노드·간선 */
+  private spotlight: { ticker: TickerNode; nodes: NodeObj[]; edges: EdgeObj[] } | null = null;
+  private lastMacro = new Map<string, MacroNode>();
+
   private autoRotate = true;
   private dragging = false;
   private dragMoved = 0;
@@ -191,6 +195,9 @@ export class Ontology3D {
 
   /** 데이터가 바뀔 때마다 노드·간선을 다시 세운다 */
   setState(state: OntoState): void {
+    // 갱신 직전에 스포트라이트가 켜져 있었다면 새 그래프에도 다시 켠다.
+    const keepSpot = this.focus && this.spotlight?.ticker.code === this.focus ? this.spotlight.ticker : null;
+    this.lastMacro = new Map(state.macro.map((m) => [m.id, m]));
     for (const n of this.nodes) {
       this.world.remove(n.sprite, n.dot);
       (n.sprite.material as THREE.SpriteMaterial).map?.dispose();
@@ -199,6 +206,7 @@ export class Ontology3D {
     for (const e of this.edges) this.world.remove(e.line, e.pulse);
     this.nodes = [];
     this.edges = [];
+    this.spotlight = null;
 
     const macroById = new Map(state.macro.map((m) => [m.id, m]));
 
@@ -251,10 +259,11 @@ export class Ontology3D {
       this.addEdge(e.sector, "sector", e.code, "ticker", t?.ontologyScore ?? 0);
     }
 
-    this.applyFocus();
+    if (keepSpot) this.showTicker(keepSpot);
+    else this.applyFocus();
   }
 
-  private addNode(kind: NodeKind, id: string, label: string, sub: string, pos: THREE.Vector3, tone: number): void {
+  private addNode(kind: NodeKind, id: string, label: string, sub: string, pos: THREE.Vector3, tone: number): NodeObj {
     const color = kind === "sector" ? SECTOR_C.clone() : toneColor(tone);
     const sprite = labelSprite(label, sub, color, kind);
     // 라벨을 살짝 위로 올려 점이 가려지지 않게 한다
@@ -265,13 +274,15 @@ export class Ontology3D {
     );
     dot.position.copy(pos);
     this.world.add(sprite, dot);
-    this.nodes.push({ kind, id, label, sub, pos, sprite, dot, tone });
+    const node: NodeObj = { kind, id, label, sub, pos, sprite, dot, tone };
+    this.nodes.push(node);
+    return node;
   }
 
-  private addEdge(from: string, fromKind: NodeKind, to: string, toKind: NodeKind, contribution: number): void {
+  private addEdge(from: string, fromKind: NodeKind, to: string, toKind: NodeKind, contribution: number): EdgeObj | null {
     const a = this.nodes.find((n) => n.kind === fromKind && n.id === from);
     const b = this.nodes.find((n) => n.kind === toKind && n.id === to);
-    if (!a || !b) return;
+    if (!a || !b) return null;
     // 가운데를 안쪽으로 당겨 고리 사이를 지나가게 한다(직선이면 라벨을 뚫는다)
     const mid = a.pos.clone().add(b.pos).multiplyScalar(0.5).multiplyScalar(0.62);
     const curve = new THREE.QuadraticBezierCurve3(a.pos.clone(), mid, b.pos.clone());
@@ -290,22 +301,103 @@ export class Ontology3D {
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }),
     );
     this.world.add(line, pulse);
-    this.edges.push({ from, to, fromKind, toKind, contribution, curve, line, pulse, phase: Math.random() });
+    const edge: EdgeObj = { from, to, fromKind, toKind, contribution, curve, line, pulse, phase: Math.random() };
+    this.edges.push(edge);
+    return edge;
   }
 
   /** 노드 하나를 고르면 그와 이어진 경로만 남기고 나머지를 어둡게 한다 */
   setFocus(id: string | null): void {
+    if (id === null) this.clearSpotlight();
     this.focus = id;
     this.applyFocus();
   }
 
+  private clearSpotlight(): void {
+    if (!this.spotlight) return;
+    for (const n of this.spotlight.nodes) {
+      this.world.remove(n.sprite, n.dot);
+      (n.sprite.material as THREE.SpriteMaterial).map?.dispose();
+      n.sprite.material.dispose();
+    }
+    for (const e of this.spotlight.edges) this.world.remove(e.line, e.pulse);
+    this.nodes = this.nodes.filter((n) => !this.spotlight!.nodes.includes(n));
+    this.edges = this.edges.filter((e) => !this.spotlight!.edges.includes(e));
+    this.spotlight = null;
+  }
+
+  /**
+   * 종목 하나에 조명을 켠다. 그래프는 |점수| 상위 24개만 상시 노드로 세우므로,
+   * 검색·기회 탐색에서 고른 종목이 그래프에 없으면 그 종목 노드와
+   * 거시 → 섹터 → 종목 경로를 임시로 꽂아 넣은 뒤 조명을 켠다.
+   */
+  showTicker(t: TickerNode): void {
+    this.clearSpotlight();
+    if (this.nodes.some((n) => n.kind === "ticker" && n.id === t.code)) {
+      this.focus = t.code;
+      this.applyFocus();
+      return;
+    }
+    const nodes: NodeObj[] = [];
+    const edges: EdgeObj[] = [];
+    const baseA = -0.5;
+    const at = (radius: number, y: number, a: number) => new THREE.Vector3(Math.cos(a) * radius, y, Math.sin(a) * radius);
+
+    nodes.push(this.addNode("ticker", t.code, t.nameKo, t.score.toFixed(2), at(RING.ticker + 0.5, Y.ticker + 0.95, baseA), t.score));
+
+    const tEdges = t.edges ?? [];
+    const missingSectors = [...new Set(tEdges.map((e) => e.sector))].filter(
+      (s) => !this.nodes.some((n) => n.kind === "sector" && n.id === s),
+    );
+    missingSectors.forEach((s, i) => {
+      nodes.push(this.addNode("sector", s, s, "", at(RING.sector + 0.4, Y.sector + 0.5, baseA + (i - (missingSectors.length - 1) / 2) * 0.3), 0));
+    });
+    const missingMacros = [...new Set(tEdges.map((e) => e.macroId))].filter(
+      (id) => !this.nodes.some((n) => n.kind === "macro" && n.id === id),
+    );
+    missingMacros.forEach((id, i) => {
+      const m = this.lastMacro.get(id);
+      if (!m) return;
+      nodes.push(
+        this.addNode("macro", m.id, m.nameKo, `${m.changePct >= 0 ? "+" : ""}${m.changePct}%`, at(RING.macro + 0.4, Y.macro + 0.4, baseA + (i - (missingMacros.length - 1) / 2) * 0.28), m.value),
+      );
+    });
+
+    for (const e of tEdges) {
+      const me = this.addEdge(e.macroId, "macro", e.sector, "sector", e.contribution);
+      if (me) edges.push(me);
+    }
+    const stSeen = new Set<string>();
+    for (const e of tEdges) {
+      if (stSeen.has(e.sector)) continue;
+      stSeen.add(e.sector);
+      const se = this.addEdge(e.sector, "sector", t.code, "ticker", t.ontologyScore);
+      if (se) edges.push(se);
+    }
+
+    this.spotlight = { ticker: t, nodes, edges };
+    this.focus = t.code;
+    this.applyFocus();
+  }
+
   private connected(id: string): Set<string> {
+    const start = this.nodes.find((n) => n.id === id);
     const keep = new Set<string>([id]);
-    // 두 단계까지 따라간다 (거시 → 섹터 → 종목)
-    for (let pass = 0; pass < 2; pass++) {
+    // 방향을 지킨다: 양방향으로 두 번 퍼뜨리면 이웃 섹터의 남 종목까지 다 밝아져
+    // "이 종목의 경로"가 안 읽힌다.
+    if (start?.kind === "ticker") {
+      // 종목 → 그 종목을 만드는 경로만 거꾸로 (섹터, 그 섹터를 미는 거시)
+      for (const e of this.edges) if (e.toKind === "ticker" && e.to === id) keep.add(e.from);
+      for (const e of this.edges) if (e.toKind === "sector" && keep.has(e.to)) keep.add(e.from);
+    } else if (start?.kind === "macro") {
+      // 거시 → 그 힘이 흘러가는 곳만 앞으로 (섹터, 그 섹터의 종목)
+      for (const e of this.edges) if (e.fromKind === "macro" && e.from === id) keep.add(e.to);
+      for (const e of this.edges) if (e.fromKind === "sector" && keep.has(e.from)) keep.add(e.to);
+    } else {
+      // 섹터 → 위(거시)·아래(종목) 한 단계씩
       for (const e of this.edges) {
-        if (keep.has(e.from)) keep.add(e.to);
-        if (keep.has(e.to)) keep.add(e.from);
+        if (e.from === id) keep.add(e.to);
+        if (e.to === id) keep.add(e.from);
       }
     }
     return keep;

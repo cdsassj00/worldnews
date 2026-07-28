@@ -456,7 +456,7 @@ function renderScoreList(s: OntoState): void {
         el("span", { class: dirClass(t.score), text: t.score.toFixed(3) }),
       ]);
       btn.addEventListener("click", () => {
-        onto?.setFocus(t.code);
+        onto?.showTicker(t);
         panel.openTicker(t);
       });
       return el("li", {}, [btn]);
@@ -520,7 +520,11 @@ function renderRadarList(): void {
         ]),
         el("span", { class: val.cls, text: val.text }),
       ]);
-      btn.addEventListener("click", () => panel.openTicker(radarToTicker(r)));
+      btn.addEventListener("click", () => {
+        const t = radarToTicker(r);
+        onto?.showTicker(t);
+        panel.openTicker(t);
+      });
       return el("li", {}, [btn]);
     }),
   );
@@ -595,8 +599,9 @@ function setupTickerSearch(): void {
             el("span", { class: dirClass(r.score), text: r.score.toFixed(3) }),
           ]);
           btn.addEventListener("click", () => {
-            panel.openTicker(radarToTicker(r));
-            onto?.setFocus(r.code);
+            const t = radarToTicker(r);
+            panel.openTicker(t);
+            onto?.showTicker(t);
             input.value = "";
             close();
           });
