@@ -40,6 +40,8 @@ export interface MacroSignal {
   /** 1면·거시 뉴스를 AI가 해석한 보정 (-1~1). 가격은 이미 일어난 일, 뉴스는 일어나는 중인 일이다. */
   newsImpact?: number;
   newsReason?: string;
+  /** 이 신호가 딛고 선 시세의 마지막 봉 시각(ms) */
+  asOf?: number;
 }
 
 /** 전파에 쓰는 유효 신호 = 가격 관측 + 뉴스 보정×0.4 (백테스트에는 뉴스 보정이 없어 가격 관측만 쓰인다) */

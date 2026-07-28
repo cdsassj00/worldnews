@@ -450,6 +450,30 @@ body {
   color: var(--fg-faint);
 }
 
+/* 온톨로지 인과 유형 칩 (원가/수요/환율/할인율/마진/수주/위험선호/업황/안전자산) */
+.rel-chip {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  font-size: 10.5px;
+  border: 1px solid var(--fg-faint);
+  border-radius: 9px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+
+/* 종목 상세 — "지금 무엇이 점수를 움직이나" 한 줄 요약 */
+.driver-note {
+  margin: var(--space-1) 0;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  border-left: 3px solid var(--fg-faint);
+  background: var(--panel-2);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
 /* 기회 탐색 탭 — 수혜 경로 / 상대 강세 / 약세 경고 */
 .radar-tabs {
   display: flex;

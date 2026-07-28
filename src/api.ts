@@ -211,6 +211,8 @@ export interface MacroSignal {
   /** 1면 뉴스 AI 보정 (-1~1) */
   newsImpact?: number;
   newsReason?: string;
+  /** 이 신호가 딛고 선 시세의 마지막 봉 시각(ms) */
+  asOf?: number;
 }
 
 export interface ScoreReason {
@@ -294,6 +296,8 @@ export interface OntologyGraph {
 
 export interface OntoState {
   generatedAt: number;
+  /** 계산에 쓴 시세 중 가장 최신 봉의 시각(ms) */
+  dataAsOf: number | null;
   macro: MacroSignal[];
   scores: TickerScore[];
   riskOff: number;
@@ -302,6 +306,10 @@ export interface OntoState {
   sectors: { sector: string; sensitivity: Record<string, number> }[];
   universe: { code: string; nameKo: string; sectors: Record<string, number> }[];
   weights: { ontology: number; price: number; news: number };
+  /** 의미론적 층: 섹터×거시 간선의 인과 유형·메커니즘 */
+  relations?: Record<string, Record<string, { rel: string; ko: string }>>;
+  /** 거시요인 사이의 인과 (설명용, 점수 미반영) */
+  macroLinks?: { from: string; to: string; ko: string }[];
 }
 
 export interface RadarItem {

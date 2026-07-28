@@ -22,6 +22,19 @@ export function dirClass(v: number): "up" | "down" | "flat" {
   return "flat";
 }
 
+/** "7. 28. 15:30 KST" — 지표·시세가 어느 시점 데이터인지 명시할 때 쓴다 */
+export function fmtKst(ts: number): string {
+  const s = new Date(ts).toLocaleString("ko-KR", {
+    timeZone: "Asia/Seoul",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  return `${s} KST`;
+}
+
 export function timeAgo(ts: number): string {
   if (!ts) return "";
   const diff = Date.now() - ts;

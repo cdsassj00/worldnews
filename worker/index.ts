@@ -1,7 +1,7 @@
 import type { Env } from "./env";
 import { GLOBAL_TAPE, MARKETS, REGION_FALLBACK, marketFor } from "../shared/markets";
 import { ApiError, cached, errorResponse, json, jsonCached, num, round } from "./util";
-import { MACRO, SENSITIVITY, UNIVERSE } from "../shared/ontology";
+import { MACRO, MACRO_LINKS, RELATIONS, SENSITIVITY, UNIVERSE } from "../shared/ontology";
 import { WEIGHTS } from "../shared/scoring";
 import { getManySeries, getSeries, toSnapshot } from "./quotes";
 import { getGlobalNews, getNews } from "./news";
@@ -359,6 +359,7 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     const { data } = await cached(env, "auto:strategy", 300, () => runStrategy(env));
     return json({
       generatedAt: data.generatedAt,
+      dataAsOf: data.dataAsOf ?? null,
       macro: data.macro,
       scores: data.scores,
       riskOff: data.riskOff,
@@ -367,6 +368,9 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
       sectors: Object.entries(SENSITIVITY).map(([sector, sensitivity]) => ({ sector, sensitivity })),
       universe: UNIVERSE.map((t) => ({ code: t.code, nameKo: t.nameKo, sectors: t.sectors })),
       weights: WEIGHTS,
+      // 의미론적 온톨로지 층: 간선의 인과 유형·메커니즘, 거시요인 간 인과
+      relations: RELATIONS,
+      macroLinks: MACRO_LINKS,
     });
   }
 

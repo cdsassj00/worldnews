@@ -10,11 +10,12 @@ import {
   type NewsItem,
   type Overview,
   type ProviderStat,
+  type OntoState,
   type Recommendation,
   type RecommendResponse,
   type TickerScore,
 } from "./api";
-import { dirClass, el, fmtKrw, fmtNum, fmtPct, sparkline, timeAgo } from "./format";
+import { dirClass, el, fmtKrw, fmtKst, fmtNum, fmtPct, sparkline, timeAgo } from "./format";
 
 export interface OrderIntent {
   market: string;
@@ -33,6 +34,8 @@ export interface PanelDeps {
   empty: HTMLElement;
   kis: () => KisStatus | null;
   ai: () => AiStatus | null;
+  /** 현재 온톨로지 상태 — 종목 상세에서 거시 신호·뉴스 보정·시간 기준을 문장으로 풀 때 쓴다 */
+  onto?: () => OntoState | null;
   requestOrder: (order: OrderDraft, ctx: { fxToKrw: number | null }) => void;
   onNeedAuth: () => void;
 }
@@ -256,13 +259,72 @@ export class Panel {
     const backBtn = el("button", { class: "btn btn-ghost", type: "button", text: "← 대한민국 시장 전체 보기" });
     backBtn.addEventListener("click", () => void this.open("KR", "대한민국"));
 
-    const edgeItems = (t.edges ?? []).map((e) =>
-      el("li", {
-        text: `${MACRO_KO[e.macroId] ?? e.macroId}의 최근 움직임이 ${e.sector} 섹터를 거쳐 이 종목 점수에 ${
-          e.contribution >= 0 ? "+" : ""
-        }${e.contribution} 만큼 ${e.contribution >= 0 ? "보탬" : "부담"}`,
-      }),
-    );
+    const st = this.deps.onto?.() ?? null;
+    const macroById = new Map((st?.macro ?? []).map((m) => [m.id, m]));
+
+    // 인과를 문장으로: "무엇이 얼마나 움직였고(왜) → 어떤 경제적 경로로 → 얼마를 보탰나"
+    const edgeItems = (t.edges ?? []).map((e) => {
+      const m = macroById.get(e.macroId);
+      const name = MACRO_KO[e.macroId] ?? e.macroId;
+      const rel = st?.relations?.[e.sector]?.[e.macroId];
+      const cause = m
+        ? `${name}이(가) 5일간 ${fmtPct(m.changePct)} ${m.changePct >= 0 ? "올랐고" : "내렸고"}${
+            m.newsReason ? `, 뉴스 보정 ${m.newsImpact! >= 0 ? "+" : ""}${m.newsImpact} (${m.newsReason})` : ""
+          }`
+        : `${name}의 최근 움직임이`;
+      const mechanism = rel ? ` — ${rel.ko}` : " 섹터 민감도를 거쳐";
+      return el("li", {}, [
+        ...(rel ? [el("span", { class: "rel-chip", text: `${rel.rel} 경로` })] : []),
+        el("span", {
+          text: `${cause} → ${e.sector}${mechanism} → 이 종목 점수에 ${
+            e.contribution >= 0 ? "+" : ""
+          }${e.contribution} ${e.contribution >= 0 ? "보탬" : "부담"}`,
+        }),
+      ]);
+    });
+
+    // 요인 분해 — "지금 이 종목을 움직이는 건 무엇인가" 를 첫 문장으로 준다.
+    const axes = [
+      { name: "온톨로지(거시 전파)", w: t.ontologyScore * 0.35 },
+      { name: "가격 흐름", w: t.priceScore * 0.45 },
+      { name: "뉴스", w: t.newsScore * 0.2 },
+    ].sort((a, b) => Math.abs(b.w) - Math.abs(a.w));
+    const lead = axes[0];
+    const driverText =
+      Math.abs(lead.w) < 0.03
+        ? "지금은 세 축 모두 약해서 뚜렷한 원인 없이 중립에 가깝습니다."
+        : `지금 이 점수를 ${lead.w >= 0 ? "끌어올리는" : "끌어내리는"} 건 주로 ${lead.name} 축(${lead.w >= 0 ? "+" : ""}${lead.w.toFixed(3)})입니다.` +
+          (Math.abs(axes[1].w) >= 0.03
+            ? ` 그 다음이 ${axes[1].name}(${axes[1].w >= 0 ? "+" : ""}${axes[1].w.toFixed(3)}).`
+            : "");
+
+    // 뉴스가 점수에 어떻게 들어갔나 — 이 종목 경로의 거시 뉴스 보정 + 종목/섹터 기사
+    const edgeMacroIds = new Set((t.edges ?? []).map((e) => e.macroId));
+    const macroAdjs = (st?.macroNews.adjustments ?? []).filter((a) => edgeMacroIds.has(a.id));
+    const newsReasons = (t.reasons ?? []).filter((r) => r.kind === "news");
+    const newsItems: HTMLElement[] = [
+      ...macroAdjs.map((a) =>
+        el("li", {
+          text: `[거시 뉴스] ${MACRO_KO[a.id] ?? a.id} ${a.impact >= 0 ? "+" : ""}${a.impact} — ${a.reasonKo}`,
+        }),
+      ),
+      ...newsReasons.map((r) => el("li", { text: `[종목·섹터 기사] ${r.text}` })),
+    ];
+    const newsMeta = st?.macroNews.headlinesUsed
+      ? `1면 헤드라인 ${st.macroNews.headlinesUsed}건을 AI가 읽어 거시요인 보정에 반영합니다(30분 주기). `
+      : "";
+    const newsEmptyNote =
+      `${newsMeta}지금 이 종목 경로에 반영된 뉴스가 없습니다. 종목별 기사 검색은 핵심 20종목에만 돌고(약 45분 주기), ` +
+      `"코스피 급락" 같은 시장 일반 기사는 이미 가격에 반영된 정보라 의도적으로 점수에서 제외합니다.`;
+
+    // 시간 기준 — 시세가 언제 것이고, 계산이 언제 됐는지.
+    const dataTs = t.asOf ?? st?.dataAsOf ?? null;
+    const calcTs = t.asOf ?? st?.generatedAt ?? null;
+    const basisText = dataTs
+      ? `데이터 기준: 시세 ${fmtKst(dataTs)} (야후 지연 시세·일봉)${
+          calcTs && calcTs !== dataTs ? ` · 분석 계산 ${fmtKst(calcTs)}` : ""
+        }`
+      : null;
 
     return [
       head,
@@ -271,6 +333,8 @@ export class Panel {
           el("b", { text: verdict.text }),
           el("span", { text: verdict.desc }),
         ]),
+        el("p", { class: "driver-note", text: driverText }),
+        ...(basisText ? [el("p", { class: "note", text: basisText })] : []),
         el("div", { class: "tscore" }, [
           el("div", { class: "tscore-total" }, [
             el("span", { class: "k", text: "합성 점수" }),
@@ -296,6 +360,10 @@ export class Panel {
                     : "지금 유의미하게 움직인 거시요인이 없어 가격·뉴스 축이 점수를 이끕니다.",
               }),
             ]),
+        el("h3", { class: "card-title", text: "뉴스가 점수에 어떻게 들어갔나" }),
+        ...(newsItems.length
+          ? [el("ul", { class: "plan-detail" }, newsItems)]
+          : [el("p", { class: "note", text: newsEmptyNote })]),
         el("h3", { class: "card-title", text: "판단 근거 전체" }),
         el(
           "ul",

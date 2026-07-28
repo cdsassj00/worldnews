@@ -101,10 +101,12 @@ export interface SparkSeries {
   price: number;
   changePct: number;
   closes: number[];
+  /** 마지막 일봉의 시각(ms) — "이 시세가 언제 것인지"를 화면에 밝히는 데 쓴다 */
+  ts: number | null;
 }
 
 /** 응답은 { "005930.KS": { close: [...], timestamp: [...] }, ... } 형태의 평면 맵이다 */
-type YahooSpark = Record<string, { symbol?: string; close?: (number | null)[] } | undefined>;
+type YahooSpark = Record<string, { symbol?: string; close?: (number | null)[]; timestamp?: number[] } | undefined>;
 
 async function loadSpark(symbols: string[], range: string): Promise<SparkSeries[]> {
   let lastErr: unknown = null;
@@ -119,11 +121,13 @@ async function loadSpark(symbols: string[], range: string): Promise<SparkSeries[
         if (closes.length < 2) continue;
         const price = closes.at(-1)!;
         const prev = num(closes.at(-2), price);
+        const lastTs = r?.timestamp?.length ? r.timestamp[r.timestamp.length - 1] * 1000 : null;
         out.push({
           symbol: sym,
           price: round(price, 4),
           changePct: prev ? round(((price - prev) / prev) * 100, 2) : 0,
           closes: closes.map((v) => round(v, 4)),
+          ts: lastTs,
         });
       }
       if (out.length) return out;

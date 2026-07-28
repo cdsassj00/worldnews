@@ -471,6 +471,9 @@ export class Ontology3D {
       { passive: false },
     );
     window.addEventListener("resize", () => this.resize());
+    if (typeof ResizeObserver !== "undefined" && c.parentElement) {
+      new ResizeObserver(() => this.resize()).observe(c.parentElement);
+    }
   }
 
   private pick(e: PointerEvent): NodeObj | null {
@@ -502,8 +505,9 @@ export class Ontology3D {
 
   private resize(): void {
     const host = this.canvas.parentElement;
-    const w = host?.clientWidth || window.innerWidth;
-    const h = host?.clientHeight || window.innerHeight;
+    const w = host?.clientWidth ?? 0;
+    const h = host?.clientHeight ?? 0;
+    if (!w || !h) return; // 숨겨진 상태에서 창 크기로 대체하면 종횡비가 오염된다
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / Math.max(1, h);
     this.camera.updateProjectionMatrix();

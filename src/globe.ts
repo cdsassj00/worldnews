@@ -460,6 +460,11 @@ export class Globe {
       { passive: false },
     );
     window.addEventListener("resize", () => this.resize());
+    // 모달 안에서는 창 resize 이벤트만으로 부족하다 — 컨테이너가 다시 보이거나
+    // 폭이 바뀌는 순간(스크롤바 등장 등)을 직접 감시해야 찌그러지지 않는다.
+    if (typeof ResizeObserver !== "undefined" && c.parentElement) {
+      new ResizeObserver(() => this.resize()).observe(c.parentElement);
+    }
   }
 
   private pickAt(clientX: number, clientY: number): { index: number } | null {
@@ -579,8 +584,11 @@ export class Globe {
 
   private resize(): void {
     const host = this.canvas.parentElement;
-    const w = host?.clientWidth || window.innerWidth;
-    const h = host?.clientHeight || window.innerHeight;
+    const w = host?.clientWidth ?? 0;
+    const h = host?.clientHeight ?? 0;
+    // 숨겨진 상태(모달 닫힘)에서 창 크기로 대체하면 버퍼 종횡비가 오염되어
+    // 다시 열었을 때 지구가 찌그러진다. 안 보이면 건드리지 않는다.
+    if (!w || !h) return;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / Math.max(1, h);
     this.camera.updateProjectionMatrix();

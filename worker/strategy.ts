@@ -56,6 +56,8 @@ export interface TickerScore {
 
 export interface StrategyResult {
   generatedAt: number;
+  /** 계산에 쓴 시세 중 가장 최신 봉의 시각(ms). 지연 시세라 generatedAt 보다 이르다. */
+  dataAsOf: number | null;
   macro: MacroSignal[];
   scores: TickerScore[];
   /** 시장 전반 위험도 (VIX·지수 기반). 1에 가까울수록 위험회피 */
@@ -87,6 +89,14 @@ export async function runStrategy(env: Env): Promise<StrategyResult> {
     macroSpark.map((s) => [s.symbol.toUpperCase(), { price: s.price, closes: s.closes, highs: [], lows: [], volumes: [] }]),
   );
   const macro = macroSignals((symbol) => macroBySymbol.get(symbol.toUpperCase()));
+
+  // 각 거시 신호가 "언제 시세" 기준인지 붙인다 — 화면에 시간 기준을 밝히기 위해.
+  const sparkTs = new Map(macroSpark.map((s) => [s.symbol.toUpperCase(), s.ts]));
+  for (const m of macro) {
+    const f = MACRO.find((x) => x.id === m.id);
+    const ts = f ? sparkTs.get(f.symbol.toUpperCase()) : null;
+    if (ts) m.asOf = ts;
+  }
 
   // 1면 뉴스 보정을 거시 신호에 얹는다 (전파는 value + 0.4×impact 를 쓴다)
   if (mnews?.adjustments.length) {
@@ -198,8 +208,12 @@ export async function runStrategy(env: Env): Promise<StrategyResult> {
     .map((m) => `${m.nameKo} ${m.changePct >= 0 ? "+" : ""}${m.changePct}%`)
     .join(", ");
 
+  const dataAsOf =
+    Math.max(0, ...macroSpark.map((s) => s.ts ?? 0), ...priceSeries.map((p) => p.time || 0)) || null;
+
   return {
     generatedAt: Date.now(),
+    dataAsOf,
     macro,
     scores,
     riskOff,

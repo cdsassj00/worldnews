@@ -83,6 +83,9 @@ if (radarSt.available && radarSt.scored > 0) {
   await page.locator("#ticker-results button").first().click();
   await page.waitForSelector(".verdict", { timeout: 10000 });
   check("종목 검색 → 온톨로지 분석", cnt >= 1, `결과 ${cnt}건 · ${await page.locator(".panel-head h2").first().textContent()}`);
+  const ptxt = await page.locator("#panel-body").innerText();
+  check("데이터 기준 시각 표시", ptxt.includes("데이터 기준: 시세"));
+  check("뉴스 반영 내역 블록", ptxt.includes("뉴스가 점수에 어떻게 들어갔나"));
 } else {
   console.log("[참고] 종목 검색 검사 건너뜀 (레이더 미적재)");
 }
@@ -102,6 +105,7 @@ await page.click('#radar-tabs .radar-tab[data-tab="tailwind"]');
 await page.click("#btn-onto-help");
 await page.waitForSelector("#onto-help-modal .oh-table", { timeout: 5000 });
 check("온톨로지 설명 모달", (await page.locator("#onto-help-modal .oh-table tr").count()) >= 4);
+check("거시요인 간 인과 목록", (await page.locator("#oh-macro-links li").count()) >= 4);
 await page.click("#onto-help-close");
 
 // 지구본은 아이콘 → 클릭하면 세계 경제 지표 모달

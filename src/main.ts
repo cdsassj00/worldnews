@@ -5,7 +5,7 @@ import { Panel, type OrderDraft } from "./panel";
 import { AutoPanel } from "./autopanel";
 import { Ontology3D } from "./ontology3d";
 import type { OntoState, RadarItem, RadarOpps, TickerScore } from "./api";
-import { dirClass, el, fmtKrw, fmtNum, fmtPct, timeAgo } from "./format";
+import { dirClass, el, fmtKrw, fmtKst, fmtNum, fmtPct, timeAgo } from "./format";
 
 /** 티커테이프 심볼 → 국가코드 (지금 움직이는 시장 목록용) */
 const TAPE_CC: Record<string, string> = {
@@ -37,6 +37,7 @@ const panel = new Panel({
   empty: $("panel-empty"),
   kis: () => kisStatus,
   ai: () => config?.ai ?? null,
+  onto: () => ontoState,
   requestOrder: (order, ctx) => openOrderModal(order, ctx.fxToKrw),
   onNeedAuth: () => openAuthModal(),
 });
@@ -405,10 +406,13 @@ async function loadOntology(): Promise<void> {
     ontoState = await api.ontoState();
     onto?.setState({ macro: ontoState.macro, scores: ontoState.scores, riskOff: ontoState.riskOff });
     $("onto-note").textContent = ontoState.note;
-    hint.textContent = `${ontoState.scores.length}개 종목 · 갱신 ${timeAgo(ontoState.generatedAt)}`;
+    hint.textContent = `${ontoState.scores.length}개 종목 · 시세 ${
+      ontoState.dataAsOf ? fmtKst(ontoState.dataAsOf) : "-"
+    } 기준 · 계산 ${timeAgo(ontoState.generatedAt)}`;
     hint.style.opacity = "0.75";
     renderMacroList(ontoState);
     renderScoreList(ontoState);
+    renderMacroLinks(ontoState);
     // 첫 방문이면 최고 점수 종목의 분석을 예시로 열어 준다 — 빈 패널만 보고 나가지 않게.
     if (!exampleShown && ontoState.scores.length && $("panel-body").hidden) {
       exampleShown = true;
@@ -427,7 +431,12 @@ async function loadOntology(): Promise<void> {
 function renderMacroList(s: OntoState): void {
   $("macro-list").replaceChildren(
     ...s.macro.map((m) =>
-      el("li", { class: "macro-row", title: m.newsReason ? `${m.upMeansKo}\n뉴스 보정 ${m.newsImpact! >= 0 ? "+" : ""}${m.newsImpact}: ${m.newsReason}` : m.upMeansKo }, [
+      el("li", {
+        class: "macro-row",
+        title: `${m.upMeansKo}${m.newsReason ? `\n뉴스 보정 ${m.newsImpact! >= 0 ? "+" : ""}${m.newsImpact}: ${m.newsReason}` : ""}${
+          m.asOf ? `\n시세 ${fmtKst(m.asOf)} 기준` : ""
+        }`,
+      }, [
         el("span", { class: "m-name" }, [
           el("span", { text: m.nameKo }),
           m.newsImpact ? el("i", { class: `m-news ${m.newsImpact >= 0 ? "up" : "down"}`, text: "뉴스" }) : null,
@@ -441,6 +450,16 @@ function renderMacroList(s: OntoState): void {
         el("span", { class: `m-val ${dirClass(m.changePct)}`, text: fmtPct(m.changePct) }),
       ]),
     ),
+  );
+}
+
+/** 도움말 모달의 "거시요인 사이의 인과" 목록 — 의미론적 온톨로지 층 */
+function renderMacroLinks(s: OntoState): void {
+  const list = document.getElementById("oh-macro-links");
+  if (!list || !s.macroLinks?.length) return;
+  const nameOf = (id: string) => s.macro.find((m) => m.id === id)?.nameKo ?? id;
+  list.replaceChildren(
+    ...s.macroLinks.map((l) => el("li", { text: `${nameOf(l.from)} → ${nameOf(l.to)}: ${l.ko}` })),
   );
 }
 
