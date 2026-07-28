@@ -404,7 +404,14 @@ async function loadOntology(): Promise<void> {
   const hint = $("onto-hint");
   try {
     ontoState = await api.ontoState();
-    onto?.setState({ macro: ontoState.macro, scores: ontoState.scores, riskOff: ontoState.riskOff });
+    onto?.setState({
+      macro: ontoState.macro,
+      scores: ontoState.scores,
+      riskOff: ontoState.riskOff,
+      macroLinks: ontoState.macroLinks,
+      macroClusters: ontoState.macroClusters,
+      sectors: ontoState.sectors,
+    });
     $("onto-note").textContent = ontoState.note;
     hint.textContent = `${ontoState.scores.length}개 종목 · 시세 ${
       ontoState.dataAsOf ? fmtKst(ontoState.dataAsOf) : "-"
@@ -417,7 +424,7 @@ async function loadOntology(): Promise<void> {
     if (!exampleShown && ontoState.scores.length && $("panel-body").hidden) {
       exampleShown = true;
       panel.openTicker({ ...ontoState.scores[0], asOf: ontoState.generatedAt });
-      onto?.setFocus(ontoState.scores[0].code);
+      onto?.showTicker(ontoState.scores[0]);
     }
     (window as unknown as { __wfg?: Record<string, unknown> }).__wfg = {
       ...((window as unknown as { __wfg?: Record<string, unknown> }).__wfg ?? {}),

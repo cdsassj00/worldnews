@@ -102,7 +102,7 @@
         <section class="card card-guide">
           <h2 class="card-title">쓰는 순서</h2>
           <ol class="steps">
-            <li><b>가운데 3D 그래프</b>가 거시요인 → 섹터 → 종목으로 신호가 흐르는 구조다. 노드를 누르면 그 경로만 남는다.</li>
+            <li><b>가운데 3D 그래프</b>는 개념 그래프다 — 거시요인(의미 클러스터)끼리의 인과와 섹터로의 전파를 보여준다. 종목은 검색하거나 목록에서 클릭하면 그래프에 얹힌다.</li>
             <li>오른쪽 아래 <b>돌아가는 지구본</b>을 누르면 세계 경제 지표와 지도가 열린다. 나라를 클릭하면 그 나라 상세가 뜬다.</li>
             <li>상단 <b>자동매매</b>에서 계획·근거·백테스트 결과를 확인한다.</li>
           </ol>
@@ -118,9 +118,9 @@
               <span id="onto-note">거시 신호를 불러오는 중…</span>
             </div>
             <div class="onto-layers">
-              <span><i class="layer layer-macro"></i>거시요인</span>
+              <span><i class="layer layer-macro"></i>거시요인 (점선 = 거시 간 인과)</span>
               <span><i class="layer layer-sector"></i>섹터</span>
-              <span><i class="layer layer-ticker"></i>종목</span>
+              <span><i class="layer layer-ticker"></i>종목 (검색·클릭 시 표시)</span>
             </div>
             <p class="onto-help">노드를 클릭하면 그와 이어진 경로만 남습니다. 드래그로 회전, 휠로 확대.</p>
             <button class="btn btn-ghost onto-what" id="btn-onto-help" type="button">온톨로지란? · 갱신 주기</button>
@@ -255,11 +255,11 @@
         <div class="oh-body">
           <p><b>세상의 큰 변화가 어느 종목에 어떻게 닿는지</b>를 세 층으로 추적하는 지식그래프(온톨로지)입니다.</p>
           <div class="oh-flow">
-            <span class="oh-step"><b>① 거시요인</b><br/>유가·환율·금리·반도체 업황 등 8개. 최근 5일 움직임 + 1면 뉴스를 AI가 읽은 보정</span>
+            <span class="oh-step"><b>① 거시요인</b><br/>유가·환율·금리·달러인덱스·구리·나스닥 등 12개를 금리·통화 / 원자재·원가 / 위험선호 / 실물·업황 클러스터로 묶음. 최근 5일 움직임 + 1면 뉴스 AI 보정. 거시끼리의 인과는 점선 아치로 표시</span>
             <span class="oh-arrow">→</span>
             <span class="oh-step"><b>② 섹터</b><br/>19개 업종. "유가가 오르면 정유는 +, 항공은 −" 같은 민감도 표가 신호를 전달</span>
             <span class="oh-arrow">→</span>
-            <span class="oh-step"><b>③ 종목</b><br/>총 350종목. 전달된 거시 신호 + 가격 흐름 + 뉴스를 합쳐 -1~1 점수</span>
+            <span class="oh-step"><b>③ 종목 (인스턴스)</b><br/>총 350종목. 종목은 온톨로지의 개념이 아니라 인스턴스라 상시 그래프에는 없고, 검색·클릭 시 해당 종목의 경로만 얹힘. 거시 신호 + 가격 + 뉴스 합산 -1~1 점수</span>
           </div>
           <p class="oh-read"><b>읽는 법</b> — <i class="up-txt">빨간 선</i>은 점수를 올리는 흐름, <i class="down-txt">파란 선</i>은 내리는 흐름. 선이 굵을수록 영향이 큽니다. 선 위를 흐르는 점이 신호의 방향과 세기입니다.</p>
           <p><b>점수 읽기</b> — +0.3 이상 강한 신호 · +0.15 이상 매수 후보 기준 · −0.15 이하 약세 신호. 근거는 종목을 클릭하면 문장으로 전부 나옵니다.</p>

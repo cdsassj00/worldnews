@@ -19,7 +19,11 @@ export type MacroId =
   | "KOSPI" // 국내 시장 전반
   | "CHINA" // 중국 경기 (상해종합)
   | "VIX" // 변동성 (공포지수)
-  | "GOLD"; // 금 (안전자산 선호)
+  | "GOLD" // 금 (안전자산 선호)
+  | "DXY" // 달러인덱스 (달러 강세 = 신흥국 자금 이탈)
+  | "COPPER" // 구리 (실물 경기 선행 — "닥터 코퍼")
+  | "NASDAQ" // 나스닥 (미 기술주 위험선호)
+  | "BTC"; // 비트코인 (글로벌 위험선호·유동성 온도계)
 
 export interface MacroFactor {
   id: MacroId;
@@ -41,6 +45,23 @@ export const MACRO: MacroFactor[] = [
   { id: "CHINA", nameKo: "중국 증시", symbol: "000001.SS", scale: 4, upMeansKo: "중국 수요 회복" },
   { id: "VIX", nameKo: "변동성(VIX)", symbol: "^VIX", scale: 25, upMeansKo: "위험회피 심화" },
   { id: "GOLD", nameKo: "금", symbol: "GC=F", scale: 4, upMeansKo: "안전자산 선호" },
+  /* 아래 4개는 관측·인과 설명용이다. 섹터 민감도(SENSITIVITY)에는 아직 넣지 않았다 —
+   * 점수 입력을 바꾸면 백테스트를 다시 통과해야 하므로, 편입은 검증 후 별도 단계로 한다. */
+  { id: "DXY", nameKo: "달러인덱스", symbol: "DX-Y.NYB", scale: 2, upMeansKo: "달러 강세·신흥국 자금 이탈" },
+  { id: "COPPER", nameKo: "구리", symbol: "HG=F", scale: 5, upMeansKo: "실물 경기 회복(닥터 코퍼)" },
+  { id: "NASDAQ", nameKo: "나스닥", symbol: "^IXIC", scale: 4, upMeansKo: "미 기술주 위험선호" },
+  { id: "BTC", nameKo: "비트코인", symbol: "BTC-USD", scale: 10, upMeansKo: "글로벌 위험선호·유동성" },
+];
+
+/**
+ * 거시 층의 의미론적 클러스터 — 지표를 나열이 아니라 "어떤 힘인가"로 묶는다.
+ * 3D 그래프 배치와 설명에 쓴다.
+ */
+export const MACRO_CLUSTERS: { nameKo: string; ids: MacroId[] }[] = [
+  { nameKo: "금리·통화", ids: ["US10Y", "DXY", "USDKRW"] },
+  { nameKo: "원자재·원가", ids: ["OIL", "COPPER", "GOLD"] },
+  { nameKo: "위험선호", ids: ["VIX", "NASDAQ", "BTC", "KOSPI"] },
+  { nameKo: "실물·업황", ids: ["CHINA", "SEMI"] },
 ];
 
 export type SectorId =
@@ -234,13 +255,20 @@ export const RELATIONS: Record<SectorId, Partial<Record<MacroId, CausalRelation>
  * 거시요인 사이의 인과 — 그래프 위층 안에서도 힘이 흐른다는 것을 설명하는 층.
  * 점수 전파에는 쓰지 않는다(이중 계상 방지). 화면 설명용.
  */
-export const MACRO_LINKS: { from: MacroId; to: MacroId; ko: string }[] = [
-  { from: "OIL", to: "USDKRW", ko: "유가 상승은 수입물가·무역수지를 악화시켜 원화 약세 요인이 됩니다" },
-  { from: "US10Y", to: "VIX", ko: "급격한 금리 상승은 위험자산 전반의 변동성을 키웁니다" },
-  { from: "VIX", to: "KOSPI", ko: "위험회피가 심해지면 외국인 순매도로 코스피에 하락 압력이 걸립니다" },
-  { from: "CHINA", to: "KOSPI", ko: "최대 교역국 경기라 국내 수출주 실적 기대를 좌우합니다" },
-  { from: "SEMI", to: "KOSPI", ko: "반도체가 코스피 시총의 약 1/4 — 업황이 지수를 끌고 다닙니다" },
-  { from: "US10Y", to: "GOLD", ko: "금리 상승은 무이자 자산인 금의 기회비용을 키웁니다" },
+export const MACRO_LINKS: { from: MacroId; to: MacroId; sign: 1 | -1; ko: string }[] = [
+  { from: "OIL", to: "USDKRW", sign: 1, ko: "유가 상승은 수입물가·무역수지를 악화시켜 원화 약세 요인이 됩니다" },
+  { from: "US10Y", to: "VIX", sign: 1, ko: "급격한 금리 상승은 위험자산 전반의 변동성을 키웁니다" },
+  { from: "VIX", to: "KOSPI", sign: -1, ko: "위험회피가 심해지면 외국인 순매도로 코스피에 하락 압력이 걸립니다" },
+  { from: "CHINA", to: "KOSPI", sign: 1, ko: "최대 교역국 경기라 국내 수출주 실적 기대를 좌우합니다" },
+  { from: "SEMI", to: "KOSPI", sign: 1, ko: "반도체가 코스피 시총의 약 1/4 — 업황이 지수를 끌고 다닙니다" },
+  { from: "US10Y", to: "GOLD", sign: -1, ko: "금리 상승은 무이자 자산인 금의 기회비용을 키웁니다" },
+  { from: "US10Y", to: "DXY", sign: 1, ko: "미 금리 상승은 달러 표시 자산 수요를 키워 달러 강세 요인이 됩니다" },
+  { from: "DXY", to: "USDKRW", sign: 1, ko: "달러인덱스 강세는 원/달러 상승(원화 약세)으로 직결됩니다" },
+  { from: "DXY", to: "GOLD", sign: -1, ko: "달러 강세는 달러로 표시되는 금 가격에 부담입니다" },
+  { from: "CHINA", to: "COPPER", sign: 1, ko: "세계 구리 수요의 절반이 중국 — 중국 경기가 구리 가격을 좌우합니다" },
+  { from: "NASDAQ", to: "KOSPI", sign: 1, ko: "간밤 미 기술주의 위험선호가 다음 날 국내 증시로 전이됩니다" },
+  { from: "NASDAQ", to: "SEMI", sign: 1, ko: "반도체지수는 나스닥 기술주 흐름과 강하게 동행합니다" },
+  { from: "VIX", to: "BTC", sign: -1, ko: "위험회피 국면에서는 코인도 위험자산으로 같이 팔립니다" },
 ];
 
 /**

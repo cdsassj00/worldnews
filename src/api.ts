@@ -309,7 +309,9 @@ export interface OntoState {
   /** 의미론적 층: 섹터×거시 간선의 인과 유형·메커니즘 */
   relations?: Record<string, Record<string, { rel: string; ko: string }>>;
   /** 거시요인 사이의 인과 (설명용, 점수 미반영) */
-  macroLinks?: { from: string; to: string; ko: string }[];
+  macroLinks?: { from: string; to: string; sign: 1 | -1; ko: string }[];
+  /** 거시 층의 의미론적 클러스터 (금리·통화 / 원자재·원가 / 위험선호 / 실물·업황) */
+  macroClusters?: { nameKo: string; ids: string[] }[];
 }
 
 export interface RadarItem {

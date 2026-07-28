@@ -18,6 +18,7 @@ export interface MacroNode {
   nameKo: string;
   changePct: number;
   value: number;
+  newsImpact?: number;
 }
 
 export interface TickerNode {
@@ -36,6 +37,12 @@ export interface OntoState {
   macro: MacroNode[];
   scores: TickerNode[];
   riskOff: number;
+  /** 거시요인 사이의 인과 (의미층) */
+  macroLinks?: { from: string; to: string; sign: 1 | -1; ko: string }[];
+  /** 거시 층의 의미론적 클러스터 — 배치 순서와 캡션에 쓴다 */
+  macroClusters?: { nameKo: string; ids: string[] }[];
+  /** 전체 섹터와 민감도 — 개념 그래프의 가운데 층 */
+  sectors?: { sector: string; sensitivity: Record<string, number> }[];
 }
 
 export interface Onto3DOptions {
@@ -140,6 +147,8 @@ export class Ontology3D {
   private world = new THREE.Group();
   private nodes: NodeObj[] = [];
   private edges: EdgeObj[] = [];
+  /** 클러스터 캡션 등 픽 대상이 아닌 장식 스프라이트 */
+  private captions: THREE.Sprite[] = [];
   private raycaster = new THREE.Raycaster();
   private pointer = new THREE.Vector2();
   private clock = new THREE.Clock();
@@ -204,59 +213,83 @@ export class Ontology3D {
       n.sprite.material.dispose();
     }
     for (const e of this.edges) this.world.remove(e.line, e.pulse);
+    for (const c of this.captions) {
+      this.world.remove(c);
+      (c.material as THREE.SpriteMaterial).map?.dispose();
+      c.material.dispose();
+    }
     this.nodes = [];
     this.edges = [];
+    this.captions = [];
     this.spotlight = null;
 
     const macroById = new Map(state.macro.map((m) => [m.id, m]));
+    const effVal = (m: MacroNode) => Math.max(-1, Math.min(1, m.value + 0.4 * (m.newsImpact ?? 0)));
 
-    // 유니버스가 커져(≈90) 전부 그리면 읽을 수 없다. |점수| 상위 24개만 노드로 세운다.
-    // 나머지는 좌측 목록·검색으로 접근한다 — 그래프는 "지금 신호가 강한 곳"을 보여주는 화면이다.
-    const shown = state.scores
-      .filter((t) => (t.edges ?? []).length > 0)
-      .sort((a, b) => Math.abs(b.score) - Math.abs(a.score))
-      .slice(0, 24);
-    const live = shown.flatMap((t) => (t.edges ?? []).map((e) => ({ ...e, code: t.code })));
-    const sectors = [...new Set(live.map((e) => e.sector))];
-    const macroIds = [...new Set(live.map((e) => e.macroId))];
-    const tickers = shown;
+    /* ── 개념 그래프 ──────────────────────────────────
+     * 종목은 온톨로지의 "개념"이 아니라 인스턴스라 상시 노드에서 뺐다.
+     * 기본 화면 = 거시(의미 클러스터로 배치) + 거시 간 인과 + 섹터.
+     * 종목은 검색·목록에서 골랐을 때 스포트라이트로만 얹힌다(showTicker). */
+
+    // 거시 노드를 의미 클러스터 순서로 배치 — "나열"이 아니라 "어떤 힘인가"로 묶는다
+    const clusters = state.macroClusters?.length
+      ? state.macroClusters
+      : [{ nameKo: "", ids: state.macro.map((m) => m.id) }];
+    const ordered: { m: MacroNode; cluster: number }[] = [];
+    clusters.forEach((c, ci) => {
+      for (const id of c.ids) {
+        const m = macroById.get(id);
+        if (m) ordered.push({ m, cluster: ci });
+      }
+    });
+    for (const m of state.macro) if (!ordered.some((o) => o.m.id === m.id)) ordered.push({ m, cluster: -1 });
 
     const place = (i: number, n: number, radius: number, y: number) => {
       const a = (i / Math.max(1, n)) * Math.PI * 2;
       return new THREE.Vector3(Math.cos(a) * radius, y, Math.sin(a) * radius);
     };
 
-    macroIds.forEach((id, i) => {
-      const m = macroById.get(id);
-      if (!m) return;
-      this.addNode("macro", id, m.nameKo, `${m.changePct >= 0 ? "+" : ""}${m.changePct}%`, place(i, macroIds.length, RING.macro, Y.macro), m.value);
+    ordered.forEach(({ m }, i) => {
+      // 클러스터 경계마다 라벨 높이를 엇갈려 이웃 겹침을 줄인다
+      const pos = place(i, ordered.length, RING.macro, Y.macro + (i % 2 ? 0.5 : 0));
+      this.addNode("macro", m.id, m.nameKo, `${m.changePct >= 0 ? "+" : ""}${m.changePct}%`, pos, m.value);
     });
-    sectors.forEach((s, i) => {
-      this.addNode("sector", s, s, "", place(i, sectors.length, RING.sector, Y.sector), 0);
-    });
-    // 이웃끼리 라벨이 겹치지 않게 한 칸씩 높이를 엇갈린다
-    tickers.forEach((t, i) => {
-      const pos = place(i, tickers.length, RING.ticker, Y.ticker + (i % 2 ? 0.62 : -0.62));
-      this.addNode("ticker", t.code, t.nameKo, t.score.toFixed(2), pos, t.score);
+    // 클러스터 캡션 (픽 대상이 아니므로 nodes 에 넣지 않는다)
+    clusters.forEach((c, ci) => {
+      const idxs = ordered.map((o, i) => (o.cluster === ci ? i : -1)).filter((i) => i >= 0);
+      if (!idxs.length || !c.nameKo) return;
+      const mid = (idxs[0] + idxs[idxs.length - 1]) / 2;
+      const a = (mid / ordered.length) * Math.PI * 2;
+      const sprite = labelSprite(`⟨ ${c.nameKo} ⟩`, "", SECTOR_C.clone(), "sector");
+      sprite.position.set(Math.cos(a) * (RING.macro + 1.0), Y.macro + 1.35, Math.sin(a) * (RING.macro + 1.0));
+      sprite.material.opacity = 0.75;
+      this.world.add(sprite);
+      this.captions.push(sprite);
     });
 
-    // 같은 (거시,섹터) 쌍이 여러 종목에서 반복되므로 합쳐서 한 번만 그린다
-    const msSeen = new Map<string, number>();
-    for (const e of live) {
-      const k = `${e.macroId}|${e.sector}`;
-      msSeen.set(k, Math.abs(e.contribution) > Math.abs(msSeen.get(k) ?? 0) ? e.contribution : msSeen.get(k)!);
+    // 섹터는 전체를 세운다 — 개념 그래프의 가운데 층
+    const sectorDefs = state.sectors ?? [];
+    sectorDefs.forEach((s, i) => {
+      this.addNode("sector", s.sector, s.sector, "", place(i, sectorDefs.length, RING.sector, Y.sector + (i % 2 ? 0.45 : -0.45)), 0);
+    });
+
+    // 거시 → 섹터: 민감도 × 유효신호가 유의미한 것만 그린다 (전부 그리면 인과가 안 보인다)
+    for (const s of sectorDefs) {
+      for (const [macroId, sens] of Object.entries(s.sensitivity)) {
+        const m = macroById.get(macroId);
+        if (!m) continue;
+        const contribution = sens * effVal(m);
+        if (Math.abs(contribution) < 0.12) continue;
+        this.addEdge(macroId, "macro", s.sector, "sector", Math.round(contribution * 1000) / 1000);
+      }
     }
-    for (const [k, contribution] of msSeen) {
-      const [macroId, sector] = k.split("|");
-      this.addEdge(macroId, "macro", sector, "sector", contribution);
-    }
-    const stSeen = new Set<string>();
-    for (const e of live) {
-      const k = `${e.sector}|${e.code}`;
-      if (stSeen.has(k)) continue;
-      stSeen.add(k);
-      const t = shown.find((x) => x.code === e.code);
-      this.addEdge(e.sector, "sector", e.code, "ticker", t?.ontologyScore ?? 0);
+
+    // 거시 → 거시: 의미론적 인과 링크. 위층 안에서 흐르는 힘을 점선 아치로 그린다.
+    for (const l of state.macroLinks ?? []) {
+      const from = macroById.get(l.from);
+      if (!from || !macroById.get(l.to)) continue;
+      const contribution = l.sign * effVal(from);
+      this.addEdge(l.from, "macro", l.to, "macro", Math.round(contribution * 1000) / 1000, { dashed: true, arcUp: true });
     }
 
     if (keepSpot) this.showTicker(keepSpot);
@@ -279,23 +312,41 @@ export class Ontology3D {
     return node;
   }
 
-  private addEdge(from: string, fromKind: NodeKind, to: string, toKind: NodeKind, contribution: number): EdgeObj | null {
+  private addEdge(
+    from: string,
+    fromKind: NodeKind,
+    to: string,
+    toKind: NodeKind,
+    contribution: number,
+    opts?: { dashed?: boolean; arcUp?: boolean },
+  ): EdgeObj | null {
     const a = this.nodes.find((n) => n.kind === fromKind && n.id === from);
     const b = this.nodes.find((n) => n.kind === toKind && n.id === to);
     if (!a || !b) return null;
-    // 가운데를 안쪽으로 당겨 고리 사이를 지나가게 한다(직선이면 라벨을 뚫는다)
-    const mid = a.pos.clone().add(b.pos).multiplyScalar(0.5).multiplyScalar(0.62);
+    // 가운데를 안쪽으로 당겨 고리 사이를 지나가게 한다(직선이면 라벨을 뚫는다).
+    // 같은 고리 안의 간선(거시→거시)은 위로 아치를 그려 층간 간선과 구분한다.
+    const mid = a.pos.clone().add(b.pos).multiplyScalar(0.5).multiplyScalar(opts?.arcUp ? 0.8 : 0.62);
+    if (opts?.arcUp) mid.y += 1.5;
     const curve = new THREE.QuadraticBezierCurve3(a.pos.clone(), mid, b.pos.clone());
     const color = toneColor(contribution);
     const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(28));
     const line = new THREE.Line(
       geo,
-      new THREE.LineBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.16 + Math.min(0.6, Math.abs(contribution) * 1.4),
-      }),
+      opts?.dashed
+        ? new THREE.LineDashedMaterial({
+            color,
+            transparent: true,
+            opacity: 0.16 + Math.min(0.6, Math.abs(contribution) * 1.4),
+            dashSize: 0.16,
+            gapSize: 0.1,
+          })
+        : new THREE.LineBasicMaterial({
+            color,
+            transparent: true,
+            opacity: 0.16 + Math.min(0.6, Math.abs(contribution) * 1.4),
+          }),
     );
+    if (opts?.dashed) line.computeLineDistances();
     const pulse = new THREE.Mesh(
       new THREE.SphereGeometry(0.055, 10, 8),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }),
