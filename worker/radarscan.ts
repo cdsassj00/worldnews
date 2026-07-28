@@ -10,7 +10,7 @@
 import type { Env } from "./env";
 import seedData from "../shared/radar-universe.json";
 import { MACRO, type SectorId, type UniverseTicker } from "../shared/ontology";
-import { composite, macroSignals, priceSignal, propagate, round } from "../shared/scoring";
+import { composite, macroSignals, pctChange, priceSignal, propagate, round } from "../shared/scoring";
 import { getSparkMany, loadSparkFresh } from "./quotes";
 import { getMacroNewsAdjust } from "./macronews";
 import type { RadarScoreRow, RadarTicker } from "./radar";
@@ -48,7 +48,10 @@ async function macroForRadar(env: Env) {
       }
     }
   }
-  return macro;
+  // 상대 강세(종목 20일 수익률 − KOSPI 20일 수익률) 계산용 기준선.
+  const kospi = bySymbol.get("^KS11");
+  const kospiMom20 = kospi && kospi.closes.length >= 21 ? pctChange(kospi.closes, 20) : null;
+  return { macro, kospiMom20 };
 }
 
 export interface RadarScanResult {
@@ -62,7 +65,7 @@ export async function radarScanChunk(env: Env): Promise<RadarScanResult> {
   if (!s) return { scanned: 0, cursor: 0, skippedNoData: 0 };
 
   await radarSeedIfNeeded(env);
-  const [{ rows, cursor }, macro] = await Promise.all([s.nextChunk(CHUNK), macroForRadar(env)]);
+  const [{ rows, cursor }, { macro, kospiMom20 }] = await Promise.all([s.nextChunk(CHUNK), macroForRadar(env)]);
   if (!rows.length) return { scanned: 0, cursor, skippedNoData: 0 };
 
   // spark 는 20심볼/호출 — 80종목 = 4회. 캐시 없이 바로 부른다.
@@ -100,6 +103,10 @@ export async function radarScanChunk(env: Env): Promise<RadarScanResult> {
       onto: round(onto.score, 3),
       priceScore: round(price.score, 3),
       volatility: round(price.volatility, 2),
+      relStrength:
+        kospiMom20 !== null && sp.closes.length >= 21
+          ? round(pctChange(sp.closes, 20) - kospiMom20, 1)
+          : null,
       edges: JSON.stringify(onto.edges.slice(0, 6)),
       reasons: JSON.stringify([...onto.reasons, ...price.reasons]),
       updatedAt: now,
@@ -127,6 +134,7 @@ export async function radarTop(env: Env, limit: number, order: "desc" | "asc", s
       onto: r.onto,
       priceScore: r.priceScore,
       volatility: r.volatility,
+      relStrength: r.relStrength,
       edges: JSON.parse(r.edges) as { macroId: string; sector: string; contribution: number }[],
       reasons: JSON.parse(r.reasons) as { kind: string; text: string; contribution: number }[],
       updatedAt: r.updatedAt,
@@ -143,11 +151,32 @@ export async function radarFind(env: Env, q: string, limit = 8) {
     items: rows.map((r) => ({
       code: r.code, name: r.name, sector: r.sector, market: r.market,
       price: r.price, changePct: r.changePct, score: r.score, onto: r.onto,
-      priceScore: r.priceScore, volatility: r.volatility,
+      priceScore: r.priceScore, volatility: r.volatility, relStrength: r.relStrength,
       edges: JSON.parse(r.edges) as { macroId: string; sector: string; contribution: number }[],
       reasons: JSON.parse(r.reasons) as { kind: string; text: string; contribution: number }[],
       updatedAt: r.updatedAt,
     })),
+  };
+}
+
+/** 기회 탐색 — 하락장에서도 ①수혜 경로 ②상대 강세 ③약세 경고를 묶어서 낸다. */
+export async function radarOpps(env: Env, limit = 8) {
+  const s = stub(env);
+  if (!s) return { available: false as const, tailwind: [], relative: [], weak: [] };
+  const { tailwind, relative, weak } = await s.opportunities(limit);
+  const mapRow = (r: RadarScoreRow) => ({
+    code: r.code, name: r.name, sector: r.sector, market: r.market,
+    price: r.price, changePct: r.changePct, score: r.score, onto: r.onto,
+    priceScore: r.priceScore, volatility: r.volatility, relStrength: r.relStrength,
+    edges: JSON.parse(r.edges) as { macroId: string; sector: string; contribution: number }[],
+    reasons: JSON.parse(r.reasons) as { kind: string; text: string; contribution: number }[],
+    updatedAt: r.updatedAt,
+  });
+  return {
+    available: true as const,
+    tailwind: tailwind.map(mapRow),
+    relative: relative.map(mapRow),
+    weak: weak.map(mapRow),
   };
 }
 

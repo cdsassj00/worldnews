@@ -32,6 +32,8 @@ export interface RadarScoreRow {
   onto: number;
   priceScore: number;
   volatility: number;
+  /** 20일 수익률 - 코스피 20일 수익률 (%p). 하락장에서 버티는 종목을 찾는 축 */
+  relStrength: number | null;
   /** JSON: {macroId,sector,contribution}[] */
   edges: string;
   /** JSON: {kind,text,contribution}[] */
@@ -66,6 +68,12 @@ export class RadarDB extends DurableObject {
       CREATE INDEX IF NOT EXISTS idx_scores_score ON scores(score);
       CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
     `);
+    // 기존 테이블에 상대강도 컬럼 추가 (이미 있으면 무시)
+    try {
+      this.sql.exec(`ALTER TABLE scores ADD COLUMN rel_strength REAL`);
+    } catch {
+      /* 이미 존재 */
+    }
   }
 
   /** 시드. 이미 있는 코드는 이름·섹터만 갱신한다. */
@@ -100,6 +108,7 @@ export class RadarDB extends DurableObject {
   }
 
   upsertScores(rows: RadarScoreRow[]): number {
+    // INSERT 경로에는 rel_strength 가 없다(구버전 컬럼 순서 유지) — UPDATE 로 함께 채운다.
     for (const r of rows) {
       this.sql.exec(
         `INSERT INTO scores(code,name,sector,market,price,change_pct,score,onto,price_score,volatility,edges,reasons,updated_at)
@@ -107,10 +116,12 @@ export class RadarDB extends DurableObject {
          ON CONFLICT(code) DO UPDATE SET name=excluded.name, sector=excluded.sector, market=excluded.market,
            price=excluded.price, change_pct=excluded.change_pct, score=excluded.score, onto=excluded.onto,
            price_score=excluded.price_score, volatility=excluded.volatility,
-           edges=excluded.edges, reasons=excluded.reasons, updated_at=excluded.updated_at`,
+           edges=excluded.edges, reasons=excluded.reasons, updated_at=excluded.updated_at,
+           rel_strength=?`,
         r.code, r.name, r.sector, r.market, r.price, r.changePct, r.score, r.onto, r.priceScore,
-        r.volatility, r.edges, r.reasons, r.updatedAt,
+        r.volatility, r.edges, r.reasons, r.updatedAt, r.relStrength,
       );
+      this.sql.exec(`UPDATE scores SET rel_strength=? WHERE code=?`, r.relStrength, r.code);
     }
     return rows.length;
   }
@@ -133,6 +144,7 @@ export class RadarDB extends DurableObject {
       onto: Number(r.onto),
       priceScore: Number(r.price_score),
       volatility: Number(r.volatility),
+      relStrength: r.rel_strength === null || r.rel_strength === undefined ? null : Number(r.rel_strength),
       edges: String(r.edges ?? "[]"),
       reasons: String(r.reasons ?? "[]"),
       updatedAt: Number(r.updated_at),
@@ -153,9 +165,39 @@ export class RadarDB extends DurableObject {
       code: String(r.code), name: String(r.name), sector: (r.sector as string | null) ?? null,
       market: String(r.market), price: Number(r.price), changePct: Number(r.change_pct),
       score: Number(r.score), onto: Number(r.onto), priceScore: Number(r.price_score),
-      volatility: Number(r.volatility), edges: String(r.edges ?? "[]"), reasons: String(r.reasons ?? "[]"),
+      volatility: Number(r.volatility),
+      relStrength: r.rel_strength === null || r.rel_strength === undefined ? null : Number(r.rel_strength),
+      edges: String(r.edges ?? "[]"), reasons: String(r.reasons ?? "[]"),
       updatedAt: Number(r.updated_at),
     }));
+  }
+
+  /**
+   * 기회 탐색 — 하락 국면에서 가치가 있는 세 관점.
+   *   tailwind: 지금 거시 신호에서 온톨로지가 양(+)인 종목 = 역풍 속 순풍
+   *   relative: 시장 대비 강세 (20일 상대수익률) = 하락장에서 버티는 힘
+   *   weak:     합성 점수 최하위 = 매도·회피 경고
+   */
+  opportunities(limit: number): { tailwind: RadarScoreRow[]; relative: RadarScoreRow[]; weak: RadarScoreRow[] } {
+    const lim = Math.min(15, Math.max(1, limit));
+    const mapRow = (r: Record<string, unknown>): RadarScoreRow => ({
+      code: String(r.code), name: String(r.name), sector: (r.sector as string | null) ?? null,
+      market: String(r.market), price: Number(r.price), changePct: Number(r.change_pct),
+      score: Number(r.score), onto: Number(r.onto), priceScore: Number(r.price_score),
+      volatility: Number(r.volatility),
+      relStrength: r.rel_strength === null || r.rel_strength === undefined ? null : Number(r.rel_strength),
+      edges: String(r.edges ?? "[]"), reasons: String(r.reasons ?? "[]"), updatedAt: Number(r.updated_at),
+    });
+    const tailwind = this.sql
+      .exec(`SELECT * FROM scores WHERE onto > 0.05 ORDER BY onto DESC LIMIT ?`, lim)
+      .toArray().map(mapRow);
+    const relative = this.sql
+      .exec(`SELECT * FROM scores WHERE rel_strength IS NOT NULL ORDER BY rel_strength DESC LIMIT ?`, lim)
+      .toArray().map(mapRow);
+    const weak = this.sql
+      .exec(`SELECT * FROM scores ORDER BY score ASC LIMIT ?`, lim)
+      .toArray().map(mapRow);
+    return { tailwind, relative, weak };
   }
 
   status(): RadarStatus {

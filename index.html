@@ -77,8 +77,14 @@
         </section>
 
         <section class="card">
-          <h2 class="card-title">전 시장 레이더 <span class="card-tag">KOSPI200+KOSDAQ150</span></h2>
-          <p class="card-sub" id="radar-sub">350종목을 75분 주기로 훑어 신호 상위를 보여줍니다.</p>
+          <h2 class="card-title">기회 탐색 <span class="card-tag">KOSPI200+KOSDAQ150</span></h2>
+          <p class="card-sub" id="radar-sub">하락장에서도 350종목 중 순풍 받는 곳과 피할 곳을 찾습니다.</p>
+          <div class="radar-tabs" id="radar-tabs" role="tablist">
+            <button type="button" class="radar-tab active" data-tab="tailwind" role="tab">수혜 경로</button>
+            <button type="button" class="radar-tab" data-tab="relative" role="tab">상대 강세</button>
+            <button type="button" class="radar-tab" data-tab="weak" role="tab">약세 경고</button>
+          </div>
+          <p class="radar-tab-note" id="radar-tab-note"></p>
           <ul class="hot-list" id="radar-list">
             <li class="skeleton-row"></li>
             <li class="skeleton-row"></li>

@@ -24,7 +24,7 @@ import {
 import { autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle } from "./autotrade";
 import { runStrategy } from "./strategy";
 import { tickerNewsStatus } from "./tickernews";
-import { radarFind, radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
+import { radarFind, radarOpps, radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
 
 export { RadarDB } from "./radar";
 
@@ -383,6 +383,11 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
 
   if (path === "/api/radar/status") {
     return json(await radarStatus(env));
+  }
+
+  if (path === "/api/radar/opps") {
+    // 기회 탐색: 하락 국면에서도 수혜 경로·상대 강세·약세 경고를 낸다.
+    return json(await radarOpps(env, Math.min(15, num(url.searchParams.get("limit"), 8))));
   }
 
   if (path === "/api/radar/scan") {

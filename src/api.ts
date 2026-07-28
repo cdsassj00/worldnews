@@ -315,9 +315,18 @@ export interface RadarItem {
   onto: number;
   priceScore: number;
   volatility: number;
+  /** 20일 수익률 − KOSPI 20일 수익률(%p). 스캔이 한 바퀴 돌기 전엔 null. */
+  relStrength: number | null;
   edges: { macroId: string; sector: string; contribution: number }[];
   reasons: { kind: string; text: string; contribution: number }[];
   updatedAt: number;
+}
+
+export interface RadarOpps {
+  available: boolean;
+  tailwind: RadarItem[];
+  relative: RadarItem[];
+  weak: RadarItem[];
 }
 
 export interface AutoStatus {
@@ -472,6 +481,7 @@ export const api = {
   radarTop: (limit = 12) => request<{ available: boolean; items: RadarItem[] }>(`/api/radar/top?limit=${limit}`),
   radarFind: (q: string) => request<{ available: boolean; items: RadarItem[] }>(`/api/radar/find?q=${encodeURIComponent(q)}`),
   radarStatus: () => request<{ available: boolean; tickers?: number; scored?: number; newestScoreAt?: number }>("/api/radar/status"),
+  radarOpps: (limit = 8) => request<RadarOpps>(`/api/radar/opps?limit=${limit}`),
   autoPlan: () => request<AutoPlan>("/api/auto/plan"),
   autoJournal: () => request<{ items: JournalEntry[] }>("/api/auto/journal"),
   autoRun: (shadow: boolean) =>

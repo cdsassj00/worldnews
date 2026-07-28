@@ -87,6 +87,17 @@ if (radarSt.available && radarSt.scored > 0) {
   console.log("[참고] 종목 검색 검사 건너뜀 (레이더 미적재)");
 }
 
+// 기회 탐색 탭 — 수혜 경로/상대 강세/약세 경고 전환
+check("기회 탐색 탭 3개", (await page.locator("#radar-tabs .radar-tab").count()) === 3);
+await page.click('#radar-tabs .radar-tab[data-tab="weak"]');
+await page.waitForTimeout(300);
+check(
+  "약세 경고 탭 전환",
+  ((await page.locator("#radar-tab-note").textContent()) ?? "").includes("매도"),
+  `${await page.locator("#radar-list li").count()}행`,
+);
+await page.click('#radar-tabs .radar-tab[data-tab="tailwind"]');
+
 // 온톨로지 설명 모달
 await page.click("#btn-onto-help");
 await page.waitForSelector("#onto-help-modal .oh-table", { timeout: 5000 });

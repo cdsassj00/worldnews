@@ -450,6 +450,36 @@ body {
   color: var(--fg-faint);
 }
 
+/* 기회 탐색 탭 — 수혜 경로 / 상대 강세 / 약세 경고 */
+.radar-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 var(--space-1);
+}
+.radar-tab {
+  flex: 1;
+  padding: 4px 6px;
+  font-size: 11.5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--fg-faint);
+  cursor: pointer;
+}
+.radar-tab:hover {
+  background: var(--panel-2);
+}
+.radar-tab.active {
+  background: var(--panel-2);
+  color: var(--fg);
+  border-color: var(--fg-faint);
+}
+.radar-tab-note {
+  margin: 0 0 var(--space-1);
+  font-size: 11.5px;
+  color: var(--fg-faint);
+}
+
 .hot-list,
 .news-list {
   list-style: none;

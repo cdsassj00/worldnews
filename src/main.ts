@@ -4,7 +4,7 @@ import { api, ApiFailure, getTradeToken, setTradeToken, type ConfigResponse, typ
 import { Panel, type OrderDraft } from "./panel";
 import { AutoPanel } from "./autopanel";
 import { Ontology3D } from "./ontology3d";
-import type { OntoState, RadarItem, TickerScore } from "./api";
+import type { OntoState, RadarItem, RadarOpps, TickerScore } from "./api";
 import { dirClass, el, fmtKrw, fmtNum, fmtPct, timeAgo } from "./format";
 
 /** 티커테이프 심볼 → 국가코드 (지금 움직이는 시장 목록용) */
@@ -464,35 +464,84 @@ function renderScoreList(s: OntoState): void {
   );
 }
 
+/* ── 기회 탐색 — 하락장에서도 ①수혜 경로 ②상대 강세 ③약세 경고 ── */
+
+type RadarTab = "tailwind" | "relative" | "weak";
+let radarOppsData: RadarOpps | null = null;
+let radarTab: RadarTab = "tailwind";
+
+const RADAR_TAB_NOTE: Record<RadarTab, string> = {
+  tailwind: "지수와 무관하게 거시 경로가 순풍인 종목 — 매수 검토 관점",
+  relative: "최근 20일, KOSPI보다 잘 버틴 종목(%p) — 하락장의 상대 강세",
+  weak: "종합 점수 최하위 — 보유 중이면 매도·회피 관점",
+};
+
+function setupRadarTabs(): void {
+  const tabs = $("radar-tabs");
+  tabs.addEventListener("click", (ev) => {
+    const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>(".radar-tab");
+    if (!btn) return;
+    radarTab = btn.dataset.tab as RadarTab;
+    for (const b of tabs.querySelectorAll(".radar-tab")) b.classList.toggle("active", b === btn);
+    renderRadarList();
+  });
+}
+
+function renderRadarList(): void {
+  const list = $("radar-list");
+  $("radar-tab-note").textContent = RADAR_TAB_NOTE[radarTab];
+  const d = radarOppsData;
+  if (!d) return;
+  if (!d.available) {
+    list.replaceChildren(el("li", { class: "note", text: "레이더 저장소가 아직 준비되지 않았습니다." }));
+    return;
+  }
+  const items = d[radarTab];
+  if (!items.length) {
+    const msg = radarTab === "relative"
+      ? "상대 강세는 다음 스캔 바퀴부터 채워집니다 — 종목당 약 75분."
+      : "첫 스캔 대기 중 — 크론이 15분마다 80종목씩 채웁니다.";
+    list.replaceChildren(el("li", { class: "note", text: msg }));
+    return;
+  }
+  list.replaceChildren(
+    ...items.map((r) => {
+      // 탭마다 오른쪽 수치의 의미가 다르다: 수혜=온톨로지, 상대=%p, 약세=종합 점수.
+      const val =
+        radarTab === "relative"
+          ? { text: `${(r.relStrength ?? 0) >= 0 ? "+" : ""}${(r.relStrength ?? 0).toFixed(1)}%p`, cls: dirClass(r.relStrength ?? 0) }
+          : radarTab === "tailwind"
+            ? { text: `온톨 +${r.onto.toFixed(3)}`, cls: dirClass(r.onto) }
+            : { text: r.score.toFixed(3), cls: dirClass(r.score) };
+      const btn = el("button", { type: "button" }, [
+        el("span", { class: "hot-name" }, [
+          el("span", { text: r.name }),
+          el("span", { class: "hot-index", text: `${r.sector ?? "미분류"} · ${fmtNum(r.price, 0)}원 · ${fmtPct(r.changePct)}` }),
+        ]),
+        el("span", { class: val.cls, text: val.text }),
+      ]);
+      btn.addEventListener("click", () => panel.openTicker(radarToTicker(r)));
+      return el("li", {}, [btn]);
+    }),
+  );
+}
+
 async function loadRadar(): Promise<void> {
   const list = $("radar-list");
   const sub = $("radar-sub");
   try {
-    const [{ available, items }, st] = await Promise.all([api.radarTop(10), api.radarStatus().catch(() => null)]);
-    if (!available) {
-      list.replaceChildren(el("li", { class: "note", text: "레이더 저장소가 아직 준비되지 않았습니다." }));
-      return;
-    }
-    if (!items.length) {
-      list.replaceChildren(el("li", { class: "note", text: "첫 스캔 대기 중 — 크론이 15분마다 80종목씩 채웁니다." }));
-      return;
-    }
-    if (st?.available && st.scored !== undefined) {
-      sub.textContent = `${st.tickers}종목 중 ${st.scored}개 스캔됨 · 갱신 ${st.newestScoreAt ? timeAgo(st.newestScoreAt) : "-"}`;
-    }
-    list.replaceChildren(
-      ...items.map((r) => {
-        const btn = el("button", { type: "button" }, [
-          el("span", { class: "hot-name" }, [
-            el("span", { text: r.name }),
-            el("span", { class: "hot-index", text: `${r.sector ?? "미분류"} · ${fmtNum(r.price, 0)}원` }),
-          ]),
-          el("span", { class: dirClass(r.score), text: r.score.toFixed(3) }),
-        ]);
-        btn.addEventListener("click", () => panel.openTicker(radarToTicker(r)));
-        return el("li", {}, [btn]);
-      }),
-    );
+    const [opps, st] = await Promise.all([api.radarOpps(8), api.radarStatus().catch(() => null)]);
+    radarOppsData = opps;
+    const regime = ontoState
+      ? ontoState.riskOff >= 0.5
+        ? `하락 국면(위험회피 ${ontoState.riskOff.toFixed(2)}) — 그 안에서 순풍 받는 곳을 찾습니다`
+        : `위험회피 ${ontoState.riskOff.toFixed(2)} — 시장 전반과 별개로 종목별 신호를 봅니다`
+      : "";
+    const scan = st?.available && st.scored !== undefined
+      ? `${st.tickers}종목 중 ${st.scored}개 스캔 · 갱신 ${st.newestScoreAt ? timeAgo(st.newestScoreAt) : "-"}`
+      : "";
+    sub.textContent = [regime, scan].filter(Boolean).join(" · ") || sub.textContent;
+    renderRadarList();
   } catch {
     list.replaceChildren(el("li", { class: "note", text: "레이더 로딩 실패" }));
   }
@@ -726,6 +775,7 @@ async function boot(): Promise<void> {
   setupAutoModal();
   setupTickerSearch();
   setupOntoHelp();
+  setupRadarTabs();
 
   await Promise.allSettled([loadOntology(), loadTape(), loadRadar()]);
   // 시세는 주기적으로 갱신(90초 캐시와 맞춤), 온톨로지는 전략 캐시(5분)에 맞춘다
