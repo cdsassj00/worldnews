@@ -359,6 +359,8 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   // 위험회피 국면에서는 사이즈를 줄인다 (최대 절반까지)
   const riskScale = 1 - Math.min(0.5, strategy.riskOff * 0.5);
   let remaining = budget;
+  // 실제 주문가능 현금도 주문별로 차감한다 — 안 하면 두 번째 주문이 KIS에서 잔액 부족으로 거절된다
+  let cashLeft = account.connected ? account.cash : Number.POSITIVE_INFINITY;
 
   const coreCodes = new Set(UNIVERSE.filter((t) => t.core).map((t) => t.code));
   if (!targetHit) {
@@ -373,7 +375,7 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
       if (!pos && openPositions + orders.filter((o) => o.side === "buy").length >= cfg.maxPositions) continue;
 
       const currentValue = pos ? pos.qty * sc.price : 0;
-      const room = Math.min(perPositionCap - currentValue, remaining, cfg.maxOrderNotionalKrw);
+      const room = Math.min(perPositionCap - currentValue, remaining, cfg.maxOrderNotionalKrw, cashLeft);
       const sized = room * riskScale * Math.min(1, 0.5 + sc.score);
       const limit = roundToTick(sc.price * (1 + SLIPPAGE), "up");
       if (limit > room) {
@@ -390,9 +392,10 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
       }
       const notional = limit * qty;
       if (notional < cfg.minOrderKrw) continue;
-      if (account.connected && notional > account.cash) continue;
+      if (notional > cashLeft) continue;
 
       remaining -= notional;
+      cashLeft -= notional;
       orders.push({
         side: "buy",
         code: sc.code,
