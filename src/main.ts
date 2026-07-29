@@ -502,6 +502,22 @@ const RADAR_TAB_NOTE: Record<RadarTab, string> = {
   weak: "종합 점수 최하위 — 보유 중이면 매도·회피 관점",
 };
 
+/* ── 밝은/어두운 테마 토글 (localStorage 에 기억) ─────────────── */
+
+function setupTheme(): void {
+  const btn = $("btn-theme");
+  const apply = (mode: "light" | "dark") => {
+    if (mode === "light") document.documentElement.dataset.theme = "light";
+    else delete document.documentElement.dataset.theme;
+    btn.textContent = mode === "light" ? "🌙 어둡게" : "☀️ 밝게";
+    try { localStorage.setItem("wfg-theme", mode); } catch { /* 사생활 모드 등 */ }
+  };
+  apply(document.documentElement.dataset.theme === "light" ? "light" : "dark");
+  btn.addEventListener("click", () => {
+    apply(document.documentElement.dataset.theme === "light" ? "dark" : "light");
+  });
+}
+
 function setupRadarTabs(): void {
   const tabs = $("radar-tabs");
   tabs.addEventListener("click", (ev) => {
@@ -807,6 +823,7 @@ async function boot(): Promise<void> {
   setupTickerSearch();
   setupOntoHelp();
   setupRadarTabs();
+  setupTheme();
 
   await Promise.allSettled([loadOntology(), loadTape(), loadRadar()]);
   // 시세는 주기적으로 갱신(90초 캐시와 맞춤), 온톨로지는 전략 캐시(5분)에 맞춘다

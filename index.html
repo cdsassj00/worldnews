@@ -8,7 +8,11 @@
       name="description"
       content="3D 지구본에서 나라를 클릭하면 그 나라 금융뉴스와 지수, 종목 점수와 매매 계획을 보여주고 한국투자증권 계좌로 매수·매도까지 연결하는 터미널."
     />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="dark light" />
+    <!-- 저장된 테마를 첫 페인트 전에 적용해 화면이 번쩍이지 않게 한다 -->
+    <script>
+      try { if (localStorage.getItem("wfg-theme") === "light") document.documentElement.dataset.theme = "light"; } catch (e) {}
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -40,6 +44,7 @@
       <div class="tape" id="tape" role="marquee" aria-label="글로벌 시세 티커">
         <div class="tape-track" id="tape-track"></div>
       </div>
+      <button class="btn btn-ghost" id="btn-theme" type="button" title="화면 밝기 전환">☀️ 밝게</button>
       <button class="btn btn-ghost" id="btn-auto" type="button">자동매매</button>
       <button class="btn btn-ghost" id="btn-auth" type="button">거래 암호</button>
     </header>

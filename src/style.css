@@ -41,6 +41,43 @@
   --footer-h: 30px;
 }
 
+/*
+ * 밝은 테마 — 상단 "☀️ 밝게" 토글로 전환한다.
+ * 3D 온톨로지 스테이지와 지구본(우주 배경)은 밝게 하면 선·라벨이 안 읽혀서
+ * 차트 영역만 의도적으로 어둡게 유지한다 — 금융 앱의 통상적인 처리다.
+ * 등락 색(상승 빨강/하락 파랑)은 그대로, 명도만 배경에 맞춰 조정.
+ */
+:root[data-theme="light"] {
+  --bg: #eef2f7;
+  --bg-2: #e5eaf2;
+  --panel: #ffffff;
+  --panel-2: #f1f5f9;
+  --muted: #e2e8f0;
+  --border: #cbd5e1;
+  --border-strong: #94a3b8;
+  --fg: #0f172a;
+  --fg-dim: #3d4c66;
+  --fg-faint: #5d6c84;
+  --up: #dc2626;
+  --up-strong: #b91c1c;
+  --down: #2563eb;
+  --down-strong: #1d4ed8;
+  --ring: #0284c7;
+}
+[data-theme="light"] .topbar {
+  background: linear-gradient(180deg, #ffffff, #eef2f7);
+}
+[data-theme="light"] .footer {
+  background: #ffffff;
+}
+[data-theme="light"] .skeleton-row {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+}
+[data-theme="light"] .reco-head:hover {
+  background: #e2e8f0;
+}
+
 * {
   box-sizing: border-box;
 }
