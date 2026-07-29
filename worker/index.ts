@@ -486,12 +486,18 @@ export default {
    * AUTOTRADE_ENABLED 가 false 면 runCycle 이 그림자 실행으로 떨어져 일지만 남긴다.
    */
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    // 반드시 순차로: 두 작업이 같은 인보케이션의 서브리퀘스트 한도(50)를 나눠 쓴다.
+    // 동시에 돌리면 캐시가 식은 09:00(=00:00 UTC, KV 리셋 직후)에 주문 fetch 가
+    // 한도에 걸려 kis_unreachable 로 실패한다 — 2026-07-29 첫 실주문에서 실제 발생.
+    // 주문(runCycle)이 예산을 먼저 쓰고, 레이더는 남은 예산으로 돈다(실패해도 15분 뒤 재시도).
     ctx.waitUntil(
-      runCycle(env).catch(() => {
-        /* 크론은 조용히 실패한다. 원인은 일지·tail 로 확인 */
-      }),
+      runCycle(env)
+        .catch(() => {
+          /* 크론은 조용히 실패한다. 원인은 일지·tail 로 확인 */
+        })
+        // 전 시장 레이더: 한 번에 80종목씩, 75분에 전 시장 1바퀴
+        .then(() => radarScanChunk(env))
+        .catch(() => undefined),
     );
-    // 전 시장 레이더: 한 번에 80종목씩, 75분에 전 시장 1바퀴
-    ctx.waitUntil(radarScanChunk(env).catch(() => undefined));
   },
 } satisfies ExportedHandler<Env>;
