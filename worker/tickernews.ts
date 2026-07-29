@@ -57,10 +57,16 @@ export async function readTickerNews(env: Env): Promise<TickerNewsMap> {
   return merged;
 }
 
-/** 종목 별칭이 제목/요약에 실제로 들어간 기사만 남긴다 (검색이 느슨하게 잡아오는 것 방지) */
+/** 이보다 오래된 기사는 점수에서 제외 — 이미 가격에 반영된 정보다 */
+const MAX_ARTICLE_AGE_MS = 48 * 3600 * 1000;
+
+/** 종목 별칭이 제목/요약에 실제로 들어간 "최근" 기사만 남긴다 (검색이 느슨하게 잡아오는 것 방지) */
 function matchArticles(items: NewsItem[], aliases: string[]): NewsItem[] {
   const needles = aliases.map((a) => a.toLowerCase());
+  const now = Date.now();
   return items.filter((it) => {
+    // 날짜를 모르는(publishedAt=0) 기사는 남긴다 — 검색 결과 대부분은 최신이고, 다 버리면 표본이 사라진다
+    if (it.publishedAt > 0 && now - it.publishedAt > MAX_ARTICLE_AGE_MS) return false;
     const hay = `${it.title} ${it.summary}`.toLowerCase();
     return needles.some((n) => hay.includes(n));
   });

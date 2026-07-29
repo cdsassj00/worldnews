@@ -110,7 +110,12 @@ export async function runStrategy(env: Env): Promise<StrategyResult> {
     }
   }
 
-  const news: NewsItem[] = newsResult?.data.items ?? [];
+  // 48시간 넘은 기사는 점수에서 제외 — 이미 가격에 반영된 정보다 (날짜 미상은 유지)
+  const NEWS_MAX_AGE_MS = 48 * 3600 * 1000;
+  const newsNow = Date.now();
+  const news: NewsItem[] = (newsResult?.data.items ?? []).filter(
+    (n) => !n.publishedAt || newsNow - n.publishedAt <= NEWS_MAX_AGE_MS,
+  );
   const bySymbol = new Map(priceSeries.map((s) => [s.symbol.toUpperCase(), s]));
   const riskOff = riskOffFrom(macro);
 

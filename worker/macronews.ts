@@ -42,6 +42,7 @@ ${MACRO.map((m) => `- ${m.id}: ${m.nameKo} (상승 = ${m.upMeansKo})`).join("\n"
 - impact 는 해당 요인 "값"이 오를 압력이면 양수, 내릴 압력이면 음수. -1~1.
 - 확실한 것만 냅니다. 애매하면 그 요인은 제외합니다. 보통 2~5개면 충분합니다.
 - 개별 기업 기사(실적·인사)는 무시합니다. 시장 전체를 움직이는 기사만 봅니다.
+- [n시간 전] 표시가 있는 헤드라인은 그 나이를 감안합니다. 하루 넘게 지난 기사는 이미 가격에 반영됐을 가능성이 크니 보수적으로 봅니다.
 - reasonKo 는 근거 헤드라인을 요약한 한국어 한 문장입니다.
 - JSON 만 출력합니다: {"adjustments":[{"id":"OIL","impact":0.5,"reasonKo":"..."}]}`;
 
@@ -77,16 +78,33 @@ async function interpret(env: Env): Promise<MacroNewsResult> {
 
   // 글로벌 + 국내 헤드라인 (둘 다 이미 10분 캐시가 있어 추가 fetch 비용이 거의 없다)
   const [global, kr] = await Promise.allSettled([getGlobalNews(env), getNews(env, "KR", "대한민국")]);
-  const titles = [
+  const all = [
     ...(global.status === "fulfilled" ? global.value.data.items : []),
     ...(kr.status === "fulfilled" ? kr.value.data.items : []),
-  ]
-    .map((n) => n.title)
-    .filter(Boolean);
-  const uniq = [...new Set(titles)].slice(0, 22);
-  if (uniq.length < 3) return { generatedAt: Date.now(), provider: null, headlinesUsed: uniq.length, adjustments: [] };
+  ].filter((n) => n.title);
 
-  const prompt = `아래 최근 헤드라인을 읽고 거시요인 보정을 내세요.\n\n${uniq.map((t) => `- ${t}`).join("\n")}`;
+  // 오늘 자 뉴스만: 36시간 넘은 기사는 이미 가격에 반영된 정보다. 신선한 것부터 최신순.
+  // 신선분이 너무 적으면(휴일 등) 오래된 것으로 채우되, 나이를 붙여 AI가 감안하게 한다.
+  const now = Date.now();
+  const MAX_AGE_MS = 36 * 3600 * 1000;
+  const fresh = all
+    .filter((n) => n.publishedAt > 0 && now - n.publishedAt <= MAX_AGE_MS)
+    .sort((a, b) => b.publishedAt - a.publishedAt);
+  const pool = fresh.length >= 8 ? fresh : [...fresh, ...all.filter((n) => !fresh.includes(n))];
+
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  let used = 0;
+  for (const n of pool) {
+    if (seen.has(n.title)) continue;
+    seen.add(n.title);
+    const ageH = n.publishedAt > 0 ? Math.round((now - n.publishedAt) / 3600000) : null;
+    lines.push(`- ${ageH !== null ? `[${ageH}시간 전] ` : ""}${n.title}`);
+    if (++used >= 22) break;
+  }
+  if (lines.length < 3) return { generatedAt: Date.now(), provider: null, headlinesUsed: lines.length, adjustments: [] };
+
+  const prompt = `아래 최근 헤드라인을 읽고 거시요인 보정을 내세요.\n\n${lines.join("\n")}`;
 
   let adjustments: MacroAdjustment[] = [];
   if (status.provider === "anthropic") {
@@ -111,17 +129,26 @@ async function interpret(env: Env): Promise<MacroNewsResult> {
     adjustments = parseAdjustments(typeof out === "string" ? out : (out?.response ?? JSON.stringify(out ?? "")));
   }
 
-  return { generatedAt: Date.now(), provider: status.provider, headlinesUsed: uniq.length, adjustments };
+  return { generatedAt: Date.now(), provider: status.provider, headlinesUsed: lines.length, adjustments };
 }
 
-/** 30분 캐시. 실패하면 빈 보정(=가격 관측만)으로 5분 뒤 재시도. */
+/**
+ * 캐시: 장 전후·장중(KST 평일 07~16시)은 30분, 그 외(밤·주말)는 90분.
+ * 크론이 24시간 도는데 밤마다 30분꼴로 AI를 부르면 토큰 비용만 쌓인다 —
+ * 밤사이 미국장 헤드라인은 90분 주기로도 아침 판단에 충분히 최신이다.
+ */
 export async function getMacroNewsAdjust(env: Env): Promise<MacroNewsResult> {
+  const kst = new Date(Date.now() + 9 * 3600 * 1000);
+  const wd = kst.getUTCDay();
+  const h = kst.getUTCHours();
+  const activeHours = wd >= 1 && wd <= 5 && h >= 7 && h <= 16;
+  const ttl = activeHours ? 1800 : 5400;
   const { data } = await cached(
     env,
     "mnews:v1",
-    1800,
+    ttl,
     () => interpret(env),
-    (r) => (r.adjustments.length ? 1800 : 300),
+    (r) => (r.adjustments.length ? ttl : 300),
   );
   return data;
 }
