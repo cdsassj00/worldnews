@@ -474,8 +474,10 @@ export default {
     if (url.pathname === "/rss.xml") {
       return rssXml(env).catch(() => new Response("rss unavailable", { status: 503 }));
     }
-    if (url.pathname === "/sitemap.xml") {
-      // 브리핑 페이지가 쌓일 때마다 자동으로 사이트맵에 들어가도록 동적 생성
+    if (url.pathname === "/sitemap.xml" || url.pathname === "/sitemap-main.xml") {
+      // 브리핑 페이지가 쌓일 때마다 자동으로 사이트맵에 들어가도록 동적 생성.
+      // /sitemap-main.xml 은 같은 내용의 별칭 — 서치콘솔에서 "가져올 수 없음" 상태가
+      // 안 풀릴 때 새 행으로 제출해 즉시 재수집시키는 용도.
       return sitemapXml(env).catch(() => new Response("sitemap unavailable", { status: 503 }));
     }
     if (url.pathname === "/brief" || url.pathname === "/brief/") {
