@@ -25,6 +25,7 @@ import { autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, 
 import { runStrategy } from "./strategy";
 import { tickerNewsStatus } from "./tickernews";
 import { radarFind, radarOpps, radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
+import { rssXml } from "./rss";
 
 export { RadarDB } from "./radar";
 
@@ -462,6 +463,10 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === "/rss.xml") {
+      // 네이버 서치어드바이저 RSS 제출용 일일 브리핑 피드 (정적 자산이 아니라 동적 생성)
+      return rssXml(env).catch(() => new Response("rss unavailable", { status: 503 }));
+    }
     if (!url.pathname.startsWith("/api/")) {
       return env.ASSETS.fetch(request);
     }
