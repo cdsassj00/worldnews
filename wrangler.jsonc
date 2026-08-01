@@ -88,5 +88,6 @@
   //   wrangler secret put KIS_APP_SECRET
   //   wrangler secret put KIS_ACCOUNT        // 예: 12345678-01
   //   wrangler secret put TRADE_TOKEN        // 주문/잔고 API 접근 암호
-  //   wrangler secret put ANTHROPIC_API_KEY  // (선택) AI 분석을 Claude로 처리
+  //   wrangler secret put GEMINI_API_KEY     // (선택) AI 를 Gemini Flash 로 — 1순위, 사실상 무료
+  //   wrangler secret put ANTHROPIC_API_KEY  // (선택) AI 분석을 Claude로 처리 — 2순위
 }

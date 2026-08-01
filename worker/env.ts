@@ -40,7 +40,9 @@ export interface Env {
   AUTO_MAX_POSITIONS?: string;
 
   // AI 분석
+  GEMINI_API_KEY?: string; // 있으면 Gemini 를 1순위로 사용 (시크릿, aistudio.google.com/apikey)
+  GEMINI_MODEL?: string; // 기본 gemini-2.5-flash
   ANTHROPIC_API_KEY?: string; // 있으면 Claude 사용 (시크릿)
-  AI_MODEL?: string; // 기본 claude-opus-5
+  AI_MODEL?: string; // 기본 claude-haiku-4-5
   WORKERS_AI_MODEL?: string; // 기본 @cf/meta/llama-3.3-70b-instruct-fp8-fast
 }

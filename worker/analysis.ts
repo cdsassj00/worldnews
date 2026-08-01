@@ -1,10 +1,14 @@
 /**
  * AI 시장 분석.
  *
- * 제공자 우선순위
- *  1) ANTHROPIC_API_KEY 시크릿이 있으면 Claude (기본 claude-opus-5)
- *  2) Workers AI 바인딩(AI)이 있으면 그걸로 (별도 키 불필요)
- *  3) 둘 다 없으면 기능 비활성 — 화면에 이유를 표시한다
+ * 제공자 우선순위 (비용 순 — 사용자 요청: 토큰 싼 걸로)
+ *  1) GEMINI_API_KEY 가 있으면 Gemini Flash (무료 쿼터가 커서 사실상 0원)
+ *  2) ANTHROPIC_API_KEY 가 있으면 Claude (기본 claude-haiku-4-5 — 저비용 티어)
+ *  3) Workers AI 바인딩(AI) — 워커 요금에 포함, 별도 키 불필요
+ *  4) 전부 없으면 기능 비활성 — 화면에 이유를 표시한다
+ *
+ * 앞 순위가 실패(과부하·타임아웃)하면 다음 순위로 자동 폴백한다 —
+ * 한 제공자가 죽었다고 화면에 internal_error 를 던지지 않는다.
  *
  * 입력은 이 서비스가 이미 계산한 것들(지수, 뉴스 제목, 종목 점수·근거)이고,
  * 모델은 그걸 한국어 브리핑으로 정리한다. 새 숫자를 만들어내지 말라고 명시한다.
@@ -16,9 +20,11 @@ import type { NewsItem } from "./news";
 import type { RecommendResult } from "./recommend";
 import { ApiError, cached } from "./util";
 
+export type AiProvider = "gemini" | "anthropic" | "workers-ai";
+
 export interface AnalysisResult {
   cc: string;
-  provider: "anthropic" | "workers-ai";
+  provider: AiProvider;
   model: string;
   generatedAt: number;
   /** 3줄 요약 */
@@ -34,18 +40,28 @@ export interface AnalysisResult {
 
 export interface AiStatus {
   enabled: boolean;
-  provider: "anthropic" | "workers-ai" | null;
+  provider: AiProvider | null;
   model: string | null;
   reason: string;
 }
 
-const DEFAULT_CLAUDE_MODEL = "claude-opus-5";
+const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+// 사용자 요청(2026-08-01)으로 저비용 티어를 기본값으로 한다. 되돌리려면 AI_MODEL 로 오버라이드.
+const DEFAULT_CLAUDE_MODEL = "claude-haiku-4-5";
 const DEFAULT_WORKERS_AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
 const DISCLAIMER =
   "AI가 정리한 참고 브리핑입니다. 투자 자문이 아니며 수익을 보장하지 않습니다. 원문 뉴스와 지표를 직접 확인하세요.";
 
 export function aiStatus(env: Env): AiStatus {
+  if (env.GEMINI_API_KEY) {
+    return {
+      enabled: true,
+      provider: "gemini",
+      model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+      reason: "Gemini API 키로 Gemini Flash 분석을 사용합니다(저비용).",
+    };
+  }
   if (env.ANTHROPIC_API_KEY) {
     return {
       enabled: true,
@@ -166,19 +182,49 @@ ${recoText}
 
 /* ── 제공자별 호출 ─────────────────────────────── */
 
+/** Gemini generateContent — JSON 강제 출력. 워커 어디서든 재사용할 수 있게 단순 REST 로 부른다. */
+export async function geminiText(env: Env, system: string, prompt: string, maxTokens = 2000): Promise<string> {
+  const model = env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY! },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: maxTokens, responseMimeType: "application/json" },
+    }),
+  });
+  if (!res.ok) {
+    throw new ApiError(502, "gemini_error", { status: res.status, body: (await res.text()).slice(0, 300) });
+  }
+  const out = (await res.json()) as {
+    candidates?: { content?: { parts?: { text?: string }[] } }[];
+  };
+  const text = (out.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
+  if (!text) throw new ApiError(502, "ai_empty_response", { provider: "gemini" });
+  return text;
+}
+
+async function runGemini(env: Env, prompt: string): Promise<{ data: AnalysisPayload; model: string }> {
+  const model = env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  const text = await geminiText(
+    env,
+    `${SYSTEM_PROMPT}\n\n반드시 아래 JSON 형식만 출력하세요:\n{"summary":["..."],"picks":[{"name":"","symbol":"","stance":"","reason":""}],"risks":["..."],"checklist":["..."]}`,
+    prompt,
+  );
+  return { data: parsePayload(text), model };
+}
+
 async function runAnthropic(env: Env, prompt: string): Promise<{ data: AnalysisPayload; model: string }> {
   const model = env.AI_MODEL || DEFAULT_CLAUDE_MODEL;
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY! });
 
+  // output_config(effort·json_schema)는 4.6+ 전용이라 저비용 티어(haiku-4-5)에서 400 이 난다.
+  // 모델 무관하게 돌도록 프롬프트로 JSON 형식을 강제하고 파서가 관대하게 받는다.
   const response = await client.messages.create({
     model,
-    max_tokens: 4000,
-    // 짧은 브리핑이라 사고 깊이는 낮게 잡아 지연·비용을 줄인다.
-    output_config: {
-      effort: "low",
-      format: { type: "json_schema", schema: OUTPUT_SCHEMA as unknown as Record<string, unknown> },
-    },
-    system: SYSTEM_PROMPT,
+    max_tokens: 2500,
+    system: `${SYSTEM_PROMPT}\n\n반드시 아래 JSON 형식만 출력하세요(설명·코드블록 금지):\n{"summary":["..."],"picks":[{"name":"","symbol":"","stance":"","reason":""}],"risks":["..."],"checklist":["..."]}`,
     messages: [{ role: "user", content: prompt }],
   });
 
@@ -278,23 +324,33 @@ export async function analyze(
   news: NewsItem[],
   reco: RecommendResult | null,
 ): Promise<AnalysisResult> {
-  const status = aiStatus(env);
-  if (!status.enabled) throw new ApiError(503, "ai_disabled", { hint: status.reason });
-
   const prompt = buildUserPrompt(market, indices, news, reco);
-  const { data, model } =
-    status.provider === "anthropic" ? await runAnthropic(env, prompt) : await runWorkersAi(env, prompt);
 
-  if (!data.summary.length) throw new ApiError(502, "ai_empty_summary");
+  // 비용 순으로 시도하고, 실패하면 다음 제공자로 폴백한다.
+  const attempts: { provider: AiProvider; run: () => Promise<{ data: AnalysisPayload; model: string }> }[] = [];
+  if (env.GEMINI_API_KEY) attempts.push({ provider: "gemini", run: () => runGemini(env, prompt) });
+  if (env.ANTHROPIC_API_KEY) attempts.push({ provider: "anthropic", run: () => runAnthropic(env, prompt) });
+  if (env.AI) attempts.push({ provider: "workers-ai", run: () => runWorkersAi(env, prompt) });
+  if (!attempts.length) throw new ApiError(503, "ai_disabled", { hint: aiStatus(env).reason });
 
-  return {
-    cc: market.cc,
-    provider: status.provider!,
-    model,
-    generatedAt: Date.now(),
-    ...data,
-    disclaimer: DISCLAIMER,
-  };
+  let lastErr: unknown = null;
+  for (const a of attempts) {
+    try {
+      const { data, model } = await a.run();
+      if (!data.summary.length) throw new ApiError(502, "ai_empty_summary");
+      return {
+        cc: market.cc,
+        provider: a.provider,
+        model,
+        generatedAt: Date.now(),
+        ...data,
+        disclaimer: DISCLAIMER,
+      };
+    } catch (err) {
+      lastErr = err; // 다음 제공자로
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new ApiError(502, "ai_all_providers_failed");
 }
 
 /** 15분 캐시. 같은 국가를 여러 명이 봐도 모델 호출은 한 번이다. */

@@ -28,14 +28,14 @@ export interface KisStatus {
 
 export interface AiStatus {
   enabled: boolean;
-  provider: "anthropic" | "workers-ai" | null;
+  provider: "gemini" | "anthropic" | "workers-ai" | null;
   model: string | null;
   reason: string;
 }
 
 export interface AnalysisResult {
   cc: string;
-  provider: "anthropic" | "workers-ai";
+  provider: "gemini" | "anthropic" | "workers-ai";
   model: string;
   generatedAt: number;
   summary: string[];

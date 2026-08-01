@@ -199,7 +199,7 @@ export class Panel {
     out.push(
       el("p", {
         class: "note",
-        text: `${a.disclaimer} · ${a.provider === "anthropic" ? "Claude" : "Workers AI"} (${a.model}) · ${new Date(
+        text: `${a.disclaimer} · ${a.provider === "gemini" ? "Gemini" : a.provider === "anthropic" ? "Claude" : "Workers AI"} (${a.model}) · ${new Date(
           a.generatedAt,
         ).toLocaleString("ko-KR")}`,
       }),
