@@ -134,6 +134,7 @@ function pageShell(title: string, desc: string, canonicalPath: string, body: str
   const html = `<!doctype html>
 <html lang="ko">
 <head>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5862755346780724" crossorigin="anonymous"></script>
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-T4FN3ETNDQ"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-T4FN3ETNDQ');</script>
 <meta charset="utf-8" />
