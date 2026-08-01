@@ -25,7 +25,7 @@ import { autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, 
 import { runStrategy } from "./strategy";
 import { tickerNewsStatus } from "./tickernews";
 import { radarFind, radarOpps, radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
-import { rssXml } from "./rss";
+import { briefIndex, briefPage, rssXml, sitemapXml } from "./rss";
 
 export { RadarDB } from "./radar";
 
@@ -463,9 +463,20 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    // SEO 표면 — 전부 워커가 동적으로 만든다 (SPA 는 크롤러에게 줄 본문이 없다)
     if (url.pathname === "/rss.xml") {
-      // 네이버 서치어드바이저 RSS 제출용 일일 브리핑 피드 (정적 자산이 아니라 동적 생성)
       return rssXml(env).catch(() => new Response("rss unavailable", { status: 503 }));
+    }
+    if (url.pathname === "/sitemap.xml") {
+      // 브리핑 페이지가 쌓일 때마다 자동으로 사이트맵에 들어가도록 동적 생성
+      return sitemapXml(env).catch(() => new Response("sitemap unavailable", { status: 503 }));
+    }
+    if (url.pathname === "/brief" || url.pathname === "/brief/") {
+      return briefIndex(env).catch(() => new Response("unavailable", { status: 503 }));
+    }
+    const briefMatch = url.pathname.match(/^\/brief\/(\d{4}-\d{2}-\d{2})$/);
+    if (briefMatch) {
+      return briefPage(env, briefMatch[1]).catch(() => new Response("unavailable", { status: 503 }));
     }
     if (!url.pathname.startsWith("/api/")) {
       return env.ASSETS.fetch(request);
