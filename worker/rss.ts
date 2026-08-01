@@ -14,7 +14,7 @@ import { runStrategy } from "./strategy";
 import { cached } from "./util";
 
 const KEY = "rss:v1";
-const SITE = "https://worldnews.sjshin.workers.dev";
+const SITE = "https://stockontology.cc";
 
 export interface RssDay {
   date: string; // YYYY-MM-DD (KST)

@@ -7,9 +7,19 @@
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // 워커가 먼저 받아야 옛 주소(workers.dev)의 "/" 같은 정적 경로도 301 로 넘길 수 있다
+    "run_worker_first": true
   },
   "observability": { "enabled": true },
+  // 커스텀 도메인 (Cloudflare Registrar 에서 구매 — 존이 같은 계정에 있어 자동 연결)
+  "routes": [
+    { "pattern": "stockontology.cc", "custom_domain": true },
+    { "pattern": "www.stockontology.cc", "custom_domain": true }
+  ],
+  // 옛 주소(workers.dev)는 죽이지 않고 301 로 새 도메인에 넘긴다 — 검색 색인 승계용.
+  // routes 를 추가하면 기본값이 false 로 떨어져 404 가 되므로 명시적으로 켠다.
+  "workers_dev": true,
   "kv_namespaces": [
     { "binding": "CACHE", "id": "38b0ce18a5b84fa69ff47b10c6648ad6" }
   ],

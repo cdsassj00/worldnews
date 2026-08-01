@@ -463,6 +463,13 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    // 정식 주소는 stockontology.cc — 옛 workers.dev 주소와 www 는 301 로 넘겨
+    // 그동안 쌓인 검색 색인이 새 도메인으로 승계되게 한다.
+    if (url.hostname === "worldnews.sjshin.workers.dev" || url.hostname === "www.stockontology.cc") {
+      url.hostname = "stockontology.cc";
+      const method = request.method.toUpperCase();
+      return Response.redirect(url.toString(), method === "GET" || method === "HEAD" ? 301 : 308);
+    }
     // SEO 표면 — 전부 워커가 동적으로 만든다 (SPA 는 크롤러에게 줄 본문이 없다)
     if (url.pathname === "/rss.xml") {
       return rssXml(env).catch(() => new Response("rss unavailable", { status: 503 }));

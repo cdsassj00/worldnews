@@ -3,4 +3,4 @@ User-agent: *
 Allow: /
 Disallow: /api/
 
-Sitemap: https://worldnews.sjshin.workers.dev/sitemap.xml
+Sitemap: https://stockontology.cc/sitemap.xml
