@@ -191,7 +191,12 @@ export async function geminiText(env: Env, system: string, prompt: string, maxTo
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: maxTokens, responseMimeType: "application/json" },
+      generationConfig: {
+        maxOutputTokens: maxTokens,
+        responseMimeType: "application/json",
+        // 기계적 JSON 생성이라 사고 토큰은 비용·지연 낭비다 (2.5-flash 는 기본 켜짐)
+        thinkingConfig: { thinkingBudget: 0 },
+      },
     }),
   });
   if (!res.ok) {
