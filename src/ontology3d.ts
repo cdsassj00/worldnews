@@ -41,8 +41,29 @@ export interface OntoState {
   macroLinks?: { from: string; to: string; sign: 1 | -1; ko: string }[];
   /** 거시 층의 의미론적 클러스터 — 배치 순서와 캡션에 쓴다 */
   macroClusters?: { nameKo: string; ids: string[] }[];
-  /** 전체 섹터와 민감도 — 개념 그래프의 가운데 층 */
+  /** 전체 섹터와 민감도 — 결론이 없을 때의 폴백 층 */
   sectors?: { sector: string; sensitivity: Record<string, number> }[];
+  /**
+   * 온톨로지 결론 — 섹터·종목은 온톨로지의 구성물이 아니라 분석의 출력이므로,
+   * 결론에 오른 것만 그래프에 세운다.
+   */
+  verdict?: {
+    sectors: { recommend: VerdictSectorNode[]; avoid: VerdictSectorNode[] };
+    stocks: { recommend: VerdictStockNode[]; avoid: VerdictStockNode[] };
+  };
+}
+
+export interface VerdictSectorNode {
+  sector: string;
+  score: number;
+  edges: { macroId: string; contribution: number }[];
+}
+
+export interface VerdictStockNode {
+  code: string;
+  name: string;
+  sector: string | null;
+  score: number;
 }
 
 export interface Onto3DOptions {
@@ -73,6 +94,8 @@ interface EdgeObj {
   line: THREE.Line;
   pulse: THREE.Mesh;
   phase: number;
+  /** 지금 작동하지 않는 인과 링크 — 구조만 흐리게 남긴다 */
+  dim?: boolean;
 }
 
 const RING = { macro: 3.2, sector: 4.9, ticker: 6.9 };
@@ -267,29 +290,57 @@ export class Ontology3D {
       this.captions.push(sprite);
     });
 
-    // 섹터는 전체를 세운다 — 개념 그래프의 가운데 층
-    const sectorDefs = state.sectors ?? [];
-    sectorDefs.forEach((s, i) => {
-      this.addNode("sector", s.sector, s.sector, "", place(i, sectorDefs.length, RING.sector, Y.sector + (i % 2 ? 0.45 : -0.45)), 0);
-    });
-
-    // 거시 → 섹터: 민감도 × 유효신호가 유의미한 것만 그린다 (전부 그리면 인과가 안 보인다)
-    for (const s of sectorDefs) {
-      for (const [macroId, sens] of Object.entries(s.sensitivity)) {
-        const m = macroById.get(macroId);
-        if (!m) continue;
-        const contribution = sens * effVal(m);
-        if (Math.abs(contribution) < 0.12) continue;
-        this.addEdge(macroId, "macro", s.sector, "sector", Math.round(contribution * 1000) / 1000);
+    /* 가운데·아래 층 = 결론의 시각화.
+     * 결론(verdict)이 있으면: 추천/회피에 오른 섹터와 종목만 세운다 — 그래프가
+     * "온톨로지 분석 결과 이런 섹터·이런 종목"을 그대로 보여주는 화면이 된다.
+     * 결론이 아직 없으면(로딩 초기): 민감도 표 기반 폴백. */
+    if (state.verdict) {
+      const vSectors = [...state.verdict.sectors.recommend, ...state.verdict.sectors.avoid];
+      vSectors.forEach((s, i) => {
+        this.addNode("sector", s.sector, s.sector, `${s.score >= 0 ? "+" : ""}${s.score.toFixed(2)}`, place(i, vSectors.length, RING.sector, Y.sector + (i % 2 ? 0.45 : -0.45)), s.score);
+      });
+      for (const s of vSectors) {
+        for (const e of s.edges) {
+          if (Math.abs(e.contribution) < 0.05) continue;
+          this.addEdge(e.macroId, "macro", s.sector, "sector", e.contribution);
+        }
+      }
+      const vStocks = [...state.verdict.stocks.recommend, ...state.verdict.stocks.avoid];
+      vStocks.forEach((t, i) => {
+        const pos = place(i, vStocks.length, RING.ticker, Y.ticker + (i % 2 ? 0.62 : -0.62));
+        this.addNode("ticker", t.code, t.name, t.score.toFixed(2), pos, t.score);
+        if (t.sector && vSectors.some((s) => s.sector === t.sector)) {
+          this.addEdge(t.sector, "sector", t.code, "ticker", t.score);
+        }
+      });
+    } else {
+      const sectorDefs = state.sectors ?? [];
+      sectorDefs.forEach((s, i) => {
+        this.addNode("sector", s.sector, s.sector, "", place(i, sectorDefs.length, RING.sector, Y.sector + (i % 2 ? 0.45 : -0.45)), 0);
+      });
+      for (const s of sectorDefs) {
+        for (const [macroId, sens] of Object.entries(s.sensitivity)) {
+          const m = macroById.get(macroId);
+          if (!m) continue;
+          const contribution = sens * effVal(m);
+          if (Math.abs(contribution) < 0.12) continue;
+          this.addEdge(macroId, "macro", s.sector, "sector", Math.round(contribution * 1000) / 1000);
+        }
       }
     }
 
-    // 거시 → 거시: 의미론적 인과 링크. 위층 안에서 흐르는 힘을 점선 아치로 그린다.
+    // 거시 → 거시: 인과 링크. "지금 작동 중"(원인·결과가 부호대로 실제로 움직임)만
+    // 진하게 + 펄스를 주고, 나머지는 흐린 점선로 구조만 남긴다.
     for (const l of state.macroLinks ?? []) {
       const from = macroById.get(l.from);
-      if (!from || !macroById.get(l.to)) continue;
-      const contribution = l.sign * effVal(from);
-      this.addEdge(l.from, "macro", l.to, "macro", Math.round(contribution * 1000) / 1000, { dashed: true, arcUp: true });
+      const to = macroById.get(l.to);
+      if (!from || !to) continue;
+      const fv = effVal(from);
+      const tv = effVal(to);
+      const active = Math.abs(fv) >= 0.15 && Math.abs(tv) >= 0.1 && Math.sign(tv) === Math.sign(fv * l.sign);
+      const contribution = l.sign * fv;
+      const edge = this.addEdge(l.from, "macro", l.to, "macro", Math.round(contribution * 1000) / 1000, { dashed: true, arcUp: true });
+      if (edge) edge.dim = !active;
     }
 
     if (keepSpot) this.showTicker(keepSpot);
@@ -464,9 +515,9 @@ export class Ontology3D {
     }
     for (const e of this.edges) {
       const on = !keep || (keep.has(e.from) && keep.has(e.to));
-      const base = 0.16 + Math.min(0.6, Math.abs(e.contribution) * 1.4);
+      const base = e.dim ? 0.06 : 0.16 + Math.min(0.6, Math.abs(e.contribution) * 1.4);
       (e.line.material as THREE.LineBasicMaterial).opacity = on ? base : 0.03;
-      (e.pulse.material as THREE.MeshBasicMaterial).opacity = on ? 0.9 : 0.05;
+      (e.pulse.material as THREE.MeshBasicMaterial).opacity = on ? (e.dim ? 0 : 0.9) : 0.05;
     }
   }
 

@@ -4,7 +4,7 @@ import { api, ApiFailure, getTradeToken, setTradeToken, type ConfigResponse, typ
 import { Panel, type OrderDraft } from "./panel";
 import { AutoPanel } from "./autopanel";
 import { Ontology3D } from "./ontology3d";
-import type { OntoState, RadarItem, RadarOpps, SectorVerdict, StockVerdict, TickerScore } from "./api";
+import type { OntoState, OntoVerdict, RadarItem, RadarOpps, SectorVerdict, StockVerdict, TickerScore } from "./api";
 import { dirClass, el, fmtKrw, fmtKst, fmtNum, fmtPct, timeAgo } from "./format";
 
 /** 티커테이프 심볼 → 국가코드 (지금 움직이는 시장 목록용) */
@@ -404,14 +404,7 @@ async function loadOntology(): Promise<void> {
   const hint = $("onto-hint");
   try {
     ontoState = await api.ontoState();
-    onto?.setState({
-      macro: ontoState.macro,
-      scores: ontoState.scores,
-      riskOff: ontoState.riskOff,
-      macroLinks: ontoState.macroLinks,
-      macroClusters: ontoState.macroClusters,
-      sectors: ontoState.sectors,
-    });
+    pushOntoState();
     $("onto-note").textContent = ontoState.note;
     hint.textContent = `${ontoState.scores.length}개 종목 · 시세 ${
       ontoState.dataAsOf ? fmtKst(ontoState.dataAsOf) : "-"
@@ -493,6 +486,23 @@ function renderScoreList(s: OntoState): void {
 /* ── 온톨로지 결론 — 요인 인과 → 국면 → 섹터·종목 추천 출력 ── */
 
 let verdictMarket: "KR" | "US" = "KR";
+let lastVerdict: OntoVerdict | null = null;
+
+/** 그래프는 결론의 시각화 — 온톨로지 상태와 결론이 갱신될 때마다 함께 민다 */
+function pushOntoState(): void {
+  if (!ontoState) return;
+  onto?.setState({
+    macro: ontoState.macro,
+    scores: ontoState.scores,
+    riskOff: ontoState.riskOff,
+    macroLinks: ontoState.macroLinks,
+    macroClusters: ontoState.macroClusters,
+    sectors: ontoState.sectors,
+    verdict: lastVerdict
+      ? { sectors: lastVerdict.sectors, stocks: lastVerdict.stocks }
+      : undefined,
+  });
+}
 
 function setupVerdict(): void {
   const tabs = $("verdict-mkt");
@@ -511,6 +521,8 @@ async function loadVerdict(): Promise<void> {
   const body = $("verdict-body");
   try {
     const v = await api.ontoVerdict(verdictMarket);
+    lastVerdict = v;
+    pushOntoState();
     const toneCls = v.regime.tone === "risk-off" ? "down" : v.regime.tone === "risk-on" ? "up" : "flat";
     const secChip = (s: SectorVerdict, cls: string) =>
       el("span", { class: `vd-chip ${cls}`, title: s.reasons.join("\n"), text: `${s.sector} ${s.score >= 0 ? "+" : ""}${s.score.toFixed(2)}` });

@@ -336,6 +336,7 @@ export interface SectorVerdict {
   sector: string;
   score: number;
   reasons: string[];
+  edges: { macroId: string; contribution: number }[];
 }
 export interface StockVerdict {
   code: string;

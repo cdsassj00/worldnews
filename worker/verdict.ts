@@ -36,6 +36,8 @@ export interface SectorVerdict {
   sector: string;
   score: number;
   reasons: string[];
+  /** 그래프 시각화용 — 이 결론을 만든 거시 기여 */
+  edges: { macroId: MacroId; contribution: number }[];
 }
 
 export interface StockVerdict {
@@ -139,7 +141,7 @@ function sectorVerdicts(macro: MacroSignal[], market: VerdictMarket) {
   const scored: SectorVerdict[] = [];
   for (const [sector, sens] of Object.entries(table)) {
     let total = 0;
-    const parts: { text: string; value: number }[] = [];
+    const parts: { text: string; value: number; macroId: MacroId }[] = [];
     for (const [macroId, w] of Object.entries(sens) as [MacroId, number][]) {
       const m = byId.get(macroId);
       if (!m) continue;
@@ -151,10 +153,16 @@ function sectorVerdicts(macro: MacroSignal[], market: VerdictMarket) {
       parts.push({
         text: `${MACRO_KO[macroId]} ${m.changePct >= 0 ? "+" : ""}${m.changePct}%${rel ? ` (${rel.rel} 경로)` : ""} → ${contribution >= 0 ? "+" : ""}${round(contribution, 2)}`,
         value: contribution,
+        macroId,
       });
     }
     parts.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
-    scored.push({ sector, score: round(total / 1.5, 3), reasons: parts.slice(0, 3).map((p) => p.text) });
+    scored.push({
+      sector,
+      score: round(total / 1.5, 3),
+      reasons: parts.slice(0, 3).map((p) => p.text),
+      edges: parts.slice(0, 4).map((p) => ({ macroId: p.macroId, contribution: round(p.value, 3) })),
+    });
   }
   scored.sort((a, b) => b.score - a.score);
   return {
