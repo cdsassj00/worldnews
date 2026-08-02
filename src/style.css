@@ -556,6 +556,43 @@ body {
   color: var(--fg-faint);
 }
 
+/* 온톨로지 결론 카드 — 국면/인과/추천이 출력되는 곳 */
+.card-verdict {
+  border-color: var(--border-strong);
+}
+.verdict-line {
+  margin: 2px 0 6px;
+  font-size: 14px;
+}
+.verdict-line.down b { color: var(--down); }
+.verdict-line.up b { color: var(--up); }
+.vd-fact {
+  margin: 2px 0;
+  font-size: 12px;
+  color: var(--fg-dim);
+  line-height: 1.5;
+}
+.vd-h {
+  margin: 8px 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fg-faint);
+}
+.vd-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.vd-chip {
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  cursor: help;
+}
+.vd-chip.up { color: var(--up); border-color: var(--up); }
+.vd-chip.down { color: var(--down); border-color: var(--down); }
+
 /* 온톨로지 인과 유형 칩 (원가/수요/환율/할인율/마진/수주/위험선호/업황/안전자산) */
 .rel-chip {
   display: inline-block;

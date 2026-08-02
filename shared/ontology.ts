@@ -251,6 +251,30 @@ export const RELATIONS: Record<SectorId, Partial<Record<MacroId, CausalRelation>
   },
 };
 
+/* ── 미국 시장 온톨로지 ──────────────────────────────
+ * 같은 거시요인(12개)이 미국 섹터에는 다른 민감도로 닿는다.
+ * 미국의 시장 베타는 KOSPI 가 아니라 NASDAQ 이고, 환율(USDKRW)은 무의미하며
+ * 달러인덱스(DXY)가 그 자리를 대신한다. 값은 한국 표와 같은 보수적 가정이다. */
+
+export type USSectorId =
+  | "반도체US" | "기술" | "커뮤니케이션" | "금융US" | "에너지" | "헬스케어"
+  | "산업재" | "경기소비" | "필수소비" | "유틸리티US" | "소재" | "부동산";
+
+export const US_SENSITIVITY: Record<USSectorId, Partial<Record<MacroId, number>>> = {
+  반도체US: { SEMI: 0.95, NASDAQ: 0.6, US10Y: -0.3, VIX: -0.5, CHINA: 0.3 },
+  기술: { NASDAQ: 0.8, US10Y: -0.5, VIX: -0.5 },
+  커뮤니케이션: { NASDAQ: 0.7, US10Y: -0.4, VIX: -0.4 },
+  금융US: { US10Y: 0.6, NASDAQ: 0.3, VIX: -0.4 },
+  에너지: { OIL: 0.85, DXY: -0.2, VIX: -0.2 },
+  헬스케어: { VIX: 0.15, US10Y: -0.2, NASDAQ: 0.25 },
+  산업재: { COPPER: 0.4, NASDAQ: 0.35, CHINA: 0.25, OIL: 0.15 },
+  경기소비: { NASDAQ: 0.5, US10Y: -0.35, OIL: -0.25, VIX: -0.4 },
+  필수소비: { VIX: 0.25, US10Y: -0.15, DXY: -0.15 },
+  유틸리티US: { US10Y: -0.5, VIX: 0.3 },
+  소재: { COPPER: 0.6, CHINA: 0.4, DXY: -0.3, GOLD: 0.2 },
+  부동산: { US10Y: -0.7, VIX: -0.2 },
+};
+
 /**
  * 거시요인 사이의 인과 — 그래프 위층 안에서도 힘이 흐른다는 것을 설명하는 층.
  * 점수 전파에는 쓰지 않는다(이중 계상 방지). 화면 설명용.

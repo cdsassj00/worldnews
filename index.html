@@ -101,6 +101,17 @@
 
     <main class="layout">
       <aside class="rail" aria-label="온톨로지 요약">
+        <section class="card card-verdict">
+          <h2 class="card-title">온톨로지 결론
+            <span class="radar-tabs verdict-mkt" id="verdict-mkt" role="tablist" style="display:inline-flex;margin:0 0 0 8px">
+              <button type="button" class="radar-tab active" data-mkt="KR" role="tab">한국</button>
+              <button type="button" class="radar-tab" data-mkt="US" role="tab">미국</button>
+            </span>
+          </h2>
+          <p class="card-sub">요인(거시·뉴스·수급)의 인과를 계산한 결과 — 섹터·종목은 여기서 출력됩니다.</p>
+          <div id="verdict-body"><p class="note">분석 중…</p></div>
+        </section>
+
         <section class="card">
           <h2 class="card-title">종목 검색</h2>
           <p class="card-sub">이름이나 코드를 입력하면 지금 시점 온톨로지 분석이 열립니다.</p>

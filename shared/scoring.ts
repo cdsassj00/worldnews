@@ -129,6 +129,8 @@ export function macroSignals(lookup: (symbol: string) => PriceHistory | undefine
 export function propagate(
   ticker: UniverseTicker,
   macro: MacroSignal[],
+  // 시장별 민감도 표를 주입할 수 있다 (기본 = 한국). 미국 확장이 같은 수식을 쓰게 한다.
+  table: Record<string, Partial<Record<MacroId, number>>> = SENSITIVITY,
 ): { score: number; reasons: ScoreReason[]; edges: { macroId: MacroId; sector: SectorId; contribution: number }[] } {
   const byId = new Map(macro.map((m) => [m.id, m]));
   const contributions: { text: string; value: number }[] = [];
@@ -136,7 +138,7 @@ export function propagate(
   let total = 0;
 
   for (const [sectorName, weight] of Object.entries(ticker.sectors) as [SectorId, number][]) {
-    const sens = SENSITIVITY[sectorName] ?? {};
+    const sens = table[sectorName] ?? {};
     for (const [macroId, sensitivity] of Object.entries(sens) as [MacroId, number][]) {
       const signal = byId.get(macroId);
       if (!signal) continue;

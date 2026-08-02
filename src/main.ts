@@ -4,7 +4,7 @@ import { api, ApiFailure, getTradeToken, setTradeToken, type ConfigResponse, typ
 import { Panel, type OrderDraft } from "./panel";
 import { AutoPanel } from "./autopanel";
 import { Ontology3D } from "./ontology3d";
-import type { OntoState, RadarItem, RadarOpps, TickerScore } from "./api";
+import type { OntoState, RadarItem, RadarOpps, SectorVerdict, StockVerdict, TickerScore } from "./api";
 import { dirClass, el, fmtKrw, fmtKst, fmtNum, fmtPct, timeAgo } from "./format";
 
 /** 티커테이프 심볼 → 국가코드 (지금 움직이는 시장 목록용) */
@@ -490,6 +490,78 @@ function renderScoreList(s: OntoState): void {
   );
 }
 
+/* ── 온톨로지 결론 — 요인 인과 → 국면 → 섹터·종목 추천 출력 ── */
+
+let verdictMarket: "KR" | "US" = "KR";
+
+function setupVerdict(): void {
+  const tabs = $("verdict-mkt");
+  tabs.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>(".radar-tab");
+    if (!btn) return;
+    verdictMarket = (btn.dataset.mkt as "KR" | "US") ?? "KR";
+    for (const b of tabs.querySelectorAll(".radar-tab")) b.classList.toggle("active", b === btn);
+    void loadVerdict();
+    void loadRadar(); // 기회 탐색도 같은 시장으로 따라간다
+  });
+}
+
+async function loadVerdict(): Promise<void> {
+  const body = $("verdict-body");
+  try {
+    const v = await api.ontoVerdict(verdictMarket);
+    const toneCls = v.regime.tone === "risk-off" ? "down" : v.regime.tone === "risk-on" ? "up" : "flat";
+    const secChip = (s: SectorVerdict, cls: string) =>
+      el("span", { class: `vd-chip ${cls}`, title: s.reasons.join("\n"), text: `${s.sector} ${s.score >= 0 ? "+" : ""}${s.score.toFixed(2)}` });
+    const stockRow = (st: StockVerdict) => {
+      const btn = el("button", { type: "button", title: st.reason }, [
+        el("span", { class: "hot-name" }, [
+          el("span", { text: st.name }),
+          el("span", { class: "hot-index", text: `${st.sector ?? "미분류"} · ${fmtNum(st.price, 0)}${v.market === "US" ? "$" : "원"}` }),
+        ]),
+        el("span", { class: dirClass(st.score), text: st.score.toFixed(2) }),
+      ]);
+      btn.addEventListener("click", () => {
+        void (async () => {
+          const found = await api.radarFind(st.code).catch(() => null);
+          const r = found?.items.find((x) => x.code === st.code) ?? found?.items[0];
+          if (r) { const t = radarToTicker(r); onto?.showTicker(t); panel.openTicker(t); }
+        })();
+      });
+      return el("li", {}, [btn]);
+    };
+    body.replaceChildren(
+      el("p", { class: `verdict-line ${toneCls}` }, [
+        el("b", { text: v.regime.label }),
+        el("span", { class: "note", text: ` 위험회피 ${v.regime.riskOff}` }),
+      ]),
+      ...v.regime.lines.map((l) => el("p", { class: "vd-fact", text: l })),
+      ...(v.causal.length
+        ? [el("p", { class: "vd-h", text: "지금 작동 중인 인과" }), ...v.causal.map((c) => el("p", { class: "vd-fact", text: `· ${c}` }))]
+        : []),
+      el("p", { class: "vd-h", text: "→ 추천 섹터" }),
+      el("div", { class: "vd-chips" },
+        v.sectors.recommend.length ? v.sectors.recommend.map((s) => secChip(s, "up")) : [el("span", { class: "note", text: "지금 순풍인 섹터 없음 — 관망" })]),
+      el("p", { class: "vd-h", text: "→ 회피 섹터" }),
+      el("div", { class: "vd-chips" },
+        v.sectors.avoid.length ? v.sectors.avoid.map((s) => secChip(s, "down")) : [el("span", { class: "note", text: "없음" })]),
+      el("p", { class: "vd-h", text: "→ 추천 종목" }),
+      el("ul", { class: "hot-list" },
+        v.stocks.recommend.length
+          ? v.stocks.recommend.map(stockRow)
+          : [el("li", { class: "note", text: "기준(점수 +0.1)을 넘는 종목 없음 — 현금 관망 구간" })],
+      ),
+      ...(v.stocks.avoid.length
+        ? [el("p", { class: "vd-h", text: "→ 회피·축소 종목" }), el("ul", { class: "hot-list" }, v.stocks.avoid.map(stockRow))]
+        : []),
+      el("p", { class: "note", text: v.note }),
+    );
+  } catch (err) {
+    body.replaceChildren(el("p", { class: "note", text: `결론 로딩 실패: ${err instanceof ApiFailure ? err.message : String(err)}` }));
+  }
+}
+
 /* ── 기회 탐색 — 하락장에서도 ①수혜 경로 ②상대 강세 ③약세 경고 ── */
 
 type RadarTab = "tailwind" | "relative" | "weak";
@@ -576,7 +648,7 @@ async function loadRadar(): Promise<void> {
   const list = $("radar-list");
   const sub = $("radar-sub");
   try {
-    const [opps, st] = await Promise.all([api.radarOpps(8), api.radarStatus().catch(() => null)]);
+    const [opps, st] = await Promise.all([api.radarOpps(8, verdictMarket), api.radarStatus().catch(() => null)]);
     radarOppsData = opps;
     const regime = ontoState
       ? ontoState.riskOff >= 0.5
@@ -824,12 +896,14 @@ async function boot(): Promise<void> {
   setupOntoHelp();
   setupRadarTabs();
   setupTheme();
+  setupVerdict();
 
-  await Promise.allSettled([loadOntology(), loadTape(), loadRadar()]);
+  await Promise.allSettled([loadOntology(), loadTape(), loadRadar(), loadVerdict()]);
   // 시세는 주기적으로 갱신(90초 캐시와 맞춤), 온톨로지는 전략 캐시(5분)에 맞춘다
   setInterval(() => void loadTape(), 90_000);
   setInterval(() => void loadOntology(), 300_000);
   setInterval(() => void loadRadar(), 300_000);
+  setInterval(() => void loadVerdict(), 300_000);
 }
 
 void boot();

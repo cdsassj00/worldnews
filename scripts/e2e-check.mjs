@@ -90,6 +90,12 @@ if (radarSt.available && radarSt.scored > 0) {
   console.log("[참고] 종목 검색 검사 건너뜀 (레이더 미적재)");
 }
 
+// 온톨로지 결론 카드 — 국면·추천 섹터·추천 종목 출력
+await page.waitForFunction(() => document.querySelector("#verdict-body")?.textContent?.includes("추천 섹터"), { timeout: 120000 }).catch(() => {});
+const vtxt = (await page.locator("#verdict-body").textContent()) ?? "";
+check("온톨로지 결론 카드", vtxt.includes("추천 섹터") && vtxt.includes("국면"), vtxt.slice(0, 60));
+check("결론 시장 전환 탭", (await page.locator("#verdict-mkt .radar-tab").count()) === 2);
+
 // 기회 탐색 탭 — 수혜 경로/상대 강세/약세 경고 전환
 check("기회 탐색 탭 3개", (await page.locator("#radar-tabs .radar-tab").count()) === 3);
 await page.click('#radar-tabs .radar-tab[data-tab="weak"]');

@@ -40,6 +40,7 @@ export interface Env {
   AUTO_MAX_POSITIONS?: string;
 
   // AI 분석
+  US_AUTOTRADE_ENABLED?: string; // 미국 자동매매 — 백테스트 통과 전까지 "false"
   GEMINI_API_KEY?: string; // 있으면 Gemini 를 1순위로 사용 (시크릿, aistudio.google.com/apikey)
   GEMINI_MODEL?: string; // 기본 gemini-2.5-flash
   ANTHROPIC_API_KEY?: string; // 있으면 Claude 사용 (시크릿)

@@ -26,6 +26,7 @@ import { runStrategy } from "./strategy";
 import { tickerNewsStatus } from "./tickernews";
 import { radarFind, radarOpps, radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
 import { briefIndex, briefPage, rssXml, sitemapXml } from "./rss";
+import { getVerdict } from "./verdict";
 
 export { RadarDB } from "./radar";
 
@@ -392,8 +393,15 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
   }
 
   if (path === "/api/radar/opps") {
-    // 기회 탐색: 하락 국면에서도 수혜 경로·상대 강세·약세 경고를 낸다.
-    return json(await radarOpps(env, Math.min(15, num(url.searchParams.get("limit"), 8))));
+    // 기회 탐색: 하락 국면에서도 수혜 경로·상대 강세·약세 경고를 낸다. market=KR|US
+    const market = url.searchParams.get("market") ?? undefined;
+    return json(await radarOpps(env, Math.min(15, num(url.searchParams.get("limit"), 8)), market));
+  }
+
+  if (path === "/api/onto/verdict") {
+    // 온톨로지 결론 — 요인 인과 → 국면 → 섹터·종목 추천. 섹터·종목은 출력이지 입력이 아니다.
+    const market = url.searchParams.get("market") === "US" ? "US" as const : "KR" as const;
+    return json(await getVerdict(env, market));
   }
 
   if (path === "/api/radar/scan") {

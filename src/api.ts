@@ -332,6 +332,32 @@ export interface RadarItem {
   updatedAt: number;
 }
 
+export interface SectorVerdict {
+  sector: string;
+  score: number;
+  reasons: string[];
+}
+export interface StockVerdict {
+  code: string;
+  name: string;
+  sector: string | null;
+  score: number;
+  price: number;
+  changePct: number;
+  reason: string;
+}
+export interface OntoVerdict {
+  market: "KR" | "US";
+  generatedAt: number;
+  dataAsOf: number | null;
+  regime: { label: string; tone: "risk-off" | "caution" | "risk-on"; riskOff: number; lines: string[] };
+  causal: string[];
+  flow: { available: boolean; days: number; foreignNetBuyKrw: number; institutionNetBuyKrw: number; basis: string } | null;
+  sectors: { recommend: SectorVerdict[]; avoid: SectorVerdict[] };
+  stocks: { recommend: StockVerdict[]; avoid: StockVerdict[] };
+  note: string;
+}
+
 export interface RadarOpps {
   available: boolean;
   tailwind: RadarItem[];
@@ -491,7 +517,8 @@ export const api = {
   radarTop: (limit = 12) => request<{ available: boolean; items: RadarItem[] }>(`/api/radar/top?limit=${limit}`),
   radarFind: (q: string) => request<{ available: boolean; items: RadarItem[] }>(`/api/radar/find?q=${encodeURIComponent(q)}`),
   radarStatus: () => request<{ available: boolean; tickers?: number; scored?: number; newestScoreAt?: number }>("/api/radar/status"),
-  radarOpps: (limit = 8) => request<RadarOpps>(`/api/radar/opps?limit=${limit}`),
+  radarOpps: (limit = 8, market: "KR" | "US" = "KR") => request<RadarOpps>(`/api/radar/opps?limit=${limit}&market=${market}`),
+  ontoVerdict: (market: "KR" | "US" = "KR") => request<OntoVerdict>(`/api/onto/verdict?market=${market}`),
   autoPlan: () => request<AutoPlan>("/api/auto/plan"),
   autoJournal: () => request<{ items: JournalEntry[] }>("/api/auto/journal"),
   autoRun: (shadow: boolean) =>

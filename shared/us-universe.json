@@ -1,0 +1,834 @@
+[
+ {
+  "code": "AAPL",
+  "symbol": "AAPL",
+  "name": "Apple",
+  "market": "US",
+  "sector": "기술",
+  "src": "sp100"
+ },
+ {
+  "code": "MSFT",
+  "symbol": "MSFT",
+  "name": "Microsoft",
+  "market": "US",
+  "sector": "기술",
+  "src": "sp100"
+ },
+ {
+  "code": "GOOGL",
+  "symbol": "GOOGL",
+  "name": "Alphabet",
+  "market": "US",
+  "sector": "커뮤니케이션",
+  "src": "sp100"
+ },
+ {
+  "code": "AMZN",
+  "symbol": "AMZN",
+  "name": "Amazon",
+  "market": "US",
+  "sector": "경기소비",
+  "src": "sp100"
+ },
+ {
+  "code": "NVDA",
+  "symbol": "NVDA",
+  "name": "NVIDIA",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp100"
+ },
+ {
+  "code": "META",
+  "symbol": "META",
+  "name": "Meta",
+  "market": "US",
+  "sector": "커뮤니케이션",
+  "src": "sp100"
+ },
+ {
+  "code": "TSLA",
+  "symbol": "TSLA",
+  "name": "Tesla",
+  "market": "US",
+  "sector": "경기소비",
+  "src": "sp100"
+ },
+ {
+  "code": "AVGO",
+  "symbol": "AVGO",
+  "name": "Broadcom",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp100"
+ },
+ {
+  "code": "BRK-B",
+  "symbol": "BRK-B",
+  "name": "Berkshire Hathaway",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp100"
+ },
+ {
+  "code": "JPM",
+  "symbol": "JPM",
+  "name": "JPMorgan",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp100"
+ },
+ {
+  "code": "V",
+  "symbol": "V",
+  "name": "Visa",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp100"
+ },
+ {
+  "code": "MA",
+  "symbol": "MA",
+  "name": "Mastercard",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp100"
+ },
+ {
+  "code": "UNH",
+  "symbol": "UNH",
+  "name": "UnitedHealth",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp100"
+ },
+ {
+  "code": "JNJ",
+  "symbol": "JNJ",
+  "name": "Johnson & Johnson",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp100"
+ },
+ {
+  "code": "LLY",
+  "symbol": "LLY",
+  "name": "Eli Lilly",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp100"
+ },
+ {
+  "code": "XOM",
+  "symbol": "XOM",
+  "name": "ExxonMobil",
+  "market": "US",
+  "sector": "에너지",
+  "src": "sp100"
+ },
+ {
+  "code": "CVX",
+  "symbol": "CVX",
+  "name": "Chevron",
+  "market": "US",
+  "sector": "에너지",
+  "src": "sp100"
+ },
+ {
+  "code": "PG",
+  "symbol": "PG",
+  "name": "P&G",
+  "market": "US",
+  "sector": "필수소비",
+  "src": "sp100"
+ },
+ {
+  "code": "KO",
+  "symbol": "KO",
+  "name": "Coca-Cola",
+  "market": "US",
+  "sector": "필수소비",
+  "src": "sp100"
+ },
+ {
+  "code": "PEP",
+  "symbol": "PEP",
+  "name": "PepsiCo",
+  "market": "US",
+  "sector": "필수소비",
+  "src": "sp100"
+ },
+ {
+  "code": "COST",
+  "symbol": "COST",
+  "name": "Costco",
+  "market": "US",
+  "sector": "필수소비",
+  "src": "sp100"
+ },
+ {
+  "code": "WMT",
+  "symbol": "WMT",
+  "name": "Walmart",
+  "market": "US",
+  "sector": "필수소비",
+  "src": "sp100"
+ },
+ {
+  "code": "HD",
+  "symbol": "HD",
+  "name": "Home Depot",
+  "market": "US",
+  "sector": "경기소비",
+  "src": "sp100"
+ },
+ {
+  "code": "MCD",
+  "symbol": "MCD",
+  "name": "McDonald's",
+  "market": "US",
+  "sector": "경기소비",
+  "src": "sp100"
+ },
+ {
+  "code": "NFLX",
+  "symbol": "NFLX",
+  "name": "Netflix",
+  "market": "US",
+  "sector": "커뮤니케이션",
+  "src": "sp100"
+ },
+ {
+  "code": "DIS",
+  "symbol": "DIS",
+  "name": "Disney",
+  "market": "US",
+  "sector": "커뮤니케이션",
+  "src": "sp100"
+ },
+ {
+  "code": "CMCSA",
+  "symbol": "CMCSA",
+  "name": "Comcast",
+  "market": "US",
+  "sector": "커뮤니케이션",
+  "src": "sp100"
+ },
+ {
+  "code": "TMUS",
+  "symbol": "TMUS",
+  "name": "T-Mobile",
+  "market": "US",
+  "sector": "커뮤니케이션",
+  "src": "sp100"
+ },
+ {
+  "code": "VZ",
+  "symbol": "VZ",
+  "name": "Verizon",
+  "market": "US",
+  "sector": "커뮤니케이션",
+  "src": "sp100"
+ },
+ {
+  "code": "T",
+  "symbol": "T",
+  "name": "AT&T",
+  "market": "US",
+  "sector": "커뮤니케이션",
+  "src": "sp100"
+ },
+ {
+  "code": "ORCL",
+  "symbol": "ORCL",
+  "name": "Oracle",
+  "market": "US",
+  "sector": "기술",
+  "src": "sp100"
+ },
+ {
+  "code": "CRM",
+  "symbol": "CRM",
+  "name": "Salesforce",
+  "market": "US",
+  "sector": "기술",
+  "src": "sp100"
+ },
+ {
+  "code": "ADBE",
+  "symbol": "ADBE",
+  "name": "Adobe",
+  "market": "US",
+  "sector": "기술",
+  "src": "sp100"
+ },
+ {
+  "code": "IBM",
+  "symbol": "IBM",
+  "name": "IBM",
+  "market": "US",
+  "sector": "기술",
+  "src": "sp100"
+ },
+ {
+  "code": "CSCO",
+  "symbol": "CSCO",
+  "name": "Cisco",
+  "market": "US",
+  "sector": "기술",
+  "src": "sp100"
+ },
+ {
+  "code": "ACN",
+  "symbol": "ACN",
+  "name": "Accenture",
+  "market": "US",
+  "sector": "기술",
+  "src": "sp100"
+ },
+ {
+  "code": "NOW",
+  "symbol": "NOW",
+  "name": "ServiceNow",
+  "market": "US",
+  "sector": "기술",
+  "src": "sp100"
+ },
+ {
+  "code": "INTU",
+  "symbol": "INTU",
+  "name": "Intuit",
+  "market": "US",
+  "sector": "기술",
+  "src": "sp100"
+ },
+ {
+  "code": "PLTR",
+  "symbol": "PLTR",
+  "name": "Palantir",
+  "market": "US",
+  "sector": "기술",
+  "src": "sp100"
+ },
+ {
+  "code": "AMD",
+  "symbol": "AMD",
+  "name": "AMD",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp100"
+ },
+ {
+  "code": "INTC",
+  "symbol": "INTC",
+  "name": "Intel",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp100"
+ },
+ {
+  "code": "QCOM",
+  "symbol": "QCOM",
+  "name": "Qualcomm",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp100"
+ },
+ {
+  "code": "TXN",
+  "symbol": "TXN",
+  "name": "Texas Instruments",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp100"
+ },
+ {
+  "code": "MU",
+  "symbol": "MU",
+  "name": "Micron",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp100"
+ },
+ {
+  "code": "AMAT",
+  "symbol": "AMAT",
+  "name": "Applied Materials",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp100"
+ },
+ {
+  "code": "LRCX",
+  "symbol": "LRCX",
+  "name": "Lam Research",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp100"
+ },
+ {
+  "code": "KLAC",
+  "symbol": "KLAC",
+  "name": "KLA",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp100"
+ },
+ {
+  "code": "TSM",
+  "symbol": "TSM",
+  "name": "TSMC ADR",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp100"
+ },
+ {
+  "code": "ASML",
+  "symbol": "ASML",
+  "name": "ASML ADR",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp100"
+ },
+ {
+  "code": "ARM",
+  "symbol": "ARM",
+  "name": "Arm ADR",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp100"
+ },
+ {
+  "code": "GS",
+  "symbol": "GS",
+  "name": "Goldman Sachs",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp100"
+ },
+ {
+  "code": "MS",
+  "symbol": "MS",
+  "name": "Morgan Stanley",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp100"
+ },
+ {
+  "code": "BAC",
+  "symbol": "BAC",
+  "name": "Bank of America",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp100"
+ },
+ {
+  "code": "WFC",
+  "symbol": "WFC",
+  "name": "Wells Fargo",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp100"
+ },
+ {
+  "code": "C",
+  "symbol": "C",
+  "name": "Citigroup",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp100"
+ },
+ {
+  "code": "BLK",
+  "symbol": "BLK",
+  "name": "BlackRock",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp100"
+ },
+ {
+  "code": "SCHW",
+  "symbol": "SCHW",
+  "name": "Charles Schwab",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp100"
+ },
+ {
+  "code": "AXP",
+  "symbol": "AXP",
+  "name": "American Express",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp100"
+ },
+ {
+  "code": "SPGI",
+  "symbol": "SPGI",
+  "name": "S&P Global",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp100"
+ },
+ {
+  "code": "BX",
+  "symbol": "BX",
+  "name": "Blackstone",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp100"
+ },
+ {
+  "code": "ABBV",
+  "symbol": "ABBV",
+  "name": "AbbVie",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp100"
+ },
+ {
+  "code": "MRK",
+  "symbol": "MRK",
+  "name": "Merck",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp100"
+ },
+ {
+  "code": "PFE",
+  "symbol": "PFE",
+  "name": "Pfizer",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp100"
+ },
+ {
+  "code": "TMO",
+  "symbol": "TMO",
+  "name": "Thermo Fisher",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp100"
+ },
+ {
+  "code": "ABT",
+  "symbol": "ABT",
+  "name": "Abbott",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp100"
+ },
+ {
+  "code": "DHR",
+  "symbol": "DHR",
+  "name": "Danaher",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp100"
+ },
+ {
+  "code": "AMGN",
+  "symbol": "AMGN",
+  "name": "Amgen",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp100"
+ },
+ {
+  "code": "ISRG",
+  "symbol": "ISRG",
+  "name": "Intuitive Surgical",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp100"
+ },
+ {
+  "code": "MDT",
+  "symbol": "MDT",
+  "name": "Medtronic",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp100"
+ },
+ {
+  "code": "BMY",
+  "symbol": "BMY",
+  "name": "Bristol Myers",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp100"
+ },
+ {
+  "code": "GILD",
+  "symbol": "GILD",
+  "name": "Gilead",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp100"
+ },
+ {
+  "code": "CVS",
+  "symbol": "CVS",
+  "name": "CVS Health",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp100"
+ },
+ {
+  "code": "COP",
+  "symbol": "COP",
+  "name": "ConocoPhillips",
+  "market": "US",
+  "sector": "에너지",
+  "src": "sp100"
+ },
+ {
+  "code": "SLB",
+  "symbol": "SLB",
+  "name": "Schlumberger",
+  "market": "US",
+  "sector": "에너지",
+  "src": "sp100"
+ },
+ {
+  "code": "EOG",
+  "symbol": "EOG",
+  "name": "EOG Resources",
+  "market": "US",
+  "sector": "에너지",
+  "src": "sp100"
+ },
+ {
+  "code": "OXY",
+  "symbol": "OXY",
+  "name": "Occidental",
+  "market": "US",
+  "sector": "에너지",
+  "src": "sp100"
+ },
+ {
+  "code": "GE",
+  "symbol": "GE",
+  "name": "GE Aerospace",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp100"
+ },
+ {
+  "code": "CAT",
+  "symbol": "CAT",
+  "name": "Caterpillar",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp100"
+ },
+ {
+  "code": "BA",
+  "symbol": "BA",
+  "name": "Boeing",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp100"
+ },
+ {
+  "code": "HON",
+  "symbol": "HON",
+  "name": "Honeywell",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp100"
+ },
+ {
+  "code": "UNP",
+  "symbol": "UNP",
+  "name": "Union Pacific",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp100"
+ },
+ {
+  "code": "UPS",
+  "symbol": "UPS",
+  "name": "UPS",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp100"
+ },
+ {
+  "code": "RTX",
+  "symbol": "RTX",
+  "name": "RTX",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp100"
+ },
+ {
+  "code": "LMT",
+  "symbol": "LMT",
+  "name": "Lockheed Martin",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp100"
+ },
+ {
+  "code": "DE",
+  "symbol": "DE",
+  "name": "Deere",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp100"
+ },
+ {
+  "code": "ETN",
+  "symbol": "ETN",
+  "name": "Eaton",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp100"
+ },
+ {
+  "code": "NKE",
+  "symbol": "NKE",
+  "name": "Nike",
+  "market": "US",
+  "sector": "경기소비",
+  "src": "sp100"
+ },
+ {
+  "code": "SBUX",
+  "symbol": "SBUX",
+  "name": "Starbucks",
+  "market": "US",
+  "sector": "경기소비",
+  "src": "sp100"
+ },
+ {
+  "code": "LOW",
+  "symbol": "LOW",
+  "name": "Lowe's",
+  "market": "US",
+  "sector": "경기소비",
+  "src": "sp100"
+ },
+ {
+  "code": "TGT",
+  "symbol": "TGT",
+  "name": "Target",
+  "market": "US",
+  "sector": "경기소비",
+  "src": "sp100"
+ },
+ {
+  "code": "BKNG",
+  "symbol": "BKNG",
+  "name": "Booking",
+  "market": "US",
+  "sector": "경기소비",
+  "src": "sp100"
+ },
+ {
+  "code": "ABNB",
+  "symbol": "ABNB",
+  "name": "Airbnb",
+  "market": "US",
+  "sector": "경기소비",
+  "src": "sp100"
+ },
+ {
+  "code": "UBER",
+  "symbol": "UBER",
+  "name": "Uber",
+  "market": "US",
+  "sector": "기술",
+  "src": "sp100"
+ },
+ {
+  "code": "NEE",
+  "symbol": "NEE",
+  "name": "NextEra Energy",
+  "market": "US",
+  "sector": "유틸리티US",
+  "src": "sp100"
+ },
+ {
+  "code": "DUK",
+  "symbol": "DUK",
+  "name": "Duke Energy",
+  "market": "US",
+  "sector": "유틸리티US",
+  "src": "sp100"
+ },
+ {
+  "code": "SO",
+  "symbol": "SO",
+  "name": "Southern Co",
+  "market": "US",
+  "sector": "유틸리티US",
+  "src": "sp100"
+ },
+ {
+  "code": "LIN",
+  "symbol": "LIN",
+  "name": "Linde",
+  "market": "US",
+  "sector": "소재",
+  "src": "sp100"
+ },
+ {
+  "code": "FCX",
+  "symbol": "FCX",
+  "name": "Freeport-McMoRan",
+  "market": "US",
+  "sector": "소재",
+  "src": "sp100"
+ },
+ {
+  "code": "NEM",
+  "symbol": "NEM",
+  "name": "Newmont",
+  "market": "US",
+  "sector": "소재",
+  "src": "sp100"
+ },
+ {
+  "code": "SHW",
+  "symbol": "SHW",
+  "name": "Sherwin-Williams",
+  "market": "US",
+  "sector": "소재",
+  "src": "sp100"
+ },
+ {
+  "code": "PLD",
+  "symbol": "PLD",
+  "name": "Prologis",
+  "market": "US",
+  "sector": "부동산",
+  "src": "sp100"
+ },
+ {
+  "code": "AMT",
+  "symbol": "AMT",
+  "name": "American Tower",
+  "market": "US",
+  "sector": "부동산",
+  "src": "sp100"
+ },
+ {
+  "code": "MMM",
+  "symbol": "MMM",
+  "name": "3M",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp100"
+ },
+ {
+  "code": "PM",
+  "symbol": "PM",
+  "name": "Philip Morris",
+  "market": "US",
+  "sector": "필수소비",
+  "src": "sp100"
+ }
+]

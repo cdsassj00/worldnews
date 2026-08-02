@@ -126,13 +126,16 @@ export class RadarDB extends DurableObject {
     return rows.length;
   }
 
-  /** 점수 순 상위/하위. sector 필터 옵션. */
-  top(limit: number, order: "desc" | "asc", sector?: string): RadarScoreRow[] {
+  /** 점수 순 상위/하위. sector·market 필터 옵션. */
+  top(limit: number, order: "desc" | "asc", sector?: string, market?: string): RadarScoreRow[] {
     const lim = Math.min(100, Math.max(1, limit));
     const dir = order === "asc" ? "ASC" : "DESC";
-    const rows = sector
-      ? this.sql.exec(`SELECT * FROM scores WHERE sector=? ORDER BY score ${dir} LIMIT ?`, sector, lim).toArray()
-      : this.sql.exec(`SELECT * FROM scores ORDER BY score ${dir} LIMIT ?`, lim).toArray();
+    const conds: string[] = [];
+    const args: unknown[] = [];
+    if (sector) { conds.push("sector=?"); args.push(sector); }
+    if (market) { conds.push("market=?"); args.push(market); }
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    const rows = this.sql.exec(`SELECT * FROM scores ${where} ORDER BY score ${dir} LIMIT ?`, ...args, lim).toArray();
     return rows.map((r) => ({
       code: String(r.code),
       name: String(r.name),
@@ -178,8 +181,10 @@ export class RadarDB extends DurableObject {
    *   relative: 시장 대비 강세 (20일 상대수익률) = 하락장에서 버티는 힘
    *   weak:     합성 점수 최하위 = 매도·회피 경고
    */
-  opportunities(limit: number): { tailwind: RadarScoreRow[]; relative: RadarScoreRow[]; weak: RadarScoreRow[] } {
+  opportunities(limit: number, market?: string): { tailwind: RadarScoreRow[]; relative: RadarScoreRow[]; weak: RadarScoreRow[] } {
     const lim = Math.min(15, Math.max(1, limit));
+    // 시장 필터 — 한국(KOSPI/KOSDAQ)과 미국(US)을 분리해 본다
+    const mkt = market === "US" ? "AND market='US'" : market ? "AND market!='US'" : "";
     const mapRow = (r: Record<string, unknown>): RadarScoreRow => ({
       code: String(r.code), name: String(r.name), sector: (r.sector as string | null) ?? null,
       market: String(r.market), price: Number(r.price), changePct: Number(r.change_pct),
@@ -189,13 +194,13 @@ export class RadarDB extends DurableObject {
       edges: String(r.edges ?? "[]"), reasons: String(r.reasons ?? "[]"), updatedAt: Number(r.updated_at),
     });
     const tailwind = this.sql
-      .exec(`SELECT * FROM scores WHERE onto > 0.05 ORDER BY onto DESC LIMIT ?`, lim)
+      .exec(`SELECT * FROM scores WHERE onto > 0.05 ${mkt} ORDER BY onto DESC LIMIT ?`, lim)
       .toArray().map(mapRow);
     const relative = this.sql
-      .exec(`SELECT * FROM scores WHERE rel_strength IS NOT NULL ORDER BY rel_strength DESC LIMIT ?`, lim)
+      .exec(`SELECT * FROM scores WHERE rel_strength IS NOT NULL ${mkt} ORDER BY rel_strength DESC LIMIT ?`, lim)
       .toArray().map(mapRow);
     const weak = this.sql
-      .exec(`SELECT * FROM scores ORDER BY score ASC LIMIT ?`, lim)
+      .exec(`SELECT * FROM scores WHERE 1=1 ${mkt} ORDER BY score ASC LIMIT ?`, lim)
       .toArray().map(mapRow);
     return { tailwind, relative, weak };
   }
