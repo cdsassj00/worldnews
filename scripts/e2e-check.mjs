@@ -48,7 +48,7 @@ page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));
 // 폰트 CDN 차단(샌드박스)은 기능 결함이 아니므로 분리해 기록한다
 const failedRequests = [];
 page.on("requestfailed", (r) => failedRequests.push(`${r.url()} :: ${r.failure()?.errorText ?? ""}`));
-const isExternalAsset = (u) => /fonts\.googleapis|fonts\.gstatic|jsdelivr|googletagmanager|google-analytics|googlesyndication|doubleclick/.test(u);
+const isExternalAsset = (u) => /fonts\.googleapis|fonts\.gstatic|jsdelivr|googletagmanager|google-analytics|googlesyndication|doubleclick|translate\.google|translate\.googleapis/.test(u);
 
 await page.goto(base, { waitUntil: "domcontentloaded" });
 

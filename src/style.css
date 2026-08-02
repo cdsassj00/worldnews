@@ -556,6 +556,33 @@ body {
   color: var(--fg-faint);
 }
 
+/* 언어 전환 국기 버튼 + 구글 번역 위젯 UI 숨김 */
+.lang-switch {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+.lang-switch button {
+  border: 1px solid transparent;
+  background: none;
+  font-size: 17px;
+  line-height: 1;
+  padding: 3px 4px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  opacity: 0.55;
+}
+.lang-switch button:hover { opacity: 1; }
+.lang-switch button.active {
+  opacity: 1;
+  border-color: var(--border-strong);
+  background: var(--panel-2);
+}
+/* 구글 번역이 끼워 넣는 상단 배너·툴팁을 숨기고 레이아웃 밀림을 막는다 */
+.goog-te-banner-frame, #goog-gt-tt, .goog-te-balloon-frame, .skiptranslate iframe { display: none !important; }
+body { top: 0 !important; }
+font[style] { background: transparent !important; box-shadow: none !important; }
+
 /* 온톨로지 결론 카드 — 국면/인과/추천이 출력되는 곳 */
 .card-verdict {
   border-color: var(--border-strong);

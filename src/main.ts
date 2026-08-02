@@ -586,6 +586,48 @@ const RADAR_TAB_NOTE: Record<RadarTab, string> = {
   weak: "종합 점수 최하위 — 보유 중이면 매도·회피 관점",
 };
 
+/* ── 언어 전환 (국기 클릭 → 구글 웹사이트 번역) ─────────────────
+ * 결론 엔진이 실시간으로 만드는 한국어 문장(국면·인과·근거)까지 통째로
+ * 번역하려면 DOM 번역 방식이 유일하게 현실적이다. 3D 캔버스 안 라벨은
+ * 그림이라 번역되지 않는다 — 알려진 한계. */
+
+function setupLang(): void {
+  const box = $("lang-switch");
+  const saved = (() => { try { return localStorage.getItem("wfg-lang") ?? ""; } catch { return ""; } })();
+
+  const mark = (lang: string) => {
+    for (const b of box.querySelectorAll<HTMLButtonElement>("button")) {
+      b.classList.toggle("active", (b.dataset.lang ?? "") === lang);
+    }
+  };
+  mark(saved);
+
+  if (saved) {
+    // googtrans 쿠키를 심어 두면 위젯이 로드 즉시 그 언어로 번역한다
+    document.cookie = `googtrans=/ko/${saved};path=/`;
+    (window as unknown as { googleTranslateElementInit?: () => void }).googleTranslateElementInit = () => {
+      const g = (window as unknown as { google?: { translate?: { TranslateElement?: new (o: object, id: string) => void } } }).google;
+      if (g?.translate?.TranslateElement) {
+        new g.translate.TranslateElement({ pageLanguage: "ko", autoDisplay: false }, "google_translate_element");
+      }
+    };
+    const s = document.createElement("script");
+    s.src = "https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit";
+    s.async = true;
+    document.head.appendChild(s);
+  }
+
+  box.addEventListener("click", (ev) => {
+    const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("button");
+    if (!btn) return;
+    const lang = btn.dataset.lang ?? "";
+    try { localStorage.setItem("wfg-lang", lang); } catch { /* 무시 */ }
+    if (lang) document.cookie = `googtrans=/ko/${lang};path=/`;
+    else document.cookie = "googtrans=;path=/;expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    location.reload();
+  });
+}
+
 /* ── 밝은/어두운 테마 토글 (localStorage 에 기억) ─────────────── */
 
 function setupTheme(): void {
@@ -909,6 +951,7 @@ async function boot(): Promise<void> {
   setupRadarTabs();
   setupTheme();
   setupVerdict();
+  setupLang();
 
   await Promise.allSettled([loadOntology(), loadTape(), loadRadar(), loadVerdict()]);
   // 시세는 주기적으로 갱신(90초 캐시와 맞춤), 온톨로지는 전략 캐시(5분)에 맞춘다
