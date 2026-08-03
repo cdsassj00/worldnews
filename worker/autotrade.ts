@@ -328,7 +328,9 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
     const pnlPct = pos.avgPrice ? ((price - pos.avgPrice) / pos.avgPrice) * 100 : 0;
     positionView.push({ ...pos, price, pnlPct: round(pnlPct, 2), heldQty: held });
 
-    const qty = Math.min(pos.qty, held || pos.qty);
+    // 계좌가 연결돼 있으면 계좌 보유량이 진실이다. held=0 인데 상태 수량으로
+    // 폴백하면(예전 코드) 계좌에 없는 주식을 무한 재매도 시도하게 된다.
+    const qty = account.connected ? Math.min(pos.qty, held) : pos.qty;
     if (qty <= 0) continue;
 
     let why = "";
@@ -492,6 +494,30 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
   if (plan.pnlKrw >= cfg.targetProfitKrw && cfg.targetProfitKrw > 0 && !state.targetReachedAt) {
     state.targetReachedAt = Date.now();
     journal.push(entry("cycle", `목표 수익 ${cfg.targetProfitKrw.toLocaleString("ko-KR")}원 달성 — 신규 매수를 중단합니다.`));
+  }
+
+  /* 상태-계좌 대사: 봇 장부와 실제 계좌가 어긋나면(외부 매도·중복 주문·부분 체결)
+   * 계좌를 진실로 삼아 장부를 보정한다. 안 하면 없는 주식을 계속 팔려고 시도한다. */
+  if (plan.account.connected) {
+    const heldByCode = new Map(plan.account.holdings.map((h) => [h.symbol, h.qty]));
+    for (const pos of Object.values(state.positions)) {
+      const held = heldByCode.get(pos.code) ?? 0;
+      if (held <= 0) {
+        journal.push(entry("cycle", `상태 정리 — ${pos.nameKo} 봇 장부 ${pos.qty}주가 계좌에 없어 제거합니다(외부 매도·중복 주문 등)`));
+        delete state.positions[pos.code];
+      } else if (held < pos.qty) {
+        journal.push(entry("cycle", `상태 정리 — ${pos.nameKo} 수량 ${pos.qty}→${held}주로 보정(계좌 기준)`));
+        pos.qty = held;
+      }
+    }
+    // 방금 정리된 포지션을 향한 매도 주문은 계획에서 제거·축소한다
+    plan.orders = plan.orders.filter((o) => {
+      if (o.side === "buy") return true;
+      const pos = state.positions[o.code];
+      if (!pos) return false;
+      o.qty = Math.min(o.qty, pos.qty);
+      return o.qty > 0;
+    });
   }
 
   const shadow = opts.shadow ?? !plan.gate.canTrade;

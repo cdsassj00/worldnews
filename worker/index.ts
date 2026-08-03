@@ -518,17 +518,21 @@ export default {
    * 정규장 시간대에 15분마다 자동매매 사이클을 돈다.
    * AUTOTRADE_ENABLED 가 false 면 runCycle 이 그림자 실행으로 떨어져 일지만 남긴다.
    */
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    // 장중 정각(예: 09:00 KST)에는 15분 크론과 매시간 크론이 동시에 발화해
+    // runCycle 이 두 번 돌았다 — 같은 매도가 두 번 나가 "주문 가능 수량 초과"의
+    // 원인이 된다. 장중 시간대에는 15분 크론만 매매를 돌린다.
+    const now = new Date();
+    const marketWindow = now.getUTCDay() >= 1 && now.getUTCDay() <= 5 && now.getUTCHours() <= 6;
+    const skipTrade = event.cron === "0 * * * *" && marketWindow;
+
     // 반드시 순차로: 두 작업이 같은 인보케이션의 서브리퀘스트 한도(50)를 나눠 쓴다.
-    // 동시에 돌리면 캐시가 식은 09:00(=00:00 UTC, KV 리셋 직후)에 주문 fetch 가
-    // 한도에 걸려 kis_unreachable 로 실패한다 — 2026-07-29 첫 실주문에서 실제 발생.
-    // 주문(runCycle)이 예산을 먼저 쓰고, 레이더는 남은 예산으로 돈다(실패해도 15분 뒤 재시도).
+    // 주문(runCycle)이 예산을 먼저 쓰고, 레이더는 남은 예산으로 돈다(실패해도 다음 크론이 재시도).
     ctx.waitUntil(
-      runCycle(env)
-        .catch(() => {
-          /* 크론은 조용히 실패한다. 원인은 일지·tail 로 확인 */
-        })
-        // 전 시장 레이더: 한 번에 80종목씩, 75분에 전 시장 1바퀴
+      (skipTrade ? Promise.resolve() : runCycle(env).then(() => undefined)).catch(() => {
+        /* 크론은 조용히 실패한다. 원인은 일지·tail 로 확인 */
+      })
+        // 전 시장 레이더: 한 번에 80종목씩 순회
         .then(() => radarScanChunk(env))
         .catch(() => undefined),
     );
