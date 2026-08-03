@@ -27,6 +27,7 @@ import {
 import { effectiveValue, round, type MacroSignal } from "../shared/scoring";
 import { runStrategy } from "./strategy";
 import { radarTop } from "./radarscan";
+import { liveSensitivity } from "./senslive";
 import { cached } from "./util";
 import { getInvestorFlow, type InvestorFlow } from "./flows";
 
@@ -135,8 +136,8 @@ function judgeRegime(macro: MacroSignal[], market: VerdictMarket, flow: Investor
 }
 
 /** ④ 섹터 결론 — 민감도 표 × 유효 신호. RELATIONS 로 근거를 문장화한다. */
-function sectorVerdicts(macro: MacroSignal[], market: VerdictMarket) {
-  const table = market === "US" ? US_SENSITIVITY : SENSITIVITY;
+function sectorVerdicts(macro: MacroSignal[], market: VerdictMarket, krTable: Record<string, Partial<Record<MacroId, number>>>) {
+  const table = market === "US" ? US_SENSITIVITY : krTable;
   const byId = new Map(macro.map((m) => [m.id, m]));
   const scored: SectorVerdict[] = [];
   for (const [sector, sens] of Object.entries(table)) {
@@ -200,7 +201,8 @@ async function buildVerdict(env: Env, market: VerdictMarket): Promise<OntoVerdic
   const flow = market === "KR" ? await getInvestorFlow(env).catch(() => null) : null;
   const regime = judgeRegime(strat.macro, market, flow);
   const causal = activeCausalChains(strat.macro);
-  const sectors = sectorVerdicts(strat.macro, market);
+  const { table: krTable } = await liveSensitivity(env);
+  const sectors = sectorVerdicts(strat.macro, market, krTable);
   const stocks = await stockVerdicts(env, market, sectors);
   return {
     market,

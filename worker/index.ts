@@ -27,6 +27,7 @@ import { tickerNewsStatus } from "./tickernews";
 import { radarFind, radarOpps, radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
 import { briefIndex, briefPage, rssXml, sitemapXml } from "./rss";
 import { getVerdict } from "./verdict";
+import { liveSensitivity, promoteSensitivity, rollbackSensitivity } from "./senslive";
 
 export { RadarDB } from "./radar";
 
@@ -396,6 +397,26 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     // 기회 탐색: 하락 국면에서도 수혜 경로·상대 강세·약세 경고를 낸다. market=KR|US
     const market = url.searchParams.get("market") ?? undefined;
     return json(await radarOpps(env, Math.min(15, num(url.searchParams.get("limit"), 8)), market));
+  }
+
+  if (path === "/api/onto/promote") {
+    // 온톨로지 MLOps 승격 — 게이트 통과 후보만, 거래 암호 필요. 자동 승격은 없다.
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    const body = (await request.json().catch(() => ({}))) as Parameters<typeof promoteSensitivity>[1];
+    return json({ ok: true, live: await promoteSensitivity(env, body) });
+  }
+
+  if (path === "/api/onto/rollback") {
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    return json({ ok: true, ...(await rollbackSensitivity(env)) });
+  }
+
+  if (path === "/api/onto/sens") {
+    // 지금 적용 중인 민감도 표 버전 (조회용)
+    const { table, version } = await liveSensitivity(env);
+    return json({ version, table });
   }
 
   if (path === "/api/onto/verdict") {

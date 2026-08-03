@@ -10,7 +10,8 @@
 import type { Env } from "./env";
 import seedData from "../shared/radar-universe.json";
 import usSeedData from "../shared/us-universe.json";
-import { MACRO, SENSITIVITY, US_SENSITIVITY, type SectorId, type UniverseTicker } from "../shared/ontology";
+import { MACRO, US_SENSITIVITY, type SectorId, type UniverseTicker } from "../shared/ontology";
+import { liveSensitivity } from "./senslive";
 import { composite, macroSignals, pctChange, priceSignal, propagate, round } from "../shared/scoring";
 import { getSparkMany, loadSparkFresh } from "./quotes";
 import { getMacroNewsAdjust } from "./macronews";
@@ -70,7 +71,11 @@ export async function radarScanChunk(env: Env): Promise<RadarScanResult> {
   if (!s) return { scanned: 0, cursor: 0, skippedNoData: 0 };
 
   await radarSeedIfNeeded(env);
-  const [{ rows, cursor }, { macro, baseline }] = await Promise.all([s.nextChunk(CHUNK), macroForRadar(env)]);
+  const [{ rows, cursor }, { macro, baseline }, { table: krTable }] = await Promise.all([
+    s.nextChunk(CHUNK),
+    macroForRadar(env),
+    liveSensitivity(env),
+  ]);
   if (!rows.length) return { scanned: 0, cursor, skippedNoData: 0 };
 
   // spark 는 20심볼/호출 — 80종목 = 4회. 캐시 없이 바로 부른다.
@@ -94,8 +99,8 @@ export async function radarScanChunk(env: Env): Promise<RadarScanResult> {
     let onto = { score: 0, reasons: [] as { kind: "ontology" | "price" | "news"; text: string; contribution: number }[], edges: [] as { macroId: string; sector: string; contribution: number }[] };
     if (t.sector) {
       const fake: UniverseTicker = { code: t.code, symbol: t.symbol, nameKo: t.name, sectors: { [t.sector as SectorId]: 1 }, aliases: [] };
-      // 시장별 민감도 표 — 미국 종목은 US_SENSITIVITY 로 전파한다
-      onto = propagate(fake, macro, t.market === "US" ? US_SENSITIVITY : SENSITIVITY);
+      // 시장별 민감도 표 — 미국은 정적, 한국은 승격본(MLOps)이 있으면 그것
+      onto = propagate(fake, macro, t.market === "US" ? US_SENSITIVITY : krTable);
     }
 
     out.push({

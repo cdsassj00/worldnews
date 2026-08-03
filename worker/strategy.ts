@@ -30,6 +30,7 @@ import {
   type ScoreReason,
 } from "../shared/scoring";
 import { getManySeries, getSeries, getSparkMany } from "./quotes";
+import { liveSensitivity } from "./senslive";
 import { getNews, type NewsItem } from "./news";
 import { scoreForTicker, scoreText } from "./sentiment";
 
@@ -70,6 +71,9 @@ export interface StrategyResult {
 export async function runStrategy(env: Env): Promise<StrategyResult> {
   const CORE = UNIVERSE.filter((t) => t.core);
   const EXTENDED = UNIVERSE.filter((t) => !t.core);
+
+  // 승격된 민감도 표(온톨로지 MLOps)가 있으면 그걸 쓴다 — 없으면 정적 표
+  const { table: sensTable } = await liveSensitivity(env);
 
   const [macroSpark, priceSeries, extendedSpark, newsResult, tickerNews, mnews] = await Promise.all([
     // 거시 지표는 종가만 필요하다 — 8개를 fetch 한 번에
@@ -146,7 +150,7 @@ export async function runStrategy(env: Env): Promise<StrategyResult> {
     }
     if (!s || s.closes.length < 30) continue;
 
-    const onto = propagate(t, macro);
+    const onto = propagate(t, macro, sensTable);
     const price = priceSignal(s);
 
     // 1) 종목 직접 뉴스 — 전용 검색 피드가 우선, 없으면 국가 피드에서 이름 매칭
