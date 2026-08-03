@@ -21,7 +21,7 @@ import {
   placeOrder,
   type OrderMarket,
 } from "./kis";
-import { autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle } from "./autotrade";
+import { adjustForDeposit, autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle } from "./autotrade";
 import { runStrategy } from "./strategy";
 import { tickerNewsStatus } from "./tickernews";
 import { radarFind, radarOpps, radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
@@ -471,6 +471,15 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
       gate: result.plan.gate,
       orders: result.plan.orders,
     });
+  }
+
+  if (path === "/api/auto/deposit") {
+    // 입출금 기준선 보정: {"amountKrw": 4000000} 입금 / 음수면 출금
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    const body = (await request.json().catch(() => ({}))) as { amountKrw?: number };
+    const st = await adjustForDeposit(env, Number(body.amountKrw));
+    return json({ ok: true, baselineEquity: st.baselineEquity, pnlKrw: st.lastEquity - st.baselineEquity });
   }
 
   if (path === "/api/auto/resume") {

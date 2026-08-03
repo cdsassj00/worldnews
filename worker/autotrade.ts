@@ -152,6 +152,8 @@ export interface AutoState {
   targetReachedAt: number;
   lastCycleAt: number;
   positions: Record<string, BotPosition>;
+  /** 입출금 기준선 보정 이력 (중복 적용 방지 키) */
+  depositAdjustments?: Record<string, number>;
 }
 
 function emptyState(now: KstNow): AutoState {
@@ -176,7 +178,48 @@ export async function loadState(env: Env): Promise<AutoState> {
   const raw = (await env.CACHE.get(STATE_KEY, "json").catch(() => null)) as AutoState | null;
   const now = kstNow();
   if (!raw) return emptyState(now);
-  return { ...emptyState(now), ...raw, positions: raw.positions ?? {} };
+  const state: AutoState = { ...emptyState(now), ...raw, positions: raw.positions ?? {} };
+
+  /* 1회성 보정 (2026-08-03): 사용자가 400만원을 입금했는데 손익으로 잡혀
+   * 목표 달성(+100만)이 오발동했다. 입금은 수익이 아니다 — 기준선을 같은 만큼
+   * 올려 실매매 손익만 남기고, 오발동한 목표 플래그를 해제한다. */
+  const ADJ_KEY = "deposit-2026-08-03";
+  if (!state.depositAdjustments?.[ADJ_KEY] && state.baselineEquity > 0 && state.baselineEquity < 3_000_000) {
+    const amount = 4_000_000;
+    state.depositAdjustments = { ...(state.depositAdjustments ?? {}), [ADJ_KEY]: amount };
+    state.baselineEquity += amount;
+    // 오늘 시작 평가액도 입금 전에 찍힌 값이면 함께 올린다 (일일 손실 한도 왜곡 방지)
+    if (state.day === "2026-08-03" && state.dayStartEquity > 0 && state.dayStartEquity < 3_000_000) {
+      state.dayStartEquity += amount;
+    }
+    // 입금으로 오발동한 목표 달성 해제 (실손익은 목표 근처가 아니다)
+    if (state.targetReachedAt) state.targetReachedAt = 0;
+    await saveState(env, state);
+    await appendJournal(env, [entry("resume", `입금 400만원 기준선 보정 — 입금은 손익에서 제외하고, 오발동한 목표 달성(신규 매수 중단)을 해제합니다.`)]);
+  }
+  return state;
+}
+
+/**
+ * 입출금 기준선 보정 — 입금(+)·출금(−)은 손익이 아니므로 기준선을 같은 방향으로
+ * 움직여 실매매 손익만 남긴다. /api/auto/deposit (거래 암호) 로 호출.
+ */
+export async function adjustForDeposit(env: Env, amountKrw: number): Promise<AutoState> {
+  if (!Number.isFinite(amountKrw) || Math.abs(amountKrw) < 1000 || Math.abs(amountKrw) > 1_000_000_000) {
+    throw new ApiError(400, "invalid_amount");
+  }
+  const state = await loadState(env);
+  const key = `manual-${Date.now()}`;
+  state.depositAdjustments = { ...(state.depositAdjustments ?? {}), [key]: amountKrw };
+  state.baselineEquity += amountKrw;
+  if (state.dayStartEquity > 0) state.dayStartEquity += amountKrw;
+  if (amountKrw > 0 && state.targetReachedAt) state.targetReachedAt = 0;
+  if (amountKrw < 0) state.peakEquity = Math.max(state.baselineEquity, state.peakEquity + amountKrw);
+  await saveState(env, state);
+  await appendJournal(env, [
+    entry("resume", `${amountKrw > 0 ? "입금" : "출금"} ${Math.abs(amountKrw).toLocaleString("ko-KR")}원 기준선 보정 — 입출금은 손익에서 제외합니다.`),
+  ]);
+  return state;
 }
 
 async function saveState(env: Env, state: AutoState): Promise<void> {
