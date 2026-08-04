@@ -401,8 +401,8 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   const openPositions = Object.keys(state.positions).length;
   const sellingCodes = new Set(orders.filter((o) => o.side === "sell").map((o) => o.code));
   const perPositionCap = (cfg.capitalKrw * cfg.maxPositionPct) / 100;
-  // 위험회피 국면에서는 사이즈를 줄인다 (최대 절반까지)
-  const riskScale = 1 - Math.min(0.5, strategy.riskOff * 0.5);
+  // 위험회피 국면에서는 사이즈를 줄인다 (최대 40%까지 — 예전 50% 는 과했다)
+  const riskScale = 1 - Math.min(0.4, strategy.riskOff * 0.5);
   let remaining = budget;
   // 실제 주문가능 현금도 주문별로 차감한다 — 안 하면 두 번째 주문이 KIS에서 잔액 부족으로 거절된다
   let cashLeft = account.connected ? account.cash : Number.POSITIVE_INFINITY;
@@ -421,7 +421,11 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
 
       const currentValue = pos ? pos.qty * sc.price : 0;
       const room = Math.min(perPositionCap - currentValue, remaining, cfg.maxOrderNotionalKrw, cashLeft);
-      const sized = room * riskScale * Math.min(1, 0.5 + sc.score);
+      /* 점수에 따른 사이즈 배분.
+       * 예전 (0.5 + score) 은 매수 기준선(0.15)에서 0.65배로 깎여, 위험회피 감쇠까지
+       * 겹치면 한도 50만이 32만이 되고 20만원대 고가주는 1주밖에 못 샀다.
+       * 기준선을 넘은 신호면 최소 85%, 점수 0.2 이상이면 100% 를 쓴다. */
+      const sized = room * riskScale * Math.min(1, 0.7 + sc.score * 1.5);
       const limit = roundToTick(sc.price * (1 + SLIPPAGE), "up");
       if (limit > room) {
         // 1주 값이 한도보다 비싸면 이 종목은 지금 자본으로 살 수 없다. 조용히 넘기지 않고 알린다.

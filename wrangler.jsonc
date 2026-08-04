@@ -43,9 +43,9 @@
     // KIS_ENV=prod 상태에서 실제 주문을 내려면 이 값도 "true" 여야 한다(이중 안전장치).
     "ORDER_ALLOW_REAL": "true",
     // 1회 주문 최대 금액(원). 초과 주문은 서버에서 거부.
-    // 자동매매의 종목당 한도(AUTO_CAPITAL_KRW × AUTO_MAX_POSITION_PCT = 200만 × 25% = 50만)에 맞춘다.
+    // 자동매매의 종목당 한도(AUTO_CAPITAL_KRW × AUTO_MAX_POSITION_PCT = 400만 × 30% = 120만)에 맞춘다.
     // 이보다 낮으면 국내 대형주는 1주 값이 한도를 넘어 아예 매수가 불가능해진다.
-    "MAX_ORDER_NOTIONAL_KRW": "500000",
+    "MAX_ORDER_NOTIONAL_KRW": "1200000",
     // "true" 면 인증·한도·TR_ID 검증까지만 하고 실제 주문은 보내지 않는다.
     "ORDER_DRY_RUN": "false",
     // KIS 호출 방식: auto | fetch | socket (9443 포트 차단 환경 대비)
@@ -60,9 +60,11 @@
      * 손실 한도(손절 -7% / 당일 -5% / 낙폭 -20% 영구정지)는 목표와 무관하게 항상 작동한다. */
     "AUTOTRADE_ENABLED": "true",
     // 운용 원금 상한(원). 계좌에 돈이 더 있어도 이 금액 이상은 쓰지 않는다.
-    "AUTO_CAPITAL_KRW": "2000000",
-    // 한 종목 최대 비중(%)
-    "AUTO_MAX_POSITION_PCT": "25",
+    // 2026-08-04 사용자 400만원 입금 + "적극적으로" 지시로 200만 → 400만.
+    // 손실 한도는 %기준이라 절대금액도 함께 커진다(당일 -5% = -20만, 낙폭 -20% = -80만).
+    "AUTO_CAPITAL_KRW": "4000000",
+    // 한 종목 최대 비중(%) — 25% (50만) 로는 20만원대 고가주를 2주도 못 샀다
+    "AUTO_MAX_POSITION_PCT": "30",
     // 종목별 손절 / 익절(%)
     "AUTO_STOP_LOSS_PCT": "7",
     "AUTO_TAKE_PROFIT_PCT": "15",
@@ -74,7 +76,8 @@
     "AUTO_TARGET_PROFIT_KRW": "1000000",
     "AUTO_MAX_TRADES_PER_DAY": "6",
     "AUTO_MAX_ORDERS_PER_CYCLE": "3",
-    "AUTO_MIN_ORDER_KRW": "30000",
+    // 자투리 주문 방지 — 이 금액에 못 미치면 아예 안 산다(수수료 대비 무의미)
+    "AUTO_MIN_ORDER_KRW": "150000",
     "AUTO_MAX_POSITIONS": "5",
     /* 미국 자동매매 — 아직 끔. 미국 전략 백테스트를 통과하기 전에는 켜지 않는다.
      * (미국장은 KST 밤 시간이라 문제가 생겨도 대응이 늦고, 해외 주문 경로는 실측 검증 전) */
