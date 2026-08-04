@@ -264,24 +264,47 @@ export interface AccountView {
   holdings: Holding[];
 }
 
+/** 직전 성공한 계좌 조회 (아이솔레이트 메모리). KIS 가 순간적으로 튕겨도 화면이 비지 않게 한다. */
+let lastGoodAccount: { at: number; view: AccountView } | null = null;
+const ACCOUNT_FRESH_MS = 60_000;
+
 async function readAccount(env: Env): Promise<AccountView> {
   if (!kisConfigured(env)) {
     return { connected: false, reason: "KIS 시크릿이 등록되지 않아 계좌를 읽지 못했습니다.", cash: 0, stockEval: 0, totalEval: 0, holdings: [] };
   }
-  try {
-    const bal = await domesticBalance(env, kisConfig(env));
-    return {
-      connected: true,
-      reason: "",
-      cash: bal.summary.orderableCash || bal.summary.cash,
-      stockEval: bal.summary.stockEval,
-      totalEval: bal.summary.totalEval || bal.summary.cash + bal.summary.stockEval,
-      holdings: bal.holdings,
-    };
-  } catch (err) {
-    const message = err instanceof ApiError ? `${err.message}` : String(err);
-    return { connected: false, reason: `계좌 조회 실패: ${message}`, cash: 0, stockEval: 0, totalEval: 0, holdings: [] };
+  // 1분 안에 성공한 조회가 있으면 재사용 — 대시보드 새로고침마다 KIS 를 때리면
+  // 초당 유량 제한(EGW00201)에 걸려 간헐적으로 "미연결" 이 뜬다.
+  if (lastGoodAccount && Date.now() - lastGoodAccount.at < ACCOUNT_FRESH_MS) return lastGoodAccount.view;
+
+  let lastErr: unknown = null;
+  // 유량 제한은 대개 순간적이다. 짧게 한 번 더 시도한다.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 700));
+    try {
+      const bal = await domesticBalance(env, kisConfig(env));
+      const view: AccountView = {
+        connected: true,
+        reason: "",
+        cash: bal.summary.orderableCash || bal.summary.cash,
+        stockEval: bal.summary.stockEval,
+        totalEval: bal.summary.totalEval || bal.summary.cash + bal.summary.stockEval,
+        holdings: bal.holdings,
+      };
+      lastGoodAccount = { at: Date.now(), view };
+      return view;
+    } catch (err) {
+      lastErr = err;
+    }
   }
+
+  // 두 번 다 실패 — 최근 성공분이 있으면 그것으로 화면을 채우되 조회 시각을 밝힌다.
+  const detail = lastErr instanceof ApiError ? JSON.stringify(lastErr.detail ?? {}) : "";
+  const message = lastErr instanceof ApiError ? `${lastErr.message} ${detail}` : String(lastErr);
+  if (lastGoodAccount) {
+    const ageSec = Math.round((Date.now() - lastGoodAccount.at) / 1000);
+    return { ...lastGoodAccount.view, reason: `KIS 일시 오류로 ${ageSec}초 전 조회값 표시 (${message})` };
+  }
+  return { connected: false, reason: `계좌 조회 실패: ${message}`, cash: 0, stockEval: 0, totalEval: 0, holdings: [] };
 }
 
 /* ── 계획 ─────────────────────────────────────────────── */

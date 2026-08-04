@@ -166,7 +166,7 @@ export class AutoPanel {
     return el("section", { class: "auto-block" }, [
       el("h3", {}, [el("span", { text: "자금과 목표" })]),
       el("div", { class: "auto-grid" }, [
-        stat("평가금액", p.account.connected ? fmtKrw(p.equity) : "계좌 미연결"),
+        stat("평가금액", p.account.connected ? fmtKrw(p.equity) : "조회 실패"),
         stat("누적 손익", `${p.pnlKrw >= 0 ? "+" : ""}${fmtKrw(p.pnlKrw)}`, dirClass(p.pnlKrw)),
         stat("운용 투입", fmtKrw(p.deployedKrw)),
         stat("남은 한도", fmtKrw(p.budgetKrw)),
@@ -184,6 +184,10 @@ export class AutoPanel {
         class: "note",
         text: `평가금액·손익·정지선은 계좌 전체 기준입니다(기존 보유 ${p.account.holdings.length}종목 포함). 매매 대상은 아래 ‘봇 보유 종목’과 신규 진입 종목뿐입니다.`,
       }),
+      // 계좌 조회가 실패했거나 캐시값으로 대체됐으면 이유를 숨기지 않는다
+      ...(p.account.reason
+        ? [el("p", { class: "note", text: `※ ${p.account.reason}` })]
+        : []),
     ]);
   }
 
