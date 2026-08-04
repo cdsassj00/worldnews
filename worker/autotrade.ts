@@ -539,14 +539,24 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
     journal.push(entry("cycle", `목표 수익 ${cfg.targetProfitKrw.toLocaleString("ko-KR")}원 달성 — 신규 매수를 중단합니다.`));
   }
 
-  /* 상태-계좌 대사: 봇 장부와 실제 계좌가 어긋나면(외부 매도·중복 주문·부분 체결)
-   * 계좌를 진실로 삼아 장부를 보정한다. 안 하면 없는 주식을 계속 팔려고 시도한다. */
+  /* 상태-계좌 대사: 봇 장부와 실제 계좌가 어긋나면(외부 매도·부분 체결) 계좌를
+   * 진실로 삼아 장부를 줄인다. 안 하면 없는 주식을 계속 팔려고 시도한다.
+   *
+   * 두 가지 안전장치 (2026-08-04 실전 사고 반영):
+   *  ① 유예 시간: 방금 낸 지정가 주문은 미체결이거나 잔고 반영이 늦다. 이걸
+   *     "계좌에 없음"으로 오판해 장부를 지우면, 다음 사이클이 같은 종목을 다시
+   *     사서 중복 매수가 된다(실제로 NAVER 가 09:30·10:30 두 번 매수됨).
+   *  ② 감소 방향만: 계좌 수량이 장부보다 많아도 올리지 않는다 — 사용자가 직접
+   *     보유한 물량을 봇 장부가 흡수해 마음대로 팔면 안 된다. */
+  const RECONCILE_GRACE_MS = 2 * 60 * 60 * 1000;
   if (plan.account.connected) {
     const heldByCode = new Map(plan.account.holdings.map((h) => [h.symbol, h.qty]));
     for (const pos of Object.values(state.positions)) {
       const held = heldByCode.get(pos.code) ?? 0;
+      const freshMs = Date.now() - Math.max(pos.enteredAt ?? 0, pos.lastAddedAt ?? 0);
+      if (freshMs < RECONCILE_GRACE_MS) continue; // 체결·반영 대기 중일 수 있다
       if (held <= 0) {
-        journal.push(entry("cycle", `상태 정리 — ${pos.nameKo} 봇 장부 ${pos.qty}주가 계좌에 없어 제거합니다(외부 매도·중복 주문 등)`));
+        journal.push(entry("cycle", `상태 정리 — ${pos.nameKo} 봇 장부 ${pos.qty}주가 계좌에 없어 제거합니다(외부 매도 등)`));
         delete state.positions[pos.code];
       } else if (held < pos.qty) {
         journal.push(entry("cycle", `상태 정리 — ${pos.nameKo} 수량 ${pos.qty}→${held}주로 보정(계좌 기준)`));
