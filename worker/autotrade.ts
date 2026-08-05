@@ -154,6 +154,8 @@ export interface AutoState {
   positions: Record<string, BotPosition>;
   /** 입출금 기준선 보정 이력 (중복 적용 방지 키) */
   depositAdjustments?: Record<string, number>;
+  /** 직전 사이클의 주문가능 현금 — 입출금 자동 감지에 쓴다 */
+  lastCash?: number;
 }
 
 function emptyState(now: KstNow): AutoState {
@@ -183,6 +185,22 @@ export async function loadState(env: Env): Promise<AutoState> {
   /* 1회성 보정 (2026-08-03): 사용자가 400만원을 입금했는데 손익으로 잡혀
    * 목표 달성(+100만)이 오발동했다. 입금은 수익이 아니다 — 기준선을 같은 만큼
    * 올려 실매매 손익만 남기고, 오발동한 목표 플래그를 해제한다. */
+  /* 2026-08-05 2차 입금 보정: 현금이 176,422 → 2,006,637 으로 늘었는데 보유 주식은
+   * 그대로여서 총평가가 그만큼 뛰었다(손익 +189만 오계상). 자동 감지는 다음 사이클부터
+   * 작동하므로 이번 건은 직전 사이클 총평가와의 차이로 1회 보정한다. */
+  const ADJ2 = "deposit-2026-08-05";
+  if (!state.depositAdjustments?.[ADJ2] && state.baselineEquity > 5_000_000 && state.baselineEquity < 6_500_000) {
+    const amount = 1_830_215;
+    state.depositAdjustments = { ...(state.depositAdjustments ?? {}), [ADJ2]: amount };
+    state.baselineEquity += amount;
+    state.peakEquity = Math.max(state.peakEquity + amount, state.baselineEquity);
+    if (state.dayStartEquity > 0) state.dayStartEquity += amount;
+    if (state.targetReachedAt) state.targetReachedAt = 0;
+    state.lastCash = 2_006_637; // 자동 감지가 이 값을 기준으로 다음 변화를 판단한다
+    await saveState(env, state);
+    await appendJournal(env, [entry("resume", `입금 1,830,215원 기준선 보정 — 입금은 손익이 아닙니다. 금액이 다르면 /api/auto/deposit 으로 정정하세요.`)]);
+  }
+
   const ADJ_KEY = "deposit-2026-08-03";
   if (!state.depositAdjustments?.[ADJ_KEY] && state.baselineEquity > 0 && state.baselineEquity < 3_000_000) {
     const amount = 4_000_000;
@@ -540,6 +558,36 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
     state.tradesToday = 0;
   }
   if (!state.baselineEquity && plan.equity > 0) state.baselineEquity = plan.equity;
+  /* 입출금 자동 감지 — 입금을 수익으로 계상하면 목표 달성이 오발동한다(2026-08-03·05 실제 발생).
+   * 구분 원리: 현금과 총평가가 같은 방향·비슷한 크기로 함께 움직였으면 외부 입출금이다.
+   *   입금        현금 +X, 주식 그대로 → 총평가 +X   (cashΔ ≈ equityΔ)  → 감지
+   *   봇/본인 매수 현금 -X, 주식 +X    → 총평가 ~0    (부호가 어긋남)    → 무시
+   *   주가 상승    현금 그대로, 주식 +X → 총평가 +X   (cashΔ ≈ 0)        → 무시 */
+  if (plan.account.connected) {
+    const cash = plan.account.cash;
+    const prevCash = state.lastCash ?? 0;
+    if (prevCash > 0 && state.lastEquity > 0) {
+      const cashDelta = cash - prevCash;
+      const equityDelta = plan.equity - state.lastEquity;
+      const looksLikeTransfer =
+        Math.abs(cashDelta) >= 100_000 && Math.abs(cashDelta - equityDelta) <= Math.abs(cashDelta) * 0.35;
+      if (looksLikeTransfer) {
+        state.baselineEquity += cashDelta;
+        if (state.dayStartEquity > 0) state.dayStartEquity += cashDelta;
+        if (cashDelta > 0 && state.targetReachedAt) state.targetReachedAt = 0;
+        state.peakEquity = Math.max(state.peakEquity + cashDelta, state.baselineEquity);
+        state.depositAdjustments = { ...(state.depositAdjustments ?? {}), [`auto-${Date.now()}`]: cashDelta };
+        journal.push(
+          entry(
+            "resume",
+            `${cashDelta > 0 ? "입금" : "출금"} ${Math.abs(cashDelta).toLocaleString("ko-KR")}원 자동 감지 — 손익에서 제외하고 기준선을 보정했습니다. (다르면 /api/auto/deposit 으로 정정)`,
+          ),
+        );
+      }
+    }
+    state.lastCash = cash;
+  }
+
   if (!state.dayStartEquity && plan.equity > 0) state.dayStartEquity = plan.equity;
   if (plan.equity > state.peakEquity) state.peakEquity = plan.equity;
   state.lastEquity = plan.equity;
