@@ -165,15 +165,29 @@ export class AutoPanel {
     const pct = Math.max(-100, Math.min(100, p.targetProgressPct));
     return el("section", { class: "auto-block" }, [
       el("h3", {}, [el("span", { text: "자금과 목표" })]),
+      // ① 봇이 굴리는 돈 — 한도 = 투입 + 여유 (여기서 합이 맞는다)
+      el("p", { class: "auto-sub", text: `봇 운용 한도 ${fmtKrw(c.capitalKrw)} = 투입 + 여유` }),
       el("div", { class: "auto-grid" }, [
-        stat("평가금액", p.account.connected ? fmtKrw(p.equity) : "조회 실패"),
-        stat("봇 손익", `${p.botPnlKrw >= 0 ? "+" : ""}${fmtKrw(p.botPnlKrw)}`, dirClass(p.botPnlKrw)),
-        stat("기존 보유 손익", `${p.otherPnlKrw >= 0 ? "+" : ""}${fmtKrw(p.otherPnlKrw)}`, dirClass(p.otherPnlKrw)),
-        stat("계좌 전체", `${p.pnlKrw >= 0 ? "+" : ""}${fmtKrw(p.pnlKrw)}`, dirClass(p.pnlKrw)),
-        stat("운용 투입", fmtKrw(p.deployedKrw)),
-        stat("남은 한도", fmtKrw(p.budgetKrw)),
-        stat("주문가능 현금", p.account.connected ? fmtKrw(p.account.cash) : "-"),
+        stat("봇 투입", fmtKrw(p.deployedKrw)),
+        stat("봇 여유 한도", fmtKrw(p.budgetKrw)),
+        // 계좌를 못 읽으면 손익은 계산할 수 없다 — 숫자를 지어내지 않는다
+        stat("봇 손익", p.account.connected ? `${p.botPnlKrw >= 0 ? "+" : ""}${fmtKrw(p.botPnlKrw)}` : "-", p.account.connected ? dirClass(p.botPnlKrw) : ""),
         stat("위험회피", String(p.riskOff), p.riskOff >= 0.5 ? "down" : "flat"),
+      ]),
+      // ② 계좌 전체 — 주식(봇+기존) + 현금
+      el("p", {
+        class: "auto-sub",
+        text: p.account.connected
+          ? `계좌 전체 ${fmtKrw(p.equity)} = 봇 주식 ${fmtKrw(p.deployedKrw)} + 기존 보유 주식 ${fmtKrw(
+              Math.max(0, p.account.stockEval - p.deployedKrw),
+            )} + 현금 ${fmtKrw(p.account.cash)}`
+          : "계좌 전체 — 조회 실패로 표시할 수 없습니다",
+      }),
+      el("div", { class: "auto-grid" }, [
+        stat("계좌 평가금액", p.account.connected ? fmtKrw(p.equity) : "조회 실패"),
+        stat("기존 보유 주식", p.account.connected ? fmtKrw(Math.max(0, p.account.stockEval - p.deployedKrw)) : "-"),
+        stat("주문가능 현금", p.account.connected ? fmtKrw(p.account.cash) : "-"),
+        stat("계좌 전체 손익", p.account.connected ? `${p.pnlKrw >= 0 ? "+" : ""}${fmtKrw(p.pnlKrw)}` : "-", p.account.connected ? dirClass(p.pnlKrw) : ""),
       ]),
       el("div", { class: "target-bar", title: `목표 ${fmtKrw(c.targetProfitKrw)} 대비 ${p.targetProgressPct}%` }, [
         el("i", { style: `width:${Math.max(0, pct)}%` }),
@@ -184,7 +198,7 @@ export class AutoPanel {
       }),
       el("p", {
         class: "note",
-        text: `평가금액·손익·정지선은 계좌 전체 기준입니다(기존 보유 ${p.account.holdings.length}종목 포함). 매매 대상은 아래 ‘봇 보유 종목’과 신규 진입 종목뿐입니다.`,
+        text: `봇은 ‘봇 투입’ 금액만 굴립니다. 기존 보유 ${p.account.holdings.length}종목은 봇이 사거나 팔지 않으며, 손익만 계좌 전체에 합산돼 보입니다. 새로 사려면 여유 한도와 주문가능 현금이 **둘 다** 있어야 합니다.`,
       }),
       // 계좌 조회가 실패했거나 캐시값으로 대체됐으면 이유를 숨기지 않는다
       ...(p.account.reason
