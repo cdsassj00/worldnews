@@ -156,6 +156,11 @@ export interface AutoState {
   depositAdjustments?: Record<string, number>;
   /** 직전 사이클의 주문가능 현금 — 입출금 자동 감지에 쓴다 */
   lastCash?: number;
+  /** 봇이 매도로 확정한 누적 손익(원). 평가손익과 합쳐 진짜 손익을 만든다. */
+  realizedPnl?: number;
+  /** 손익 기준 고점·당일 시작값 — 정지선 판정에 쓴다(평가액 대신) */
+  peakPnl?: number;
+  dayStartPnl?: number;
 }
 
 function emptyState(now: KstNow): AutoState {
@@ -185,20 +190,20 @@ export async function loadState(env: Env): Promise<AutoState> {
   /* 1회성 보정 (2026-08-03): 사용자가 400만원을 입금했는데 손익으로 잡혀
    * 목표 달성(+100만)이 오발동했다. 입금은 수익이 아니다 — 기준선을 같은 만큼
    * 올려 실매매 손익만 남기고, 오발동한 목표 플래그를 해제한다. */
-  /* 2026-08-05 2차 입금 보정: 현금이 176,422 → 2,006,637 으로 늘었는데 보유 주식은
-   * 그대로여서 총평가가 그만큼 뛰었다(손익 +189만 오계상). 자동 감지는 다음 사이클부터
-   * 작동하므로 이번 건은 직전 사이클 총평가와의 차이로 1회 보정한다. */
+  /* 2026-08-06 철회: 08-05 에 "입금 1,830,215원"으로 본 현금 증가는 입금이 아니라
+   * D+2 정산에 따른 계좌 필드 이동이었다(그날 봇은 매수만 했다). 손익 계산을
+   * 평가손익+실현손익 기반으로 바꿔 기준선이 손익에 영향을 주지 않으므로 되돌린다. */
   const ADJ2 = "deposit-2026-08-05";
-  if (!state.depositAdjustments?.[ADJ2] && state.baselineEquity > 5_000_000 && state.baselineEquity < 6_500_000) {
-    const amount = 1_830_215;
-    state.depositAdjustments = { ...(state.depositAdjustments ?? {}), [ADJ2]: amount };
-    state.baselineEquity += amount;
-    state.peakEquity = Math.max(state.peakEquity + amount, state.baselineEquity);
-    if (state.dayStartEquity > 0) state.dayStartEquity += amount;
-    if (state.targetReachedAt) state.targetReachedAt = 0;
-    state.lastCash = 2_006_637; // 자동 감지가 이 값을 기준으로 다음 변화를 판단한다
+  if (state.depositAdjustments?.[ADJ2]) {
+    const amount = state.depositAdjustments[ADJ2];
+    const rest = { ...state.depositAdjustments };
+    delete rest[ADJ2];
+    state.depositAdjustments = rest;
+    state.baselineEquity -= amount;
+    state.peakEquity = Math.max(0, state.peakEquity - amount);
+    if (state.dayStartEquity > 0) state.dayStartEquity = Math.max(0, state.dayStartEquity - amount);
     await saveState(env, state);
-    await appendJournal(env, [entry("resume", `입금 1,830,215원 기준선 보정 — 입금은 손익이 아닙니다. 금액이 다르면 /api/auto/deposit 으로 정정하세요.`)]);
+    await appendJournal(env, [entry("resume", `08-05 입금 보정(1,830,215원)을 철회했습니다 — 입금이 아니라 D+2 정산 이동이었습니다. 손익은 이제 보유 평가손익+실현손익으로 계산합니다.`)]);
   }
 
   const ADJ_KEY = "deposit-2026-08-03";
@@ -383,8 +388,14 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   const deployed = deployedValue(state, priceOf);
   const equity = account.connected ? account.totalEval : state.lastEquity || cfg.capitalKrw;
   const baseline = state.baselineEquity || equity;
-  const pnl = equity - baseline;
   const budget = Math.max(0, cfg.capitalKrw - deployed);
+
+  /* 손익은 "평가액 − 기준선"이 아니라 **보유 종목 평가손익 + 실현손익**으로 잰다.
+   * 평가액 기반은 입출금·D+2 정산으로 총평가가 출렁일 때마다 가짜 손익을 만들었다
+   * (2026-08-03 입금 400만이 +390만 수익으로, 08-05 정산 이동이 +189만 수익으로 계상).
+   * 종목 평가손익은 계좌가 직접 주는 값이라 돈이 들어오고 나가도 흔들리지 않는다. */
+  const holdingsPnl = account.connected ? account.holdings.reduce((sum, h) => sum + (h.pnl || 0), 0) : 0;
+  const pnl = account.connected ? holdingsPnl + (state.realizedPnl ?? 0) : equity - baseline;
 
   /* 게이트 — 하나라도 막히면 매수는 나가지 않는다 */
   const blocked: string[] = [];
@@ -555,58 +566,35 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
   if (state.day !== now.date) {
     state.day = now.date;
     state.dayStartEquity = plan.equity;
+    state.dayStartPnl = plan.pnlKrw; // 당일 정지선의 기준점
     state.tradesToday = 0;
   }
   if (!state.baselineEquity && plan.equity > 0) state.baselineEquity = plan.equity;
-  /* 입출금 자동 감지 — 입금을 수익으로 계상하면 목표 달성이 오발동한다(2026-08-03·05 실제 발생).
-   * 구분 원리: 현금과 총평가가 같은 방향·비슷한 크기로 함께 움직였으면 외부 입출금이다.
-   *   입금        현금 +X, 주식 그대로 → 총평가 +X   (cashΔ ≈ equityΔ)  → 감지
-   *   봇/본인 매수 현금 -X, 주식 +X    → 총평가 ~0    (부호가 어긋남)    → 무시
-   *   주가 상승    현금 그대로, 주식 +X → 총평가 +X   (cashΔ ≈ 0)        → 무시 */
-  if (plan.account.connected) {
-    const cash = plan.account.cash;
-    const prevCash = state.lastCash ?? 0;
-    if (prevCash > 0 && state.lastEquity > 0) {
-      const cashDelta = cash - prevCash;
-      const equityDelta = plan.equity - state.lastEquity;
-      const looksLikeTransfer =
-        Math.abs(cashDelta) >= 100_000 && Math.abs(cashDelta - equityDelta) <= Math.abs(cashDelta) * 0.35;
-      if (looksLikeTransfer) {
-        state.baselineEquity += cashDelta;
-        if (state.dayStartEquity > 0) state.dayStartEquity += cashDelta;
-        if (cashDelta > 0 && state.targetReachedAt) state.targetReachedAt = 0;
-        state.peakEquity = Math.max(state.peakEquity + cashDelta, state.baselineEquity);
-        state.depositAdjustments = { ...(state.depositAdjustments ?? {}), [`auto-${Date.now()}`]: cashDelta };
-        journal.push(
-          entry(
-            "resume",
-            `${cashDelta > 0 ? "입금" : "출금"} ${Math.abs(cashDelta).toLocaleString("ko-KR")}원 자동 감지 — 손익에서 제외하고 기준선을 보정했습니다. (다르면 /api/auto/deposit 으로 정정)`,
-          ),
-        );
-      }
-    }
-    state.lastCash = cash;
-  }
+  if (plan.account.connected) state.lastCash = plan.account.cash;
 
   if (!state.dayStartEquity && plan.equity > 0) state.dayStartEquity = plan.equity;
   if (plan.equity > state.peakEquity) state.peakEquity = plan.equity;
   state.lastEquity = plan.equity;
   state.lastCycleAt = Date.now();
 
-  if (plan.account.connected && state.peakEquity > 0) {
-    const drawdown = ((state.peakEquity - plan.equity) / state.peakEquity) * 100;
-    if (drawdown >= cfg.maxDrawdownPct && !state.haltedPermanent) {
+  /* 정지선도 손익 기준으로 잰다. 평가액 기준이면 입금·정산으로 총평가가 흔들릴 때
+   * 멀쩡한데 정지되거나(출금) 위험한데 안 멈추는(입금) 일이 생긴다.
+   * 손실폭은 운용 원금 대비 %로 환산한다 — 한도의 의미(원금의 몇 %)가 그대로 유지된다. */
+  if (plan.account.connected) {
+    if (state.peakPnl === undefined || plan.pnlKrw > state.peakPnl) state.peakPnl = plan.pnlKrw;
+    if (state.dayStartPnl === undefined) state.dayStartPnl = plan.pnlKrw;
+
+    const ddPct = ((state.peakPnl - plan.pnlKrw) / Math.max(1, cfg.capitalKrw)) * 100;
+    if (ddPct >= cfg.maxDrawdownPct && !state.haltedPermanent) {
       state.haltedPermanent = true;
-      state.haltReason = `고점 대비 -${round(drawdown, 1)}% (한도 -${cfg.maxDrawdownPct}%)`;
+      state.haltReason = `고점 손익 대비 -${round(ddPct, 1)}% (원금 대비, 한도 -${cfg.maxDrawdownPct}%)`;
       journal.push(entry("halt", `영구 정지 — ${state.haltReason}. 사람이 확인 후 해제해야 합니다.`));
     }
-    if (state.dayStartEquity > 0) {
-      const dayLoss = ((state.dayStartEquity - plan.equity) / state.dayStartEquity) * 100;
-      if (dayLoss >= cfg.dailyLossHaltPct && state.haltedDay !== now.date) {
-        state.haltedDay = now.date;
-        state.haltReason = `당일 -${round(dayLoss, 1)}% (한도 -${cfg.dailyLossHaltPct}%)`;
-        journal.push(entry("halt", `당일 정지 — ${state.haltReason}. 내일 자동 해제됩니다.`));
-      }
+    const dayLossPct = ((state.dayStartPnl - plan.pnlKrw) / Math.max(1, cfg.capitalKrw)) * 100;
+    if (dayLossPct >= cfg.dailyLossHaltPct && state.haltedDay !== now.date) {
+      state.haltedDay = now.date;
+      state.haltReason = `당일 -${round(dayLossPct, 1)}% (원금 대비, 한도 -${cfg.dailyLossHaltPct}%)`;
+      journal.push(entry("halt", `당일 정지 — ${state.haltReason}. 내일 자동 해제됩니다.`));
     }
   }
   if (plan.pnlKrw >= cfg.targetProfitKrw && cfg.targetProfitKrw > 0 && !state.targetReachedAt) {
@@ -729,6 +717,12 @@ function applyFill(state: AutoState, o: PlannedOrder): void {
       };
     }
   } else if (pos) {
+    // 매도分은 확정 손익으로 적립한다 (평가손익에서 빠지므로 여기서 잡아야 총액이 맞는다).
+    // 왕복 거래비용 0.23% 를 차감해 낙관 편향을 없앤다.
+    const qty = Math.min(o.qty, pos.qty);
+    const gross = (o.price - pos.avgPrice) * qty;
+    const cost = o.price * qty * 0.0023;
+    state.realizedPnl = Math.round((state.realizedPnl ?? 0) + gross - cost);
     pos.qty -= o.qty;
     if (pos.qty <= 0) delete state.positions[o.code];
   }
