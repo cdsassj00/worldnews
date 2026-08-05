@@ -355,6 +355,10 @@ export interface AutoPlan {
   deployedKrw: number;
   budgetKrw: number;
   pnlKrw: number;
+  /** 봇이 산 종목만의 손익 — 기존 보유분과 섞이지 않게 분리해서 보여준다 */
+  botPnlKrw: number;
+  /** 계좌에 원래 있던(봇이 사지 않은) 종목의 손익 */
+  otherPnlKrw: number;
   targetProgressPct: number;
   riskOff: number;
   macro: StrategyResult["macro"];
@@ -516,6 +520,19 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   if (deployed > 0) notes.push(`운용 투입 ${Math.round(deployed).toLocaleString("ko-KR")}원 / 한도 ${cfg.capitalKrw.toLocaleString("ko-KR")}원`);
   if (isDryRun(env)) notes.push("ORDER_DRY_RUN=true — 주문은 검증만 하고 전송되지 않습니다.");
 
+  /* 봇 성과와 기존 보유분을 분리한다. 계좌 전체 손익만 보면 봇이 잘하고 있어도
+   * 원래 갖고 있던 종목의 등락에 묻혀 판단이 안 된다. 봇 지분은 계좌 보유 수량 중
+   * 봇 장부 수량만큼을 비례 배분해 계산한다. */
+  let botPnl = state.realizedPnl ?? 0;
+  if (account.connected) {
+    const byCode = new Map(account.holdings.map((h) => [h.symbol, h]));
+    for (const pos of Object.values(state.positions)) {
+      const h = byCode.get(pos.code);
+      if (!h || !h.qty) continue;
+      botPnl += (h.pnl || 0) * (Math.min(pos.qty, h.qty) / h.qty);
+    }
+  }
+
   return {
     generatedAt: Date.now(),
     kst: now,
@@ -527,7 +544,10 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
     deployedKrw: Math.round(deployed),
     budgetKrw: Math.round(budget),
     pnlKrw: Math.round(pnl),
-    targetProgressPct: cfg.targetProfitKrw > 0 ? round((pnl / cfg.targetProfitKrw) * 100, 1) : 0,
+    botPnlKrw: Math.round(botPnl),
+    otherPnlKrw: Math.round(pnl - botPnl),
+    // 목표(+100만)는 봇이 벌어야 하는 돈이다 — 기존 보유분 등락은 목표 진행률에서 뺀다
+    targetProgressPct: cfg.targetProfitKrw > 0 ? round((botPnl / cfg.targetProfitKrw) * 100, 1) : 0,
     riskOff: strategy.riskOff,
     macro: strategy.macro,
     top: strategy.scores.slice(0, 8),
@@ -597,7 +617,7 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
       journal.push(entry("halt", `당일 정지 — ${state.haltReason}. 내일 자동 해제됩니다.`));
     }
   }
-  if (plan.pnlKrw >= cfg.targetProfitKrw && cfg.targetProfitKrw > 0 && !state.targetReachedAt) {
+  if (plan.botPnlKrw >= cfg.targetProfitKrw && cfg.targetProfitKrw > 0 && !state.targetReachedAt) {
     state.targetReachedAt = Date.now();
     journal.push(entry("cycle", `목표 수익 ${cfg.targetProfitKrw.toLocaleString("ko-KR")}원 달성 — 신규 매수를 중단합니다.`));
   }

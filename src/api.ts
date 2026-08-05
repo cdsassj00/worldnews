@@ -278,6 +278,8 @@ export interface AutoPlan {
   deployedKrw: number;
   budgetKrw: number;
   pnlKrw: number;
+  botPnlKrw: number;
+  otherPnlKrw: number;
   targetProgressPct: number;
   riskOff: number;
   macro: MacroSignal[];

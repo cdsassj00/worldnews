@@ -167,7 +167,9 @@ export class AutoPanel {
       el("h3", {}, [el("span", { text: "자금과 목표" })]),
       el("div", { class: "auto-grid" }, [
         stat("평가금액", p.account.connected ? fmtKrw(p.equity) : "조회 실패"),
-        stat("누적 손익", `${p.pnlKrw >= 0 ? "+" : ""}${fmtKrw(p.pnlKrw)}`, dirClass(p.pnlKrw)),
+        stat("봇 손익", `${p.botPnlKrw >= 0 ? "+" : ""}${fmtKrw(p.botPnlKrw)}`, dirClass(p.botPnlKrw)),
+        stat("기존 보유 손익", `${p.otherPnlKrw >= 0 ? "+" : ""}${fmtKrw(p.otherPnlKrw)}`, dirClass(p.otherPnlKrw)),
+        stat("계좌 전체", `${p.pnlKrw >= 0 ? "+" : ""}${fmtKrw(p.pnlKrw)}`, dirClass(p.pnlKrw)),
         stat("운용 투입", fmtKrw(p.deployedKrw)),
         stat("남은 한도", fmtKrw(p.budgetKrw)),
         stat("주문가능 현금", p.account.connected ? fmtKrw(p.account.cash) : "-"),
