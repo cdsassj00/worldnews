@@ -161,6 +161,8 @@ export interface AutoState {
   /** 손익 기준 고점·당일 시작값 — 정지선 판정에 쓴다(평가액 대신) */
   peakPnl?: number;
   dayStartPnl?: number;
+  /** 내가 이 계좌에 넣은 돈의 총액(원). 수익 = 현재 평가금액 − 이 값. */
+  totalDepositKrw?: number;
 }
 
 function emptyState(now: KstNow): AutoState {
@@ -206,6 +208,14 @@ export async function loadState(env: Env): Promise<AutoState> {
     await appendJournal(env, [entry("resume", `08-05 입금 보정(1,830,215원)을 철회했습니다 — 입금이 아니라 D+2 정산 이동이었습니다. 손익은 이제 보유 평가손익+실현손익으로 계산합니다.`)]);
   }
 
+  /* 입금 총액 초기화 — 사용자 신고 기준: 처음 200만 + 08-03 추가 400만 = 600만.
+   * 수익은 "지금 계좌 평가금액 − 이 값"으로 계산한다. 추가 입출금은
+   * /api/auto/deposit 으로 갱신한다. */
+  if (state.totalDepositKrw === undefined) {
+    state.totalDepositKrw = 6_000_000;
+    await saveState(env, state);
+  }
+
   const ADJ_KEY = "deposit-2026-08-03";
   if (!state.depositAdjustments?.[ADJ_KEY] && state.baselineEquity > 0 && state.baselineEquity < 3_000_000) {
     const amount = 4_000_000;
@@ -234,6 +244,8 @@ export async function adjustForDeposit(env: Env, amountKrw: number): Promise<Aut
   const state = await loadState(env);
   const key = `manual-${Date.now()}`;
   state.depositAdjustments = { ...(state.depositAdjustments ?? {}), [key]: amountKrw };
+  // 넣은 돈의 총액을 갱신한다 — 수익 계산의 기준
+  state.totalDepositKrw = Math.max(0, (state.totalDepositKrw ?? 0) + amountKrw);
   state.baselineEquity += amountKrw;
   if (state.dayStartEquity > 0) state.dayStartEquity += amountKrw;
   if (amountKrw > 0 && state.targetReachedAt) state.targetReachedAt = 0;
@@ -359,6 +371,14 @@ export interface AutoPlan {
   botPnlKrw: number;
   /** 계좌에 원래 있던(봇이 사지 않은) 종목의 손익 */
   otherPnlKrw: number;
+  /** 내가 넣은 돈(입금 총액) */
+  depositKrw: number;
+  /** 순수익 = 현재 평가금액 − 입금 총액 */
+  netProfitKrw: number;
+  netProfitPct: number;
+  /** 주식에 들어가 있는 돈 / 현금으로 남은 돈 */
+  investedKrw: number;
+  cashKrw: number;
   targetProgressPct: number;
   riskOff: number;
   macro: StrategyResult["macro"];
@@ -523,6 +543,9 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   /* 봇 성과와 기존 보유분을 분리한다. 계좌 전체 손익만 보면 봇이 잘하고 있어도
    * 원래 갖고 있던 종목의 등락에 묻혀 판단이 안 된다. 봇 지분은 계좌 보유 수량 중
    * 봇 장부 수량만큼을 비례 배분해 계산한다. */
+  const deposit = state.totalDepositKrw ?? 0;
+  const netProfit = account.connected && deposit > 0 ? equity - deposit : 0;
+
   let botPnl = state.realizedPnl ?? 0;
   if (account.connected) {
     const byCode = new Map(account.holdings.map((h) => [h.symbol, h]));
@@ -546,6 +569,14 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
     pnlKrw: Math.round(pnl),
     botPnlKrw: Math.round(botPnl),
     otherPnlKrw: Math.round(pnl - botPnl),
+    /* 사용자가 실제로 궁금한 네 숫자: 넣은 돈 / 주식 / 현금 / 수익.
+     * 수익 = 지금 계좌 평가금액 − 내가 넣은 돈. 여기엔 봇 매매 손익과
+     * 기존 보유 종목 등락이 모두 들어간다(계좌에 일어난 일 전부). */
+    depositKrw: Math.round(deposit),
+    netProfitKrw: Math.round(netProfit),
+    netProfitPct: deposit > 0 ? round((netProfit / deposit) * 100, 2) : 0,
+    investedKrw: Math.round(account.connected ? account.stockEval : deployed),
+    cashKrw: Math.round(account.connected ? account.cash : 0),
     // 목표(+100만)는 봇이 벌어야 하는 돈이다 — 기존 보유분 등락은 목표 진행률에서 뺀다
     targetProgressPct: cfg.targetProfitKrw > 0 ? round((botPnl / cfg.targetProfitKrw) * 100, 1) : 0,
     riskOff: strategy.riskOff,

@@ -280,6 +280,11 @@ export interface AutoPlan {
   pnlKrw: number;
   botPnlKrw: number;
   otherPnlKrw: number;
+  depositKrw: number;
+  netProfitKrw: number;
+  netProfitPct: number;
+  investedKrw: number;
+  cashKrw: number;
   targetProgressPct: number;
   riskOff: number;
   macro: MacroSignal[];
