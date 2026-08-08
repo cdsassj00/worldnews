@@ -108,6 +108,9 @@ const SCENARIOS: Scenario[] = [
   { name: "J 손절 -4% + 교체 0.3",   stopMode: "fixed", stopPct: 4,  atrMult: 2,   exitMode: "fixed", takePct: 15, trailPct: 8,  signalExit: true,  riskOffExit: 0.8, rotateGap: 0.3 },
   { name: "K 손절 -4% + 교체 0.15",  stopMode: "fixed", stopPct: 4,  atrMult: 2,   exitMode: "fixed", takePct: 15, trailPct: 8,  signalExit: true,  riskOffExit: 0.8, rotateGap: 0.15 },
   { name: "L 익절 +8% + 교체 0.3",   stopMode: "fixed", stopPct: 5,  atrMult: 2,   exitMode: "fixed", takePct: 8,  trailPct: 8,  signalExit: true,  riskOffExit: 0.8, rotateGap: 0.3 },
+  /* N — 사용자 선택 2번: 현재 설정에서 손절만 -5% 로 (매도가 아예 안 나가는 문제 해소) */
+  { name: "N 현재 + 손절 -5%",      stopMode: "fixed", stopPct: 5,  atrMult: 2,   exitMode: "fixed", takePct: 15, trailPct: 8,  signalExit: true,  riskOffExit: 0.8 },
+  { name: "N2 현재 + 손절 -6%",     stopMode: "fixed", stopPct: 6,  atrMult: 2,   exitMode: "fixed", takePct: 15, trailPct: 8,  signalExit: true,  riskOffExit: 0.8 },
   /* M — 국면 적응형(사용자 선택 1번): 하락 국면엔 L 규칙, 상승 국면엔 G 규칙 */
   {
     name: "M 국면적응 (하락=단타/상승=보유)",
