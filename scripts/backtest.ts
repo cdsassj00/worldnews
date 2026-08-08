@@ -69,6 +69,28 @@ export interface Scenario {
    * 팔고 갈아탄다. 0 이면 끔. "안 되는 건 정리하고 될 법한 걸 산다"는 규칙의 검증판.
    */
   rotateGap?: number;
+  /**
+   * 국면 적응 — 시장이 하락 추세거나 위험회피가 높으면 단타 규칙(짧은 익절·빠른 손절·교체),
+   * 상승 추세면 보유 규칙(추적손절·긴 익절)으로 자동 전환한다.
+   * 판정은 그날까지의 데이터만 쓴다(미래 참조 없음).
+   */
+  adaptive?: { fast: Partial<Scenario>; slow: Partial<Scenario> };
+}
+
+/**
+ * 국면 판정 — 하락 국면인가.
+ * 첫 시도(20일선 이탈 OR 모멘텀 OR 위험회피)는 너무 민감해 상승장 조정마다 단타로
+ * 갈아타며 휩쓸렸다(1년 구간 -2.7%). 60일선 아래 **그리고** 20일 모멘텀 음수라는
+ * AND 조건으로 둔감하게 바꾼다.
+ */
+function isDefensive(kospiCloses: number[], riskOff: number): boolean {
+  if (kospiCloses.length < 21) return riskOff >= 0.5;
+  const last = kospiCloses[kospiCloses.length - 1];
+  const ma20 = kospiCloses.slice(-20).reduce((a, b) => a + b, 0) / 20;
+  const mom20 = last / kospiCloses[kospiCloses.length - 21] - 1;
+  // 20일선 아래이면서 20일 수익률도 마이너스일 때만 방어(단타) 모드.
+  // OR 로 묶으면 상승장 조정마다 갈아타 휩쓸리고, 60일선으로 늦추면 하락장을 놓친다.
+  return last < ma20 && mom20 < -0.01;
 }
 
 const SCENARIOS: Scenario[] = [
@@ -86,6 +108,16 @@ const SCENARIOS: Scenario[] = [
   { name: "J 손절 -4% + 교체 0.3",   stopMode: "fixed", stopPct: 4,  atrMult: 2,   exitMode: "fixed", takePct: 15, trailPct: 8,  signalExit: true,  riskOffExit: 0.8, rotateGap: 0.3 },
   { name: "K 손절 -4% + 교체 0.15",  stopMode: "fixed", stopPct: 4,  atrMult: 2,   exitMode: "fixed", takePct: 15, trailPct: 8,  signalExit: true,  riskOffExit: 0.8, rotateGap: 0.15 },
   { name: "L 익절 +8% + 교체 0.3",   stopMode: "fixed", stopPct: 5,  atrMult: 2,   exitMode: "fixed", takePct: 8,  trailPct: 8,  signalExit: true,  riskOffExit: 0.8, rotateGap: 0.3 },
+  /* M — 국면 적응형(사용자 선택 1번): 하락 국면엔 L 규칙, 상승 국면엔 G 규칙 */
+  {
+    name: "M 국면적응 (하락=단타/상승=보유)",
+    stopMode: "fixed", stopPct: 5, atrMult: 2, exitMode: "fixed", takePct: 8, trailPct: 8,
+    signalExit: true, riskOffExit: 0.8, rotateGap: 0.3,
+    adaptive: {
+      fast: { stopMode: "fixed", stopPct: 5, exitMode: "fixed", takePct: 8, signalExit: true, rotateGap: 0.3 },
+      slow: { stopMode: "atr", atrMult: 3, exitMode: "trail", trailPct: 12, takePct: 15, signalExit: false, rotateGap: 0 },
+    },
+  },
 ];
 
 /* ── 데이터 ─────────────────────────────── */
@@ -186,6 +218,8 @@ interface Trade {
 
 interface SimResult {
   scenario: Scenario;
+  /** 국면 적응형이 규칙을 바꾼 횟수 */
+  regimeSwitches?: number;
   finalEquity: number;
   totalReturn: number;
   maxDd: number;
@@ -273,7 +307,10 @@ async function buildDataset(): Promise<Dataset> {
   return { macroBars, tickerBars, calendar, idxAsOf, kospi, daily };
 }
 
-function simulate(ds: Dataset, cfg: Scenario): SimResult {
+function simulate(ds: Dataset, baseCfg: Scenario): SimResult {
+  // 국면 적응형은 루프 안에서 cfg 를 갈아 끼운다. 고정 시나리오는 그대로 유지된다.
+  let cfg: Scenario = baseCfg;
+  let regimeSwitches = 0;
   const { tickerBars, calendar, idxAsOf } = ds;
   let cash = CAPITAL;
   const positions = new Map<string, Position>();
@@ -309,6 +346,17 @@ function simulate(ds: Dataset, cfg: Scenario): SimResult {
     const today = calendar[d];
     const tomorrow = calendar[d + 1];
     const day = ds.daily[dayIndex.get(today) ?? -1];
+
+    /* 국면 적응 — 그날까지의 코스피 추세·위험회피로 규칙을 갈아 끼운다.
+     * 오늘 이후 데이터는 쓰지 않으므로 미래 참조가 없다. */
+    if (baseCfg.adaptive && day) {
+      const ki = idxAsOf("^KS11", today);
+      const closes = ki >= 0 ? ds.kospi.close.slice(0, ki + 1) : [];
+      const defensive = isDefensive(closes, day.riskOff);
+      const next = { ...baseCfg, ...(defensive ? baseCfg.adaptive.fast : baseCfg.adaptive.slow) } as Scenario;
+      if (next.stopMode !== cfg.stopMode || next.takePct !== cfg.takePct || next.rotateGap !== cfg.rotateGap) regimeSwitches++;
+      cfg = next;
+    }
 
     let holdingsValue = 0;
     for (const p of positions.values()) {
@@ -444,7 +492,8 @@ function simulate(ds: Dataset, cfg: Scenario): SimResult {
   }
 
   return {
-    scenario: cfg,
+    scenario: baseCfg, // 이름·설정은 원본 기준으로 보고한다
+    regimeSwitches,
     finalEquity: cash,
     totalReturn: ((cash - CAPITAL) / CAPITAL) * 100,
     maxDd,
