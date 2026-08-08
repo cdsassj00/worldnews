@@ -62,6 +62,11 @@ export interface Scenario {
   signalExit: boolean;
   /** riskOff 가 이 값 이상이면 보유분 정리 (1 초과면 사실상 끔) */
   riskOffExit: number;
+  /**
+   * 교체 매매 — 보유 종목 중 최저 점수가 미보유 후보 최고 점수보다 이만큼 낮으면
+   * 팔고 갈아탄다. 0 이면 끔. "안 되는 건 정리하고 될 법한 걸 산다"는 규칙의 검증판.
+   */
+  rotateGap?: number;
 }
 
 const SCENARIOS: Scenario[] = [
@@ -73,6 +78,12 @@ const SCENARIOS: Scenario[] = [
   { name: "E 손절 12% 완화",       stopMode: "fixed", stopPct: 12, atrMult: 2,   exitMode: "fixed", takePct: 15, trailPct: 8,  signalExit: true,  riskOffExit: 0.8 },
   { name: "F 추적손절 + 이탈매도만", stopMode: "atr",  stopPct: 7,  atrMult: 2.5, exitMode: "trail", takePct: 15, trailPct: 10, signalExit: true,  riskOffExit: 9 },
   { name: "G 추적손절만 (거의 홀딩)", stopMode: "atr", stopPct: 7,  atrMult: 3,   exitMode: "trail", takePct: 15, trailPct: 12, signalExit: false, riskOffExit: 9 },
+  /* 아래는 사용자 제안 검증: "손해나는 건 빨리 자르고 더 나은 종목으로 갈아탄다" */
+  { name: "H 교체매매 (갭 0.3)",     stopMode: "fixed", stopPct: 7,  atrMult: 2,   exitMode: "fixed", takePct: 15, trailPct: 8,  signalExit: true,  riskOffExit: 0.8, rotateGap: 0.3 },
+  { name: "I 손절 -4% (빠른 손절)",   stopMode: "fixed", stopPct: 4,  atrMult: 2,   exitMode: "fixed", takePct: 15, trailPct: 8,  signalExit: true,  riskOffExit: 0.8 },
+  { name: "J 손절 -4% + 교체 0.3",   stopMode: "fixed", stopPct: 4,  atrMult: 2,   exitMode: "fixed", takePct: 15, trailPct: 8,  signalExit: true,  riskOffExit: 0.8, rotateGap: 0.3 },
+  { name: "K 손절 -4% + 교체 0.15",  stopMode: "fixed", stopPct: 4,  atrMult: 2,   exitMode: "fixed", takePct: 15, trailPct: 8,  signalExit: true,  riskOffExit: 0.8, rotateGap: 0.15 },
+  { name: "L 익절 +8% + 교체 0.3",   stopMode: "fixed", stopPct: 5,  atrMult: 2,   exitMode: "fixed", takePct: 8,  trailPct: 8,  signalExit: true,  riskOffExit: 0.8, rotateGap: 0.3 },
 ];
 
 /* ── 데이터 ─────────────────────────────── */
@@ -357,6 +368,23 @@ function simulate(ds: Dataset, cfg: Scenario): SimResult {
       const b = tickerBars.get(p.symbol);
       if (oi < 0 || !b) continue;
       close(p, tomorrow, b.open[oi] * (1 - SLIPPAGE), bySignal ? `신호 이탈 (${sc.toFixed(2)})` : `위험회피 ${day.riskOff}`);
+    }
+
+    /* 2-b) 교체 매매 — 자리가 다 찼을 때, 제일 약한 보유를 훨씬 강한 후보와 바꾼다.
+     * 자금이 묶여 좋은 신호를 놓치는 문제를 푸는 규칙이다. */
+    if (cfg.rotateGap && positions.size >= MAX_POSITIONS) {
+      const heldScored = [...positions.values()]
+        .map((p) => ({ p, score: scoreByCode.get(p.code) ?? -1 }))
+        .sort((a, b) => a.score - b.score);
+      const worst = heldScored[0];
+      const best = day.ranked.find((r) => !positions.has(r.code) && r.score >= BUY_SCORE);
+      if (worst && best && best.score - worst.score >= cfg.rotateGap) {
+        const oi = idxAsOf(worst.p.symbol, tomorrow);
+        const b = tickerBars.get(worst.p.symbol);
+        if (oi >= 0 && b) {
+          close(worst.p, tomorrow, b.open[oi] * (1 - SLIPPAGE), `교체 매도 (${worst.score.toFixed(2)} → ${best.nameKo} ${best.score.toFixed(2)})`);
+        }
+      }
     }
 
     /* 3) 매수 (다음날 시가) */
