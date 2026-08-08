@@ -43,6 +43,8 @@ const SLIPPAGE = 0.003;
 const ROUND_TRIP_COST = 0.0023;
 
 const YEARS = Number(process.env.BT_YEARS ?? 2);
+/** 짧은 구간 검증용 — BT_RANGE=3mo|6mo|1y 처럼 야후 range 를 직접 지정한다 */
+const RANGE = process.env.BT_RANGE || `${YEARS}y`;
 
 /**
  * 시나리오 — 무엇이 성과를 좌우하는지 **원인을 분리**하려고 둔 것이지
@@ -205,7 +207,7 @@ interface Dataset {
 
 /** 시나리오와 무관한 부분(데이터·점수)은 한 번만 계산한다 */
 async function buildDataset(): Promise<Dataset> {
-  const range = `${YEARS}y`;
+  const range = RANGE;
   process.stderr.write(`데이터 수집 중 (${range})…\n`);
   const macroBars = await loadAll(MACRO.map((m) => m.symbol), range);
   const tickerBars = await loadAll([...UNIVERSE.map((t) => t.symbol), "^KS11"], range);
@@ -519,7 +521,7 @@ async function main() {
   console.log(`백테스트  ${first} ~ ${lastDate}  (${ds.daily.length} 거래일)`);
   console.log(`벤치마크  코스피 매수 후 보유 = ${pct(kospiReturn)}`);
   console.log("=".repeat(70));
-  console.log(`${"시나리오".padEnd(24)}${"수익률".padStart(10)}${"vs코스피".padStart(11)}${"최대낙폭".padStart(10)}${"매매".padStart(7)}${"승률".padStart(8)}${"PF".padStart(7)}`);
+  console.log(`${"시나리오".padEnd(24)}${"수익률".padStart(10)}${"vs코스피".padStart(11)}${"최대낙폭".padStart(10)}${"매매".padStart(7)}${"승률".padStart(8)}${"PF".padStart(7)}${"보유".padStart(7)}`);
   console.log("─".repeat(70));
 
   const results: SimResult[] = [];
@@ -534,7 +536,9 @@ async function main() {
         `-${r.maxDd.toFixed(1)}%`.padStart(10) +
         `${r.trades.length}`.padStart(7) +
         `${s.winRate.toFixed(0)}%`.padStart(8) +
-        s.pf.toFixed(2).padStart(7),
+        s.pf.toFixed(2).padStart(7) +
+        // 단타 관점 지표: 평균 보유일 (며칠 만에 팔았나)
+        `${(r.trades.reduce((a, t) => a + t.holdDays, 0) / Math.max(1, r.trades.length)).toFixed(0)}일`.padStart(7),
     );
   }
 
