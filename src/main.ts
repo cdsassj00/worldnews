@@ -3,6 +3,7 @@ import { Globe, type CountryRef } from "./globe";
 import { api, ApiFailure, getTradeToken, setTradeToken, type ConfigResponse, type KisStatus, type Snapshot } from "./api";
 import { Panel, type OrderDraft } from "./panel";
 import { AutoPanel } from "./autopanel";
+import { QuantPanel } from "./quantpanel";
 import { Ontology3D } from "./ontology3d";
 import type { OntoState, OntoVerdict, RadarItem, RadarOpps, SectorVerdict, StockVerdict, TickerScore } from "./api";
 import { dirClass, el, fmtKrw, fmtKst, fmtNum, fmtPct, timeAgo } from "./format";
@@ -43,6 +44,7 @@ const panel = new Panel({
 });
 
 let autoPanel: AutoPanel | null = null;
+let quantPanel: QuantPanel | null = null;
 let onto: Ontology3D | null = null;
 let miniGlobe: Globe | null = null;
 let ontoState: OntoState | null = null;
@@ -953,12 +955,14 @@ async function boot(): Promise<void> {
   setupVerdict();
   setupLang();
 
-  await Promise.allSettled([loadOntology(), loadTape(), loadRadar(), loadVerdict()]);
+  quantPanel = new QuantPanel({ root: $("quant-body"), sub: $("quant-sub") });
+  await Promise.allSettled([loadOntology(), loadTape(), loadRadar(), loadVerdict(), quantPanel.load()]);
   // 시세는 주기적으로 갱신(90초 캐시와 맞춤), 온톨로지는 전략 캐시(5분)에 맞춘다
   setInterval(() => void loadTape(), 90_000);
   setInterval(() => void loadOntology(), 300_000);
   setInterval(() => void loadRadar(), 300_000);
   setInterval(() => void loadVerdict(), 300_000);
+  setInterval(() => void quantPanel?.load(), 300_000);
 }
 
 void boot();

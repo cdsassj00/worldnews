@@ -39,6 +39,24 @@ export interface Env {
   AUTO_MIN_ORDER_KRW?: string;
   AUTO_MAX_POSITIONS?: string;
 
+  /* 퀀트 트랙 (quant.ts) — 수급·차트만 보는 별도 엔진. 모의매매라 주문은 나가지 않는다.
+   * 백테스트에서 온톨로지 트랙에 졌기 때문에 실계좌를 붙이지 않았다(기록은 계속 쌓는다). */
+  QUANT_ENABLED?: string; // "false" 면 스캔·모의매매 모두 정지
+  QUANT_PROFILE?: string; // chart | flow | blend | breakout | meanrev (기본 breakout)
+  QUANT_CAPITAL_KRW?: string; // 모의 원금 (기본 400만)
+  QUANT_MAX_POSITIONS?: string;
+  QUANT_MAX_POSITION_PCT?: string;
+  QUANT_MAX_ORDER_KRW?: string;
+  QUANT_MIN_ORDER_KRW?: string;
+  QUANT_MAX_BUYS_PER_DAY?: string;
+  QUANT_BUY_SCORE?: string;
+  QUANT_SELL_SCORE?: string;
+  QUANT_STOP_LOSS_PCT?: string;
+  QUANT_TAKE_PROFIT_PCT?: string;
+  QUANT_MARKET_MA_DAYS?: string; // 코스피가 N일선 아래면 신규 매수 정지 (0 이면 끔)
+  QUANT_MAX_DRAWDOWN_PCT?: string;
+  QUANT_MIN_POOL?: string; // 후보 풀이 이만큼 차기 전에는 매수하지 않는다(초기 스캔 편향 방지)
+
   // AI 분석
   US_AUTOTRADE_ENABLED?: string; // 미국 자동매매 — 백테스트 통과 전까지 "false"
   GEMINI_API_KEY?: string; // 있으면 Gemini 를 1순위로 사용 (시크릿, aistudio.google.com/apikey)

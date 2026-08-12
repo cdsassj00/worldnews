@@ -467,6 +467,57 @@ function humanize(code: string, detail: unknown): string {
   return table[code] ?? `요청 실패 (${code})`;
 }
 
+/* ── 퀀트 트랙 (수급·차트 전용 · 모의매매) ─────────────── */
+
+export interface QuantParts {
+  trend: number; momentum: number; relStrength: number; moneyFlow: number;
+  accum: number; surge: number; breakout: number; overheat: number; realFlow: number;
+}
+
+export interface QuantRow {
+  code: string; symbol: string; name: string; sector: string;
+  price: number; changePct: number; score: number;
+  scores: Record<string, number>;
+  parts: QuantParts;
+  raw: { mom5: number; mom20: number; rs20: number; mfi: number; accum: number; surge: number; rangePos: number };
+  turnover: number; atr: number;
+  reasons: { text: string; contribution: number }[];
+  scannedAt: number;
+}
+
+export interface QuantRank {
+  profile: { id: string; nameKo: string };
+  profiles: { id: string; nameKo: string }[];
+  universe: number; scanned: number; updatedAt: number;
+  rows: QuantRow[];
+}
+
+export interface QuantPosition {
+  code: string; name: string; symbol: string; qty: number;
+  avgPrice: number; lastPrice: number; enteredAt: number; score: number;
+  pnl: number; pnlPct: number;
+}
+
+export interface QuantTrade {
+  at: number; code: string; name: string; side: "BUY" | "SELL";
+  qty: number; price: number; pnl?: number; pnlPct?: number; reason: string;
+}
+
+export interface QuantStatus {
+  enabled: boolean;
+  mode: "paper";
+  profile: { id: string; nameKo: string };
+  rules: { buyScore: number; sellScore: number; stopPct: number; takePct: number; marketMaDays: number; maxPositions: number };
+  capital: number; cash: number; holdingsValue: number; equity: number;
+  pnlKrw: number; pnlPct: number; realizedPnl: number; unrealizedPnl: number;
+  positions: QuantPosition[];
+  trades: QuantTrade[];
+  tradeStats: { total: number; wins: number; winRate: number };
+  haltedPermanent: boolean; haltReason: string;
+  lastCycleAt: number; lastNote: string; startedAt: number;
+  universe: number; scanned: number; scanUpdatedAt: number;
+}
+
 async function request<T>(path: string, init?: RequestInit & { auth?: boolean }): Promise<T> {
   const headers: Record<string, string> = { ...(init?.headers as Record<string, string>) };
   if (init?.body) headers["content-type"] = "application/json";
@@ -533,4 +584,8 @@ export const api = {
     request<CycleResponse>("/api/auto/run", { method: "POST", auth: true, body: JSON.stringify({ shadow }) }),
   autoResume: () => request<{ ok: true }>("/api/auto/resume", { method: "POST", auth: true, body: "{}" }),
   autoReset: () => request<{ ok: true }>("/api/auto/reset", { method: "POST", auth: true, body: "{}" }),
+
+  quantStatus: () => request<QuantStatus>("/api/quant/status"),
+  quantRank: (profile?: string, limit = 12) =>
+    request<QuantRank>(`/api/quant/rank?limit=${limit}${profile ? `&profile=${encodeURIComponent(profile)}` : ""}`),
 };

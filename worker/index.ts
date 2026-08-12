@@ -25,6 +25,7 @@ import { adjustForDeposit, autoStatus, buildPlan, getJournal, loadState, resetLe
 import { runStrategy } from "./strategy";
 import { tickerNewsStatus } from "./tickernews";
 import { radarFind, radarOpps, radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
+import { quantCycle, quantRank, quantScanChunk, quantStatus, resetQuant, QUANT_PROFILE_LIST } from "./quant";
 import { briefIndex, briefPage, rssXml, sitemapXml } from "./rss";
 import { getVerdict } from "./verdict";
 import { liveSensitivity, promoteSensitivity, rollbackSensitivity } from "./senslive";
@@ -494,6 +495,38 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     return json({ ok: true, state: await resetLedger(env) });
   }
 
+  /* ── 퀀트 트랙 (수급·차트 전용 · 모의매매) ───────────────── */
+
+  if (path === "/api/quant/status") {
+    return json(await quantStatus(env));
+  }
+
+  if (path === "/api/quant/rank") {
+    const profile = url.searchParams.get("profile") ?? undefined;
+    const limit = Math.min(50, Math.max(1, Math.floor(num(url.searchParams.get("limit"), 20))));
+    return json({ ...(await quantRank(env, profile, limit)), profiles: QUANT_PROFILE_LIST });
+  }
+
+  if (path === "/api/quant/scan") {
+    // 수동 스캔 — 크론을 기다리지 않고 조각을 하나 돌린다
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    return json(await quantScanChunk(env));
+  }
+
+  if (path === "/api/quant/run") {
+    // 모의매매 한 사이클. 실주문 경로가 없으므로 계좌를 건드리지 않는다.
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    return json(await quantCycle(env));
+  }
+
+  if (path === "/api/quant/reset") {
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    return json({ ok: true, state: await resetQuant(env) });
+  }
+
   void ctx;
   throw new ApiError(404, "not_found", { path });
 }
@@ -564,6 +597,12 @@ export default {
       })
         // 전 시장 레이더: 한 번에 80종목씩 순회
         .then(() => radarScanChunk(env))
+        .catch(() => undefined)
+        // 퀀트 트랙: 코스피200 조각 스캔 → 모의매매 한 사이클.
+        // 순서가 마지막인 이유는 서브리퀘스트 예산(50) 때문이다 — 실주문(runCycle)이
+        // 먼저 쓰고, 모의매매는 남은 예산으로 돈다(실패해도 손해가 없다).
+        .then(() => quantScanChunk(env))
+        .then(() => (skipTrade ? undefined : quantCycle(env)))
         .catch(() => undefined),
     );
   },

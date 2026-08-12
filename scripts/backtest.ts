@@ -43,8 +43,32 @@ const SLIPPAGE = 0.003;
 const ROUND_TRIP_COST = 0.0023;
 
 const YEARS = Number(process.env.BT_YEARS ?? 2);
-/** 짧은 구간 검증용 — BT_RANGE=3mo|6mo|1y 처럼 야후 range 를 직접 지정한다 */
+/**
+ * 데이터 수집 구간과 **평가 구간은 다르다**.
+ *
+ * 점수 계산에 60일 이동평균이 들어가므로 앞의 60거래일은 워밍업으로 소모된다.
+ * 예전에는 BT_RANGE=3mo 를 그대로 수집 구간으로 썼는데, 3개월 ≈ 63거래일이라
+ * 워밍업을 빼면 매매 가능한 날이 3일밖에 남지 않았다 — "최근 3개월 성과"가 아니라
+ * "3일 성과"를 본 셈이고, 그 결과로 시나리오 비교를 한 것은 잘못이었다.
+ *
+ * 그래서 수집은 항상 넉넉히(BT_RANGE, 기본 2y) 하고, **평가만 최근 BT_EVAL 구간**으로
+ * 자른다. BT_EVAL=3mo 면 워밍업은 그 이전 데이터로 채우고 최근 3개월만 매매한다.
+ */
 const RANGE = process.env.BT_RANGE || `${YEARS}y`;
+/** 평가 구간 — 3mo | 6mo | 1y | all (기본: 수집 구간 전체) */
+const EVAL = process.env.BT_EVAL || "all";
+
+/** 평가 시작일(YYYY-MM-DD) — 마지막 거래일에서 EVAL 만큼 뒤로 */
+function evalStartDate(lastDate: string): string {
+  const m = /^(\d+)(mo|y|d)$/.exec(EVAL);
+  if (!m) return "0000-00-00"; // all
+  const n = Number(m[1]);
+  const d = new Date(lastDate + "T00:00:00Z");
+  if (m[2] === "mo") d.setUTCMonth(d.getUTCMonth() - n);
+  else if (m[2] === "y") d.setUTCFullYear(d.getUTCFullYear() - n);
+  else d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
 
 /**
  * 시나리오 — 무엇이 성과를 좌우하는지 **원인을 분리**하려고 둔 것이지
@@ -238,6 +262,8 @@ interface Dataset {
   calendar: string[];
   idxAsOf: (sym: string, date: string) => number;
   kospi: Bars;
+  /** 평가 시작 인덱스 (워밍업 60거래일 이후 + BT_EVAL 구간) */
+  startIdx: number;
   /** 날짜별로 미리 계산해 둔 점수 (시나리오마다 재계산하지 않으려고) */
   daily: { date: string; riskOff: number; ranked: { code: string; symbol: string; nameKo: string; ticker: UniverseTicker; score: number; price: number; atr: number }[] }[];
 }
@@ -307,7 +333,12 @@ async function buildDataset(): Promise<Dataset> {
     daily.push({ date: today, riskOff: riskOffFrom(macro), ranked });
   }
 
-  return { macroBars, tickerBars, calendar, idxAsOf, kospi, daily };
+  const evalFrom = evalStartDate(calendar.at(-1)!);
+  const firstEval = calendar.findIndex((d) => d >= evalFrom);
+  const startIdx = Math.max(60, firstEval < 0 ? 60 : firstEval);
+  if (startIdx >= calendar.length - 2) throw new Error(`평가 구간이 너무 짧습니다 (BT_EVAL=${EVAL}, 수집=${RANGE}). 수집 구간을 늘리세요.`);
+
+  return { macroBars, tickerBars, calendar, idxAsOf, kospi, startIdx, daily };
 }
 
 function simulate(ds: Dataset, baseCfg: Scenario): SimResult {
@@ -345,7 +376,7 @@ function simulate(ds: Dataset, baseCfg: Scenario): SimResult {
 
   const dayIndex = new Map(ds.daily.map((d, i) => [d.date, i]));
 
-  for (let d = 60; d < calendar.length - 1; d++) {
+  for (let d = ds.startIdx; d < calendar.length - 1; d++) {
     const today = calendar[d];
     const tomorrow = calendar[d + 1];
     const day = ds.daily[dayIndex.get(today) ?? -1];
@@ -563,14 +594,14 @@ function detail(r: SimResult, kospiReturn: number) {
 
 async function main() {
   const ds = await buildDataset();
-  const first = ds.daily[0].date;
+  const first = ds.calendar[ds.startIdx];
   const lastDate = ds.calendar.at(-1)!;
   const ki = ds.idxAsOf("^KS11", first);
   const kf = ds.idxAsOf("^KS11", lastDate);
   const kospiReturn = ((ds.kospi.close[kf] - ds.kospi.close[ki]) / ds.kospi.close[ki]) * 100;
 
   console.log("\n" + "=".repeat(70));
-  console.log(`백테스트  ${first} ~ ${lastDate}  (${ds.daily.length} 거래일)`);
+  console.log(`백테스트  ${first} ~ ${lastDate}  (매매 ${ds.calendar.length - 1 - ds.startIdx} 거래일 · 데이터 ${RANGE} · 평가 ${EVAL})`);
   console.log(`벤치마크  코스피 매수 후 보유 = ${pct(kospiReturn)}`);
   console.log("=".repeat(70));
   console.log(`${"시나리오".padEnd(24)}${"수익률".padStart(10)}${"vs코스피".padStart(11)}${"최대낙폭".padStart(10)}${"매매".padStart(7)}${"승률".padStart(8)}${"PF".padStart(7)}${"보유".padStart(7)}`);

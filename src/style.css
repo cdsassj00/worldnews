@@ -2412,3 +2412,26 @@ font[style] { background: transparent !important; box-shadow: none !important; }
   .oh-flow { grid-template-columns: 1fr; }
   .oh-arrow { transform: rotate(90deg); justify-self: center; }
 }
+
+/* ── 퀀트 트랙 카드 ─────────────────────────────── */
+.quant-warn {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warn, #d98324) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn, #d98324) 35%, transparent);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.quant-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.quant-stat { display: flex; flex-direction: column; gap: 2px; }
+.quant-stat-label { font-size: 11px; opacity: 0.7; }
+.quant-stat-value { font-size: 14px; font-weight: 600; }
+.quant-rules { line-height: 1.5; }
+.quant-profiles { margin-top: 6px; flex-wrap: wrap; }
+.quant-h3 { margin: 14px 0 6px; font-size: 13px; opacity: 0.85; }

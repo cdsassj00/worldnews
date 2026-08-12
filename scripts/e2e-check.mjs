@@ -279,6 +279,14 @@ await page.click("#auto-close");
 check("티커테이프", (await page.locator(".tape-item").count()) > 5);
 check("지금 움직이는 시장", (await page.locator("#hot-list button").count()) >= 3);
 
+// 퀀트 트랙 카드 — 모의매매 고지와 성적 블록이 떠야 한다
+{
+  const warn = (await page.locator("#quant-body .quant-warn").count()) > 0;
+  const stats = await page.locator("#quant-body .quant-stat").count();
+  const tabs = await page.locator("#quant-body .radar-tab").count();
+  check(`퀀트 트랙 카드 — 모의 고지 ${warn ? "O" : "X"} · 지표 ${stats} · 탭 ${tabs}`, warn && stats >= 4 && tabs >= 2);
+}
+
 // 검색 (세계 경제 모달 안)
 await page.click("#btn-world");
 await page.waitForTimeout(400);
