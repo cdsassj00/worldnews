@@ -31,6 +31,8 @@ export class AutoPanel {
   /** 온톨로지 경로도에서 지금 펼쳐 보고 있는 종목 */
   private focusCode = "";
   private busy = false;
+  /** 엔진 전환 상태 문구 — 다시 그려도 살아남게 인스턴스로 들고 있는다 */
+  private readonly engineStatus = el("p", { class: "modal-status" });
 
   constructor(deps: AutoPanelDeps) {
     this.deps = deps;
@@ -172,13 +174,22 @@ export class AutoPanel {
         el("span", { class: "engine-perf", text: `국내 ${perf[id].kr}` }),
         el("span", { class: "engine-perf", text: `미국 ${perf[id].us}` }),
       ]);
-      b.addEventListener("click", () => void this.switchEngine(id));
+      b.addEventListener("click", () => {
+        if (active) return; // 이미 쓰고 있는 엔진
+        // 먼저 눌린 티를 낸다 — 서버 왕복 동안 아무 반응이 없으면 "안 눌린다"로 읽힌다
+        buttons.querySelectorAll(".engine-btn").forEach((n) => n.classList.remove("active"));
+        b.classList.add("active");
+        this.engineStatus.textContent = `${label[id]} 로 바꾸는 중…`;
+        this.engineStatus.className = "modal-status";
+        void this.switchEngine(id);
+      });
       buttons.append(b);
     }
 
     return el("section", { class: "auto-block engine-block" }, [
       el("h3", {}, [el("span", { text: "매매 엔진" }), el("span", { class: "gate-pill", text: label[p.engine] ?? p.engine })]),
       buttons,
+      this.engineStatus,
       el("p", { class: "note", text: p.engineNote }),
       el("p", {
         class: "note",
@@ -189,12 +200,17 @@ export class AutoPanel {
 
   private async switchEngine(engine: string): Promise<void> {
     try {
-      await api.autoSetEngine(engine);
+      const res = await api.autoSetEngine(engine);
       await this.load();
+      // load() 가 새로 그리므로 이 노드는 살아남는다(같은 인스턴스를 다시 붙인다)
+      this.engineStatus.textContent = `엔진을 ${res.engine} 로 바꿨습니다.`;
+      this.engineStatus.className = "modal-status ok";
     } catch (err) {
-      const e = err as { code?: string; message?: string };
-      if (e.code === "no_local_token" || e.code === "unauthorized") this.deps.onNeedAuth();
-      else this.deps.root.prepend(el("p", { class: "note err", text: `엔진 변경 실패 — ${e.message ?? String(err)}` }));
+      const failed = err instanceof ApiFailure;
+      this.engineStatus.textContent = failed ? `엔진 변경 실패 — ${err.message}` : String(err);
+      this.engineStatus.className = "modal-status err";
+      if (failed && (err.code === "no_local_token" || err.status === 401)) this.deps.onNeedAuth();
+      await this.load(); // 낙관적으로 바꿔 둔 표시를 서버 상태로 되돌린다
     }
   }
 

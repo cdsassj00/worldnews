@@ -77,6 +77,18 @@ function memSet<T>(key: string, entry: CacheEntry<T>): void {
  * read-through 캐시 (메모리 → KV → loader). 같은 키의 결과를 ttl초 동안 재사용한다.
  * 실패 시(예: 업스트림 장애) 만료된 값이라도 stale 로 돌려준다.
  */
+/**
+ * 캐시 무효화 — 설정이 바뀌어 캐시된 결과가 즉시 틀려지는 경우에 쓴다.
+ *
+ * 메모리 캐시는 아이솔레이트마다 따로라 여기서 지워도 다른 아이솔레이트에는 남는다.
+ * 그래서 이것만 믿지 말고, 설정에 따라 달라지는 결과는 **캐시 키에 설정값을 넣는 것**이
+ * 근본 해법이다(예: auto:plan:onto / auto:plan:quant).
+ */
+export async function invalidateCache(env: Env, key: string): Promise<void> {
+  MEM.delete(key);
+  await env.CACHE.delete(key).catch(() => undefined);
+}
+
 export async function cached<T>(
   env: Env,
   key: string,

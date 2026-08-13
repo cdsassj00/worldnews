@@ -1,6 +1,6 @@
 import type { Env } from "./env";
 import { GLOBAL_TAPE, MARKETS, REGION_FALLBACK, marketFor } from "../shared/markets";
-import { ApiError, cached, errorResponse, json, jsonCached, num, round } from "./util";
+import { ApiError, cached, errorResponse, json, jsonCached, num, round, invalidateCache } from "./util";
 import { MACRO, MACRO_CLUSTERS, MACRO_LINKS, RELATIONS, SENSITIVITY, UNIVERSE } from "../shared/ontology";
 import { WEIGHTS } from "../shared/scoring";
 import { getManySeries, getSeries, toSnapshot } from "./quotes";
@@ -345,6 +345,8 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
       assertTradeAuth(env, request);
       const body = (await request.json().catch(() => ({}))) as { engine?: string };
       const engine = await setEngine(env, String(body.engine ?? ""));
+      // 옛 엔진으로 만든 계획이 남아 있으면 화면이 바로 안 바뀐다
+      await Promise.all(AUTO_ENGINES.map((e) => invalidateCache(env, `auto:plan:${e.id}`)));
       return json({ ok: true, engine, engines: AUTO_ENGINES });
     }
     return json({ engine: await getEngine(env), engines: AUTO_ENGINES });
@@ -375,7 +377,11 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
 
   if (path === "/api/auto/plan") {
     // 계획 조회는 주문을 내지 않으므로 공개한다(어떤 근거로 매매하는지 보이게).
-    const { data } = await cached(env, "auto:plan", 120, () => buildPlan(env));
+    // 캐시 키에 엔진을 넣는다 — 넣지 않으면 엔진을 바꿔도 2분간 옛 계획이 돌아와
+    // "버튼이 안 눌린다"로 보인다. 메모리 캐시는 아이솔레이트마다 따로라
+    // 무효화만으로는 못 막고, 키를 갈라야 확실하다.
+    const engine = await getEngine(env);
+    const { data } = await cached(env, `auto:plan:${engine}`, 120, () => buildPlan(env));
     return json(data);
   }
 
