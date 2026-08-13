@@ -123,7 +123,88 @@ export function overseasCapability(env: Env): { allowed: boolean; reason: string
         "모의투자 계좌에서는 해외주식 주문·잔고를 지원하지 않는 것으로 가정합니다(기본값). 실전 계좌로 전환하거나, 모의에서도 해외가 열려 있다면 KIS_OVERSEAS=on 으로 설정하세요.",
     };
   }
-  return { allowed: true, reason: "실전 계좌이므로 해외주식 주문을 허용합니다." };
+  return {
+    allowed: true,
+    // 이건 **설정상 허용**일 뿐 계좌가 실제로 해외 거래가 열려 있다는 뜻이 아니다.
+    // 진짜 확인은 overseasReadiness() 로 KIS 에 직접 물어야 한다.
+    reason: "실전 계좌라 설정상 해외주식을 허용합니다(계좌의 실제 개설 여부는 별도 점검 필요).",
+  };
+}
+
+/**
+ * 해외주식 실거래 준비 상태를 **KIS 에 직접 물어서** 확인한다.
+ *
+ * overseasCapability() 는 우리 쪽 설정만 본다("실전 계좌니까 되겠지"). 그건 가정이지
+ * 사실이 아니다. 해외주식은 증권사에서 별도 약정·거래 신청을 해야 열리고, 신청이
+ * 안 된 계좌는 시세는 나와도 잔고·주문에서 거부된다. 그래서 세 가지를 나눠 본다.
+ *
+ *   ① 시세  — 앱키에 해외 시세 권한이 있는가 (계좌와 무관)
+ *   ② 잔고  — 계좌에 해외주식 거래가 열려 있는가 (여기서 막히면 신청이 안 된 것)
+ *   ③ 외화  — 달러 예수금이 있는가 (없으면 환전 또는 통합증거금 신청이 필요)
+ *
+ * 잔고·보유 내역은 돌려주지 않는다. 응답 코드와 메시지, 그리고 "달러가 있냐 없냐"만 본다.
+ */
+export interface OverseasReadiness {
+  configAllowed: boolean;
+  configReason: string;
+  quote: { ok: boolean; detail: string };
+  balance: { ok: boolean; detail: string };
+  usdCash: number | null;
+  hasOverseasHoldings: boolean | null;
+  verdict: string;
+  nextSteps: string[];
+}
+
+export async function overseasReadiness(env: Env, cfg: KisConfig): Promise<OverseasReadiness> {
+  const cap = overseasCapability(env);
+  const out: OverseasReadiness = {
+    configAllowed: cap.allowed,
+    configReason: cap.reason,
+    quote: { ok: false, detail: "미확인" },
+    balance: { ok: false, detail: "미확인" },
+    usdCash: null,
+    hasOverseasHoldings: null,
+    verdict: "",
+    nextSteps: [],
+  };
+
+  // ① 해외 시세 — 계좌가 아니라 앱키 권한을 본다
+  try {
+    const p = await overseasPrice(env, cfg, "NAS", "AAPL");
+    out.quote = { ok: p.price > 0, detail: p.price > 0 ? `애플 현재가 ${p.price} 조회 성공` : "가격이 비어 있음" };
+  } catch (err) {
+    out.quote = { ok: false, detail: err instanceof ApiError ? `${err.code} — ${JSON.stringify(err.detail)}` : String(err) };
+  }
+
+  // ② 해외 잔고 — 계좌에 해외주식이 열려 있는지 판별하는 결정적 신호
+  if (!cap.allowed) {
+    out.balance = { ok: false, detail: cap.reason };
+  } else {
+    try {
+      const b = await overseasBalance(env, cfg, "NAS" as OrderMarket, "USD");
+      out.balance = { ok: true, detail: "해외 잔고 조회 성공 — 계좌에 해외주식이 열려 있습니다." };
+      out.usdCash = b.summary.orderableCash;
+      out.hasOverseasHoldings = b.holdings.length > 0;
+    } catch (err) {
+      out.balance = { ok: false, detail: err instanceof ApiError ? `${err.code} — ${JSON.stringify(err.detail)}` : String(err) };
+    }
+  }
+
+  if (!out.quote.ok) {
+    out.verdict = "해외 시세부터 막힙니다 — API 앱키에 해외주식 권한이 없을 수 있습니다.";
+    out.nextSteps.push("KIS Developers 에서 앱키의 해외주식 서비스 신청 여부를 확인하세요.");
+  } else if (!out.balance.ok) {
+    out.verdict = "시세는 되지만 해외 잔고 조회가 막힙니다 — 계좌에 해외주식 거래가 신청되지 않았을 가능성이 큽니다.";
+    out.nextSteps.push("한국투자 앱/HTS 에서 해외주식 거래 약정(신청)을 하세요. 보통 기존 계좌에 신청만 하면 되고 새 계좌를 만들 필요는 없습니다.");
+    out.nextSteps.push("신청 직후에는 반영에 시간이 걸릴 수 있으니 다음 영업일에 다시 점검하세요.");
+  } else if (!out.usdCash) {
+    out.verdict = "해외 거래는 열려 있는데 달러 예수금이 0 입니다 — 이대로는 매수 주문이 거부됩니다.";
+    out.nextSteps.push("원화를 달러로 환전하거나, 통합증거금(원화로 해외주식 매수) 서비스를 신청하세요.");
+  } else {
+    out.verdict = `해외주식 거래 준비 완료 — 주문 가능 외화 ${out.usdCash} USD.`;
+    out.nextSteps.push("자동매매를 켜기 전에 US_AUTOTRADE_ENABLED 를 여는 대신 모의로 먼저 성적을 쌓는 것을 권합니다(최근 3개월 백테스트가 시장에 크게 뒤졌습니다).");
+  }
+  return out;
 }
 
 export function assertOverseasAllowed(env: Env, market: OrderMarket): void {

@@ -2447,3 +2447,6 @@ font[style] { background: transparent !important; box-shadow: none !important; }
 .engine-btn.active { border-color: var(--accent, #4c8dff); background: color-mix(in srgb, var(--accent, #4c8dff) 14%, transparent); }
 .engine-name { font-size: 14px; font-weight: 700; }
 .engine-perf { font-size: 11px; opacity: 0.75; line-height: 1.4; }
+
+.overseas-out { margin: 8px 0; }
+.overseas-out .gate-list { margin: 6px 0; }

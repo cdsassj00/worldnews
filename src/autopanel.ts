@@ -596,9 +596,42 @@ export class AutoPanel {
       simple(() => api.autoReset(), "장부 초기화", "봇의 포지션 장부를 모두 비웁니다. 실제 계좌 잔고는 바뀌지 않습니다. 계속할까요?"),
     );
 
+    /* 해외주식 점검 — "내 계좌로 미국장이 되나?"를 우리 설정이 아니라 KIS 응답으로 답한다.
+     * 결과는 별도 영역에 쌓는다(다른 버튼 상태 메시지에 묻히면 읽을 수가 없다). */
+    const overseasOut = el("div", { class: "overseas-out" });
+    const overseasBtn = el("button", { class: "btn btn-ghost", type: "button", text: "해외주식 거래 가능 점검" });
+    overseasBtn.addEventListener("click", async () => {
+      if (this.busy) return;
+      this.busy = true;
+      overseasOut.replaceChildren(el("p", { class: "note", text: "KIS 에 물어보는 중…" }));
+      try {
+        const r = await api.overseasCheck();
+        const line = (label: string, ok: boolean, detail: string) =>
+          el("li", { class: ok ? "gate-ok" : "" }, [
+            el("strong", { text: `${ok ? "가능" : "막힘"} · ${label}` }),
+            el("span", { text: ` — ${detail}` }),
+          ]);
+        overseasOut.replaceChildren(
+          el("p", { class: `modal-status ${r.balance.ok && r.usdCash ? "ok" : "err"}`, text: r.verdict }),
+          el("ul", { class: "gate-list" }, [
+            line("해외 시세(앱키 권한)", r.quote.ok, r.quote.detail),
+            line("해외 잔고(계좌 개설)", r.balance.ok, r.balance.detail),
+            line("달러 예수금", Boolean(r.usdCash), r.usdCash === null ? "잔고 조회가 막혀 확인 불가" : `${r.usdCash} USD`),
+          ]),
+          el("ul", { class: "gate-list" }, r.nextSteps.map((t) => el("li", { text: `다음 할 일 — ${t}` }))),
+        );
+      } catch (err) {
+        overseasOut.replaceChildren(el("p", { class: "modal-status err", text: err instanceof ApiFailure ? err.message : String(err) }));
+        if (err instanceof ApiFailure && (err.code === "no_local_token" || err.status === 401)) this.deps.onNeedAuth();
+      } finally {
+        this.busy = false;
+      }
+    });
+
     return el("section", { class: "auto-block" }, [
       el("h3", {}, [el("span", { text: "수동 제어" })]),
-      el("div", { class: "auto-controls" }, [shadowBtn, liveBtn, resumeBtn, resetBtn]),
+      el("div", { class: "auto-controls" }, [shadowBtn, liveBtn, resumeBtn, resetBtn, overseasBtn]),
+      overseasOut,
       el("p", {
         class: "note",
         text: "‘지금 사이클 실행’은 안전장치를 모두 통과했을 때만 실제 주문을 보냅니다. 하나라도 막혀 있으면 자동으로 그림자 실행으로 떨어집니다.",

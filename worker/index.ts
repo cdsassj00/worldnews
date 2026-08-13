@@ -20,6 +20,7 @@ import {
   overseasPrice,
   placeOrder,
   type OrderMarket,
+  overseasReadiness,
 } from "./kis";
 import { adjustForDeposit, autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle, getEngine, setEngine, AUTO_ENGINES } from "./autotrade";
 import { runStrategy } from "./strategy";
@@ -285,6 +286,14 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
         ? await domesticBalance(env, cfg)
         : await overseasBalance(env, cfg, market, body.currency ?? "USD");
     return json(data);
+  }
+
+  if (path === "/api/kis/overseas-check") {
+    // "해외 거래가 되나?" 를 우리 설정이 아니라 KIS 응답으로 답한다.
+    // 잔고·보유 내역은 돌려주지 않는다 — 응답 코드와 달러 예수금 유무만 본다.
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    return json(await overseasReadiness(env, kisConfig(env)));
   }
 
   if (path === "/api/kis/order") {

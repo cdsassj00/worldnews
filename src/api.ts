@@ -472,6 +472,17 @@ function humanize(code: string, detail: unknown): string {
 
 /* ── 퀀트 트랙 (수급·차트 전용 · 모의매매) ─────────────── */
 
+export interface OverseasReadiness {
+  configAllowed: boolean;
+  configReason: string;
+  quote: { ok: boolean; detail: string };
+  balance: { ok: boolean; detail: string };
+  usdCash: number | null;
+  hasOverseasHoldings: boolean | null;
+  verdict: string;
+  nextSteps: string[];
+}
+
 export interface QuantParts {
   trend: number; momentum: number; relStrength: number; moneyFlow: number;
   accum: number; surge: number; breakout: number; overheat: number; realFlow: number;
@@ -588,6 +599,8 @@ export const api = {
   autoResume: () => request<{ ok: true }>("/api/auto/resume", { method: "POST", auth: true, body: "{}" }),
   autoReset: () => request<{ ok: true }>("/api/auto/reset", { method: "POST", auth: true, body: "{}" }),
 
+  overseasCheck: () =>
+    request<OverseasReadiness>("/api/kis/overseas-check", { method: "POST", auth: true, body: "{}" }),
   autoEngine: () => request<{ engine: string; engines: { id: string; nameKo: string; desc: string }[] }>("/api/auto/engine"),
   autoSetEngine: (engine: string) =>
     request<{ ok: true; engine: string }>("/api/auto/engine", { method: "POST", auth: true, body: JSON.stringify({ engine }) }),
