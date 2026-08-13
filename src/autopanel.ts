@@ -91,6 +91,7 @@ export class AutoPanel {
     if (!this.focusCode && p.top.length) this.focusCode = p.top[0].code;
     this.deps.root.replaceChildren(
       this.backtestBlock(),
+      this.engineBlock(p),
       this.gateBlock(p),
       this.moneyBlock(p),
       this.macroBlock(p),
@@ -144,6 +145,57 @@ export class AutoPanel {
         text: "즉 이 시스템은 '설명 가능한 판단 근거를 만드는 도구'로는 작동하지만, 지금 규칙 그대로 돈을 맡길 근거는 없습니다. npm run backtest 로 언제든 직접 재현할 수 있습니다.",
       }),
     ]);
+  }
+
+  /**
+   * 매매 엔진 선택 — 무엇을 살지 정하는 점수를 어디서 가져올지 고른다.
+   * 실제 돈이 걸린 선택이라 각 엔진의 검증 성적을 바로 옆에 붙인다.
+   * 숫자를 감추고 고르게 하면 그건 선택이 아니라 도박이다.
+   */
+  private engineBlock(p: AutoPlan): HTMLElement {
+    const perf: Record<string, { kr: string; us: string }> = {
+      onto: { kr: "3개월 -1.5% / 6개월 +39.7% / 1년 +81.9%", us: "3개월 -18.7% / 6개월 +5.6% / 1년 +49.5%" },
+      quant: { kr: "3개월 -5.8% / 6개월 -11.5% / 1년 +66.9%", us: "3개월 -19.5% / 6개월 +13.9% / 1년 +67.9%" },
+      hybrid: { kr: "3개월 -18.0% / 6개월 +3.6% / 1년 +2.2%", us: "3개월 -18.8% / 6개월 +16.5% / 1년 +36.5%" },
+    };
+    const label: Record<string, string> = { onto: "온톨로지", quant: "수급·차트", hybrid: "온톨로지+수급" };
+
+    const buttons = el("div", { class: "engine-picker" });
+    for (const id of ["onto", "quant", "hybrid"]) {
+      const active = p.engine === id;
+      const b = el("button", {
+        type: "button",
+        class: `engine-btn${active ? " active" : ""}`,
+        "aria-pressed": active ? "true" : "false",
+      }, [
+        el("span", { class: "engine-name", text: label[id] }),
+        el("span", { class: "engine-perf", text: `국내 ${perf[id].kr}` }),
+        el("span", { class: "engine-perf", text: `미국 ${perf[id].us}` }),
+      ]);
+      b.addEventListener("click", () => void this.switchEngine(id));
+      buttons.append(b);
+    }
+
+    return el("section", { class: "auto-block engine-block" }, [
+      el("h3", {}, [el("span", { text: "매매 엔진" }), el("span", { class: "gate-pill", text: label[p.engine] ?? p.engine })]),
+      buttons,
+      el("p", { class: "note", text: p.engineNote }),
+      el("p", {
+        class: "note",
+        text: "성적은 코스피200+코스닥150 350종목 / S&P100 104종목, 저회전+시장국면 필터 규칙 기준입니다. 국내 1년 구간은 코스피 자체가 +106% 라 세 엔진 모두 지수 보유에는 못 미칩니다. 주문·손절·한도 같은 안전장치는 엔진과 무관하게 동일하게 작동합니다.",
+      }),
+    ]);
+  }
+
+  private async switchEngine(engine: string): Promise<void> {
+    try {
+      await api.autoSetEngine(engine);
+      await this.load();
+    } catch (err) {
+      const e = err as { code?: string; message?: string };
+      if (e.code === "no_local_token" || e.code === "unauthorized") this.deps.onNeedAuth();
+      else this.deps.root.prepend(el("p", { class: "note err", text: `엔진 변경 실패 — ${e.message ?? String(err)}` }));
+    }
   }
 
   private gateBlock(p: AutoPlan): HTMLElement {

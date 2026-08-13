@@ -38,6 +38,8 @@ export interface Env {
   AUTO_MAX_ORDERS_PER_CYCLE?: string;
   AUTO_MIN_ORDER_KRW?: string;
   AUTO_MAX_POSITIONS?: string;
+  /** 종목 선정에 쓸 점수 엔진 — onto | quant | hybrid (KV 값이 있으면 그쪽이 우선) */
+  AUTO_ENGINE?: string;
 
   /* 퀀트 트랙 (quant.ts) — 수급·차트만 보는 별도 엔진. 모의매매라 주문은 나가지 않는다.
    * 백테스트에서 온톨로지 트랙에 졌기 때문에 실계좌를 붙이지 않았다(기록은 계속 쌓는다). */

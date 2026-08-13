@@ -22,6 +22,7 @@
 import type { Env } from "./env";
 import { UNIVERSE, roundToTick } from "../shared/ontology";
 import { runStrategy, type StrategyResult, type TickerScore } from "./strategy";
+import { quantRank } from "./quant";
 import {
   domesticBalance,
   isDryRun,
@@ -380,6 +381,9 @@ export interface AutoPlan {
   investedKrw: number;
   cashKrw: number;
   targetProgressPct: number;
+  /** 지금 어떤 점수 엔진으로 종목을 고르고 있는가 */
+  engine: AutoEngine;
+  engineNote: string;
   riskOff: number;
   macro: StrategyResult["macro"];
   top: TickerScore[];
@@ -393,18 +397,107 @@ function deployedValue(state: AutoState, priceOf: (code: string) => number): num
   return Object.values(state.positions).reduce((sum, p) => sum + p.qty * (priceOf(p.code) || p.avgPrice), 0);
 }
 
+
+/* ── 매매 엔진 선택 ─────────────────────────────────────
+ * 무엇을 살지 정하는 "점수"를 어디서 가져올지 사용자가 고를 수 있게 한다.
+ *
+ *   onto   — 거시 인과(온톨로지) 결론 점수. 기본값.
+ *   quant  — 수급·차트 점수(shared/quant.ts, 돌파 프로파일)
+ *   hybrid — 둘을 반반 섞은 점수
+ *
+ * 점수만 갈아 끼우고 **주문·한도·손절 로직은 전부 공유한다.** 안전장치를
+ * 엔진마다 따로 두면 어느 하나가 반드시 빠진다.
+ *
+ * 선택값은 KV 에 둔다(재배포 없이 바꾸려고). 없으면 AUTO_ENGINE 환경변수, 그것도
+ * 없으면 onto.
+ */
+export type AutoEngine = "onto" | "quant" | "hybrid";
+
+const ENGINE_KEY = "auto:engine";
+
+export const AUTO_ENGINES: { id: AutoEngine; nameKo: string; desc: string }[] = [
+  { id: "onto", nameKo: "온톨로지", desc: "거시 요인 인과 → 섹터 → 종목. 백테스트에서 국내 3·6·12개월 모두 가장 앞섰다." },
+  { id: "quant", nameKo: "수급·차트", desc: "자금흐름·매집·거래대금 + 추세·모멘텀. 국내에서는 온톨로지에 뒤졌고, 미국에서는 비슷하거나 앞섰다." },
+  { id: "hybrid", nameKo: "온톨로지+수급", desc: "두 점수를 반반. 국내에서는 둘 중 어느 쪽보다도 못했고, 미국 6개월 구간에서만 가장 좋았다." },
+];
+
+function isEngine(v: unknown): v is AutoEngine {
+  return v === "onto" || v === "quant" || v === "hybrid";
+}
+
+export async function getEngine(env: Env): Promise<AutoEngine> {
+  const stored = await env.CACHE.get(ENGINE_KEY);
+  if (isEngine(stored)) return stored;
+  return isEngine(env.AUTO_ENGINE) ? env.AUTO_ENGINE : "onto";
+}
+
+export async function setEngine(env: Env, engine: string): Promise<AutoEngine> {
+  if (!isEngine(engine)) throw new ApiError(400, "bad_engine", { engine, allowed: AUTO_ENGINES.map((e) => e.id) });
+  await env.CACHE.put(ENGINE_KEY, engine);
+  return engine;
+}
+
+/**
+ * 엔진에 맞게 후보 점수를 다시 매긴다.
+ *
+ * quant 모드에서 퀀트 점수가 아직 없는 종목(스캔이 한 바퀴 안 돈 경우)은 후보에서
+ * 뺀다 — 0점으로 두면 "정보가 없다"가 "나쁘다"로 둔갑한다. 대신 이미 보유 중인
+ * 종목의 손절·익절은 가격 기준이라 그대로 작동한다.
+ */
+async function applyEngine(
+  env: Env,
+  engine: AutoEngine,
+  scores: TickerScore[],
+): Promise<{ scores: TickerScore[]; note: string }> {
+  if (engine === "onto") return { scores, note: "온톨로지 점수로 순위를 정합니다." };
+
+  let rows: { code: string; score: number }[] = [];
+  try {
+    rows = (await quantRank(env, "breakout", 400)).rows.map((r) => ({ code: r.code, score: r.score }));
+  } catch {
+    return { scores, note: "퀀트 점수를 불러오지 못해 온톨로지 점수로 대체했습니다." };
+  }
+  const q = new Map(rows.map((r) => [r.code, r.score]));
+  if (!q.size) return { scores, note: "퀀트 스캔 결과가 아직 없어 온톨로지 점수로 대체했습니다." };
+
+  const out: TickerScore[] = [];
+  let covered = 0;
+  for (const s of scores) {
+    const qs = q.get(s.code);
+    if (qs === undefined) {
+      if (engine === "quant") continue; // 점수가 없으면 순위를 못 매긴다
+      out.push(s); // hybrid: 퀀트 점수가 없으면 온톨로지 점수만 쓴다
+      continue;
+    }
+    covered++;
+    out.push({ ...s, score: round(engine === "quant" ? qs : (s.score + qs) / 2, 3) });
+  }
+  out.sort((a, b) => b.score - a.score);
+  return {
+    scores: out,
+    note: engine === "quant"
+      ? `수급·차트 점수로 순위를 정합니다 (후보 ${covered}종목).`
+      : `온톨로지와 수급·차트를 반반 섞은 점수입니다 (퀀트 점수 있는 종목 ${covered}개).`,
+  };
+}
+
 export async function buildPlan(env: Env): Promise<AutoPlan> {
   const cfg = autoConfig(env);
   const now = kstNow();
   const phase = marketPhase(now);
 
-  const [{ data: strategy }, account] = await Promise.all([
+  const [{ data: strategyRaw }, account] = await Promise.all([
     // 전략 계산은 무겁다(시세 28건 + 뉴스). 5분 캐시로 서브리퀘스트를 아낀다.
     cached(env, "auto:strategy", 300, () => runStrategy(env)),
     readAccount(env),
   ]);
+  let strategy: StrategyResult = strategyRaw;
 
   const state = await loadState(env);
+  const engine = await getEngine(env);
+  const engineApplied = await applyEngine(env, engine, strategy.scores);
+  // 이후 로직은 전부 이 재정렬된 점수를 본다. 원본(strategy.scores)은 화면 설명용으로만 남긴다.
+  strategy = { ...strategy, scores: engineApplied.scores };
   const scoreByCode = new Map(strategy.scores.map((s) => [s.code, s]));
   const heldQty = new Map(account.holdings.map((h) => [h.symbol, h.qty]));
   const priceOf = (code: string) => scoreByCode.get(code)?.price ?? 0;
@@ -579,6 +672,8 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
     cashKrw: Math.round(account.connected ? account.cash : 0),
     // 목표(+100만)는 봇이 벌어야 하는 돈이다 — 기존 보유분 등락은 목표 진행률에서 뺀다
     targetProgressPct: cfg.targetProfitKrw > 0 ? round((botPnl / cfg.targetProfitKrw) * 100, 1) : 0,
+    engine,
+    engineNote: engineApplied.note,
     riskOff: strategy.riskOff,
     macro: strategy.macro,
     top: strategy.scores.slice(0, 8),

@@ -21,7 +21,7 @@ import {
   placeOrder,
   type OrderMarket,
 } from "./kis";
-import { adjustForDeposit, autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle } from "./autotrade";
+import { adjustForDeposit, autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle, getEngine, setEngine, AUTO_ENGINES } from "./autotrade";
 import { runStrategy } from "./strategy";
 import { tickerNewsStatus } from "./tickernews";
 import { radarFind, radarOpps, radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
@@ -330,10 +330,23 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
 
   /* ── 자동매매 ─────────────────────────────────────────── */
 
+  if (path === "/api/auto/engine") {
+    // 조회는 공개, 변경은 거래 암호 필요 — 실제 돈이 걸린 설정이다.
+    if (request.method === "POST") {
+      assertTradeAuth(env, request);
+      const body = (await request.json().catch(() => ({}))) as { engine?: string };
+      const engine = await setEngine(env, String(body.engine ?? ""));
+      return json({ ok: true, engine, engines: AUTO_ENGINES });
+    }
+    return json({ engine: await getEngine(env), engines: AUTO_ENGINES });
+  }
+
   if (path === "/api/auto/status") {
     const state = await loadState(env);
     return json({
       ...autoStatus(env),
+      engine: await getEngine(env),
+      engines: AUTO_ENGINES,
       state: {
         baselineEquity: state.baselineEquity,
         lastEquity: state.lastEquity,

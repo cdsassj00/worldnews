@@ -273,6 +273,13 @@ check("백테스트 결과 고지", (await page.locator("#auto-body .bt-block .b
 const autoBadge = (await page.locator("#auto-badge").textContent()) ?? "";
 check("자동매매 상태 배지", autoBadge.trim().length > 0 && !/확인중/.test(autoBadge), autoBadge.trim());
 await page.screenshot({ path: `${outDir}/08-autotrade.png` });
+// 매매 엔진 선택 — 세 엔진 버튼과 현재 선택 표시
+{
+  const btns = await page.locator(".engine-btn").count();
+  const active = await page.locator(".engine-btn.active").count();
+  check(`매매 엔진 선택 — 버튼 ${btns} · 선택 ${active}`, btns === 3 && active === 1);
+}
+
 await page.click("#auto-close");
 
 // 티커테이프 & 좌측 요약

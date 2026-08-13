@@ -24,26 +24,39 @@
  *   BT_EVAL=3mo node /tmp/qbt.mjs
  */
 import { readFileSync } from "node:fs";
-import { MACRO, SENSITIVITY, roundToTick, type MacroFactor, type MacroId, type SectorId, type UniverseTicker } from "../shared/ontology";
+import { MACRO, SENSITIVITY, US_SENSITIVITY, roundToTick, type MacroFactor, type MacroId, type SectorId, type UniverseTicker } from "../shared/ontology";
 import { composite, macroSignal, priceSignal, propagate, type MacroSignal, type PriceHistory } from "../shared/scoring";
 import { QUANT_PROFILES, profileById, quantSignal, scoreFromParts, type QuantParts } from "../shared/quant";
 import { loadAll, dateKey, makeIdxAsOf, type Bars } from "./bars";
 
 /* ── 설정 (운영값과 맞춘다) ─────────────────────────── */
 
-const CAPITAL = 4_000_000;
+/** 시장 — KR(코스피200+) | US(S&P100) */
+const MARKET = (process.env.BT_MARKET || "KR").toUpperCase() as "KR" | "US";
+const IS_US = MARKET === "US";
+const INDEX_SYMBOL = IS_US ? "^GSPC" : "^KS11";
+const UNIVERSE_FILE = IS_US ? "shared/us-universe.json" : "shared/radar-universe.json";
+const INDEX_KO = IS_US ? "S&P500" : "코스피";
+
+/* 미국은 달러로 계산한다(환율을 섞으면 전략 성과와 환차익이 뒤엉킨다).
+ * 400만원 ≈ 3,000달러로 두어 종목당 한도·최소 주문의 비율이 국내와 같아지게 맞춘다. */
+const CAPITAL = IS_US ? 3_000 : 4_000_000;
 const MAX_POSITION_PCT = 30;
-const MAX_ORDER_KRW = 1_200_000;
-const MIN_ORDER_KRW = 150_000;
+const MAX_ORDER_KRW = IS_US ? 900 : 1_200_000;
+const MIN_ORDER_KRW = IS_US ? 110 : 150_000;
 const MAX_ORDERS_PER_CYCLE = 3;
 const MAX_DRAWDOWN_PCT = 20;
 const DAILY_LOSS_HALT_PCT = 5;
-const SLIPPAGE = Number(process.env.BT_SLIPPAGE ?? 0.003);
+/* 거래비용 — 시장마다 다르다. 여기를 잘못 잡으면 단타 전략의 결론이 통째로 뒤집힌다.
+ *  국내: 슬리피지 0.3%/편도 + 왕복 0.23%(증권거래세 0.18 + 수수료)
+ *  미국: 대형주라 슬리피지는 낮지만(0.15%/편도) 한투 해외주식 수수료가 편도 0.25% 라
+ *        왕복 0.5% + SEC/TAF 수수료 소액 → 0.52% 로 잡는다. 세금은 매도 시 없음(양도세는 연말 정산). */
+const SLIPPAGE = Number(process.env.BT_SLIPPAGE ?? (IS_US ? 0.0015 : 0.003));
 /** 진단용 — 영구 정지(고점대비 -20%)를 끄고 규칙 자체의 성과를 본다. 운영에서는 절대 끄지 않는다. */
 const NO_HALT = process.env.BT_NOHALT === "1";
-const ROUND_TRIP_COST = 0.0023;
+const ROUND_TRIP_COST = Number(process.env.BT_COST ?? (IS_US ? 0.0052 : 0.0023));
 /** 일평균 거래대금 하한(원) — 이보다 얇으면 후보에서 뺀다 */
-const MIN_TURNOVER = 500_000_000;
+const MIN_TURNOVER = Number(process.env.BT_MIN_TURNOVER ?? (IS_US ? 20_000_000 : 500_000_000));
 
 const RANGE = process.env.BT_RANGE || "2y";
 const EVAL = process.env.BT_EVAL || "6mo";
@@ -125,6 +138,11 @@ const SCENARIOS: QScenario[] = [
   { name: "QN 역추세",                engine: "meanrev",  ...BASE },
   { name: "QO 역추세·저회전+시장필터",    engine: "meanrev",  ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
   { name: "QP blend·저회전(필터없음)",   engine: "blend", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0 },
+  /* ⑦ 하이브리드 — 온톨로지 + 수급·차트 반반 */
+  { name: "QQ 하이브리드",             engine: "hybrid", ...BASE },
+  { name: "QR 하이브리드·시장필터",      engine: "hybrid", ...BASE, marketMaDays: 20 },
+  { name: "QS 하이브리드·저회전+필터",   engine: "hybrid", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
+  { name: "QT 하이브리드·저회전 문턱0.3", engine: "hybrid", ...BASE, buyScore: 0.30, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
 ];
 
 /* ── 데이터 ─────────────────────────────── */
@@ -158,18 +176,18 @@ function sliceHistory(b: Bars, upto: number): PriceHistory {
 
 async function buildDataset(): Promise<Dataset> {
   // 저장소 루트에서 실행하는 것을 전제로 한다 (번들 출력 위치와 무관하게 하려고 cwd 기준)
-  const uni = (JSON.parse(readFileSync("shared/radar-universe.json", "utf8")) as UniRow[]).slice(0, UNI_LIMIT);
+  const uni = (JSON.parse(readFileSync(UNIVERSE_FILE, "utf8")) as UniRow[]).slice(0, UNI_LIMIT);
   process.stderr.write(`데이터 수집 — 종목 ${uni.length} + 지수/거시 (${RANGE})…\n`);
 
   const bars = await loadAll(
-    [...uni.map((u) => u.symbol), "^KS11", ...MACRO.map((m) => m.symbol)],
+    [...uni.map((u) => u.symbol), INDEX_SYMBOL, ...MACRO.map((m) => m.symbol)],
     RANGE,
     6,
     (done, total) => { if (done % 60 === 0 || done === total) process.stderr.write(`  ${done}/${total}\n`); },
   );
 
-  const kospi = bars.get("^KS11");
-  if (!kospi) throw new Error("코스피 지수를 받지 못했습니다.");
+  const kospi = bars.get(INDEX_SYMBOL);
+  if (!kospi) throw new Error(`${INDEX_KO} 지수를 받지 못했습니다.`);
   const calendar = kospi.t.map(dateKey);
   const idxAsOf = makeIdxAsOf([bars]);
 
@@ -179,13 +197,15 @@ async function buildDataset(): Promise<Dataset> {
   if (startIdx >= calendar.length - 2) throw new Error(`평가 구간이 너무 짧습니다 (BT_EVAL=${EVAL}, 수집=${RANGE}).`);
 
   process.stderr.write(`점수 계산 — ${calendar[startIdx]} ~ ${calendar.at(-1)} …\n`);
-  const engines = [...QUANT_PROFILES.map((p) => p.id), "onto"];
+  // hybrid = 온톨로지(거시 인과) 와 퀀트(수급·차트) 를 반반 섞은 점수.
+  // 두 엔진은 틀리는 방식이 달라서, 섞으면 서로의 오류를 상쇄할 수 있다는 가설을 검증한다.
+  const engines = [...QUANT_PROFILES.map((p) => p.id), "onto", "hybrid"];
   const daily = new Map<string, Map<string, Cand[]>>();
   const have = uni.filter((u) => bars.has(u.symbol.toUpperCase()));
 
   for (let d = startIdx; d < calendar.length - 1; d++) {
     const today = calendar[d];
-    const ki = idxAsOf("^KS11", today);
+    const ki = idxAsOf(INDEX_SYMBOL, today);
     const marketCloses = ki >= 0 ? kospi.close.slice(0, ki + 1) : [];
 
     // 거시 신호 — 온톨로지 대조군에만 쓴다
@@ -207,7 +227,8 @@ async function buildDataset(): Promise<Dataset> {
       const b = bars.get(sym)!;
       if (i < 60) continue;
       const hist = sliceHistory(b, i);
-      if (!hist.price || hist.price < 1000) continue;
+      // 동전주 제외 — 통화가 다르니 하한도 시장별로 둔다(원화 1,000원 / 달러 3불).
+      if (!hist.price || hist.price < (IS_US ? 3 : 1000)) continue;
 
       // 지표는 한 번만 계산하고 프로파일별로 점수만 다시 합성한다
       const q = quantSignal({ hist, market: marketCloses }, QUANT_PROFILES[0]);
@@ -224,9 +245,14 @@ async function buildDataset(): Promise<Dataset> {
           code: u.code, symbol: sym, nameKo: u.name,
           sectors: { [u.sector as SectorId]: 1 } as Record<SectorId, number>,
         } as UniverseTicker;
-        const onto = propagate(fake, macro);
+        const onto = propagate(fake, macro, IS_US ? (US_SENSITIVITY as Record<string, Partial<Record<MacroId, number>>>) : SENSITIVITY);
         // 온톨로지 트랙과 같은 합성식 (뉴스 축 0)
-        byEngine.get("onto")!.push({ ...common, score: composite(onto.score, priceSignal(hist).score, 0) });
+        const ontoScore = composite(onto.score, priceSignal(hist).score, 0);
+        byEngine.get("onto")!.push({ ...common, score: ontoScore });
+        // 하이브리드 — 온톨로지 결론과 수급·차트 점수를 반반.
+        // 퀀트 쪽은 돌파 프로파일을 쓴다(퀀트 단독 비교에서 가장 나았던 판).
+        const qs = scoreFromParts(parts, profileById("breakout"));
+        byEngine.get("hybrid")!.push({ ...common, score: (ontoScore + qs) / 2 });
       }
     }
 
@@ -354,7 +380,7 @@ function simulate(ds: Dataset, cfg: QScenario): SimResult {
     /* 5) 매수 */
     if (haltedDay === today) continue;
     if (cfg.marketMaDays) {
-      const mi = idxAsOf("^KS11", today);
+      const mi = idxAsOf(INDEX_SYMBOL, today);
       if (mi >= cfg.marketMaDays) {
         const win = ds.kospi.close.slice(mi - cfg.marketMaDays + 1, mi + 1);
         const ma = win.reduce((a, b) => a + b, 0) / win.length;
@@ -370,7 +396,8 @@ function simulate(ds: Dataset, cfg: QScenario): SimResult {
       const oi = idxAsOf(r.symbol, tomorrow);
       const b = bars.get(r.symbol);
       if (oi < 0 || !b) continue;
-      const fill = roundToTick(b.open[oi] * (1 + SLIPPAGE), "up");
+      const raw = b.open[oi] * (1 + SLIPPAGE);
+      const fill = IS_US ? Math.round(raw * 100) / 100 : roundToTick(raw, "up");
       const currentValue = existing ? existing.qty * r.price : 0;
       const room = Math.min(perPositionCap - currentValue, MAX_ORDER_KRW, cash);
       // 점수가 높을수록 크게 — 운영(autotrade.ts)과 같은 형태
@@ -411,7 +438,7 @@ function simulate(ds: Dataset, cfg: QScenario): SimResult {
 /* ── 출력 ─────────────────────────────── */
 
 const pct = (n: number) => (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
-const won = (n: number) => Math.round(n).toLocaleString("ko-KR") + "원";
+const won = (n: number) => (IS_US ? `$${Math.round(n).toLocaleString("en-US")}` : Math.round(n).toLocaleString("ko-KR") + "원");
 
 function stats(r: SimResult) {
   const wins = r.trades.filter((t) => t.pnl > 0);
@@ -429,15 +456,15 @@ async function main() {
   const ds = await buildDataset();
   const first = ds.calendar[ds.startIdx];
   const last = ds.calendar.at(-1)!;
-  const ki = ds.idxAsOf("^KS11", first);
-  const kf = ds.idxAsOf("^KS11", last);
+  const ki = ds.idxAsOf(INDEX_SYMBOL, first);
+  const kf = ds.idxAsOf(INDEX_SYMBOL, last);
   const kospiReturn = ((ds.kospi.close[kf] - ds.kospi.close[ki]) / ds.kospi.close[ki]) * 100;
 
   console.log("\n" + "=".repeat(78));
   console.log(`퀀트 백테스트  ${first} ~ ${last}  (매매 ${ds.calendar.length - 1 - ds.startIdx} 거래일 · 데이터 ${RANGE} · 평가 ${EVAL})`);
-  console.log(`벤치마크  코스피 매수 후 보유 = ${pct(kospiReturn)}   원금 ${won(CAPITAL)}`);
+  console.log(`벤치마크  ${INDEX_KO} 매수 후 보유 = ${pct(kospiReturn)}   원금 ${won(CAPITAL)}   비용 왕복 ${(ROUND_TRIP_COST * 100).toFixed(2)}% + 슬리피지 ${(SLIPPAGE * 100).toFixed(2)}%/편도`);
   console.log("=".repeat(78));
-  console.log(`${"시나리오".padEnd(24)}${"수익률".padStart(10)}${"vs코스피".padStart(11)}${"최대낙폭".padStart(10)}${"매매".padStart(7)}${"승률".padStart(8)}${"PF".padStart(7)}${"보유".padStart(7)}`);
+  console.log(`${"시나리오".padEnd(24)}${"수익률".padStart(10)}${`vs${INDEX_KO}`.padStart(11)}${"최대낙폭".padStart(10)}${"매매".padStart(7)}${"승률".padStart(8)}${"PF".padStart(7)}${"보유".padStart(7)}`);
   console.log("─".repeat(78));
 
   const results: SimResult[] = [];
@@ -460,7 +487,7 @@ async function main() {
   const best = results.reduce((a, b) => (b.totalReturn > a.totalReturn ? b : a));
   const s = stats(best);
   console.log("\n" + "─".repeat(78));
-  console.log(`최고 — ${best.scenario.name}: ${pct(best.totalReturn)} (코스피 대비 ${pct(best.totalReturn - kospiReturn)}), 낙폭 -${best.maxDd.toFixed(1)}%, 평균 보유 ${s.avgHold.toFixed(1)}일`);
+  console.log(`최고 — ${best.scenario.name}: ${pct(best.totalReturn)} (${INDEX_KO} 대비 ${pct(best.totalReturn - kospiReturn)}), 낙폭 -${best.maxDd.toFixed(1)}%, 평균 보유 ${s.avgHold.toFixed(1)}일`);
   const byReason = new Map<string, { n: number; pnl: number }>();
   for (const t of best.trades) {
     const k = t.reason.split(" (")[0];

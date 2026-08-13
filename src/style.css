@@ -2435,3 +2435,15 @@ font[style] { background: transparent !important; box-shadow: none !important; }
 .quant-rules { line-height: 1.5; }
 .quant-profiles { margin-top: 6px; flex-wrap: wrap; }
 .quant-h3 { margin: 14px 0 6px; font-size: 13px; opacity: 0.85; }
+
+/* ── 매매 엔진 선택 ─────────────────────────────── */
+.engine-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; margin: 8px 0; }
+.engine-btn {
+  display: flex; flex-direction: column; gap: 3px; text-align: left;
+  padding: 10px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--line, #3a3f4b); background: transparent; color: inherit;
+}
+.engine-btn:hover { border-color: var(--accent, #4c8dff); }
+.engine-btn.active { border-color: var(--accent, #4c8dff); background: color-mix(in srgb, var(--accent, #4c8dff) 14%, transparent); }
+.engine-name { font-size: 14px; font-weight: 700; }
+.engine-perf { font-size: 11px; opacity: 0.75; line-height: 1.4; }

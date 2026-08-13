@@ -280,6 +280,9 @@ export interface AutoPlan {
   pnlKrw: number;
   botPnlKrw: number;
   otherPnlKrw: number;
+  /** 지금 종목 선정에 쓰는 점수 엔진 */
+  engine: "onto" | "quant" | "hybrid";
+  engineNote: string;
   depositKrw: number;
   netProfitKrw: number;
   netProfitPct: number;
@@ -584,6 +587,10 @@ export const api = {
     request<CycleResponse>("/api/auto/run", { method: "POST", auth: true, body: JSON.stringify({ shadow }) }),
   autoResume: () => request<{ ok: true }>("/api/auto/resume", { method: "POST", auth: true, body: "{}" }),
   autoReset: () => request<{ ok: true }>("/api/auto/reset", { method: "POST", auth: true, body: "{}" }),
+
+  autoEngine: () => request<{ engine: string; engines: { id: string; nameKo: string; desc: string }[] }>("/api/auto/engine"),
+  autoSetEngine: (engine: string) =>
+    request<{ ok: true; engine: string }>("/api/auto/engine", { method: "POST", auth: true, body: JSON.stringify({ engine }) }),
 
   quantStatus: () => request<QuantStatus>("/api/quant/status"),
   quantRank: (profile?: string, limit = 12) =>
