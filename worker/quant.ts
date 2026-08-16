@@ -18,6 +18,7 @@
  * 0.83% 라, 하루짜리 매매를 반복하면 신호가 맞아도 비용으로 죽는다.
  */
 import type { Env } from "./env";
+import { isKrxHoliday } from "./holidays";
 import seedData from "../shared/radar-universe.json";
 import { QUANT_PROFILES, profileById, quantSignal, scoreFromParts, type QuantParts, type QuantSignal } from "../shared/quant";
 import { consensus, runStrategies } from "../shared/ta";
@@ -352,9 +353,12 @@ export const LAB_STRATEGIES: {
 
 /* v2 — 2026-08-16 가상 원금을 400만 → 600만(실계좌와 동일)으로 통일하며 리그 재시작.
  * 예전 퀀트 트랙(400만 기준, 11일)의 기록은 잇지 않는다 — 원금 스케일이 다른 원장을
- * 한 표에 섞으면 수익률 비교가 성립하지 않는다. */
+ * 한 표에 섞으면 수익률 비교가 성립하지 않는다.
+ * v3 — 2026-08-17 개장시간 가드를 넣으며 한 번 더 재시작. v2 는 주말 크론에서
+ * 금요일 종가(멈춘 시세)로 2호만 매수가 나가, "같은 조건으로 겨룬다"는 전제가
+ * 깨졌다. 네 원장 모두 8/18(화) 09:00 같은 출발선에서 시작한다. */
 function labStateKey(id: LabId): string {
-  return `lab:state:v2:${id}`;
+  return `lab:state:v3:${id}`;
 }
 
 async function loadLabState(env: Env, id: LabId): Promise<QuantState> {
@@ -522,6 +526,16 @@ function runLedger(
 export async function labCycle(env: Env): Promise<{ ran: boolean; results: Record<string, QuantCycleResult> }> {
   const c = cfg(env);
   if (!c.enabled) return { ran: false, results: {} };
+
+  /* 개장시간 가드 — 시세가 멈춘 시간(밤·주말·공휴일)에 장부를 돌리면
+   * 금요일 종가로 사는 왜곡이 생긴다(v2 리그에서 실측). 정규장에만 돌린다. */
+  {
+    const k = new Date(Date.now() + 9 * 3600_000);
+    const wd = k.getUTCDay();
+    const mins = k.getUTCHours() * 60 + k.getUTCMinutes();
+    const open = wd >= 1 && wd <= 5 && !isKrxHoliday(kstDay()) && mins >= 9 * 60 && mins <= 15 * 60 + 20;
+    if (!open) return { ran: false, results: {} };
+  }
 
   const today = kstDay();
   const now = Date.now();

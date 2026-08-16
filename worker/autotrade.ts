@@ -20,6 +20,7 @@
  * 목표를 위해 손실 한도를 풀지는 않는다 — 그 조합이 계좌를 없애는 가장 흔한 경로다.
  */
 import type { Env } from "./env";
+import { isKrxHoliday } from "./holidays";
 import { UNIVERSE, roundToTick } from "../shared/ontology";
 import { runStrategy, type StrategyResult, type TickerScore } from "./strategy";
 import { quantRank } from "./quant";
@@ -119,6 +120,7 @@ const CLOSE_MIN = 15 * 60 + 20; // 동시호가 전에 손을 뗀다
 
 export function marketPhase(now = kstNow()): { open: boolean; label: string } {
   if (now.weekend) return { open: false, label: `주말 휴장 (${now.weekday} ${now.hhmm} KST)` };
+  if (isKrxHoliday(now.date)) return { open: false, label: `공휴일 휴장 (${now.date})` };
   if (now.minutes < OPEN_MIN) return { open: false, label: `장 시작 전 (${now.hhmm} KST)` };
   if (now.minutes > CLOSE_MIN) return { open: false, label: `장 마감 (${now.hhmm} KST)` };
   return { open: true, label: `정규장 진행중 (${now.hhmm} KST)` };
