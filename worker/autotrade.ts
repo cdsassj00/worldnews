@@ -389,6 +389,8 @@ export interface AutoPlan {
   targetProgressPct: number;
   /** 지금 어떤 점수 엔진으로 종목을 고르고 있는가 */
   engine: AutoEngine;
+  engineName: string;
+  engineWeights: EngineWeights;
   engineNote: string;
   /** 실계좌 봇 이력 — 시작일 · 일별 손익 곡선 */
   real: { startedAt: number; botPnlCurve: { d: string; v: number }[] };
@@ -419,32 +421,84 @@ function deployedValue(state: AutoState, priceOf: (code: string) => number): num
  * 선택값은 KV 에 둔다(재배포 없이 바꾸려고). 없으면 AUTO_ENGINE 환경변수, 그것도
  * 없으면 onto.
  */
-export type AutoEngine = "onto" | "quant" | "hybrid" | "ta";
+export type AutoEngine = string;
 
 const ENGINE_KEY = "auto:engine";
 
-export const AUTO_ENGINES: { id: AutoEngine; nameKo: string; desc: string }[] = [
-  { id: "onto", nameKo: "1호 온톨로지", desc: "거시 요인 인과 → 섹터 → 종목. 백테스트에서 국내 3·6·12개월 모두 가장 앞섰다." },
-  { id: "quant", nameKo: "2호 수급·차트", desc: "자금흐름·매집·거래대금 + 돌파. 국내에서는 온톨로지에 뒤졌고, 미국에서는 비슷하거나 앞섰다." },
-  { id: "ta", nameKo: "3호 차트 거장", desc: "창시자가 있는 차트 전략 13종의 합의. 백테스트 성적은 대시보드 성적표에서 확인." },
-  { id: "hybrid", nameKo: "4호 융합", desc: "온톨로지와 수급·차트를 반반. 국내에서는 어느 한쪽 단독보다 못했다." },
+/** 조합 가중치 — 세 분석(온톨로지·수급·차트)을 몇 %씩 섞는가 (합 100 기준) */
+export interface EngineWeights { onto: number; flow: number; chart: number }
+
+export interface EngineSel { id: string; nameKo: string; w: EngineWeights; descKo: string }
+
+/* 세 분석의 모든 조합 7가지 — 단독 3 + 2개 조합 3 + 삼합 1.
+ * id 는 기존 KV 저장값(onto/quant/ta/hybrid)과 백테스트 시나리오 id 를 그대로 잇는다.
+ * 여기에 없는 비율은 커스텀 가중치("w:온,수,차")로 저장한다. */
+export const AUTO_ENGINES: { id: string; nameKo: string; w: EngineWeights; desc: string }[] = [
+  { id: "onto", nameKo: "온톨로지", w: { onto: 100, flow: 0, chart: 0 }, desc: "환율·금리·유가 같은 거시 신호가 업종을 거쳐 종목으로 전파되는 인과만 봅니다." },
+  { id: "quant", nameKo: "수급", w: { onto: 0, flow: 100, chart: 0 }, desc: "자금흐름·매집·거래대금·돌파 — 돈이 들어오는 흔적만 봅니다." },
+  { id: "ta", nameKo: "차트", w: { onto: 0, flow: 0, chart: 100 }, desc: "창시자가 있는 차트 전략 13종의 합의만 봅니다." },
+  { id: "hybrid", nameKo: "온톨로지+수급", w: { onto: 50, flow: 50, chart: 0 }, desc: "거시 인과와 수급을 반반 섞습니다." },
+  { id: "onto_ta", nameKo: "온톨로지+차트", w: { onto: 50, flow: 0, chart: 50 }, desc: "거시 인과와 차트 합의를 반반 섞습니다." },
+  { id: "quant_ta", nameKo: "수급+차트", w: { onto: 0, flow: 50, chart: 50 }, desc: "수급과 차트 합의를 반반 섞습니다." },
+  { id: "all3", nameKo: "삼합", w: { onto: 34, flow: 33, chart: 33 }, desc: "세 분석을 같은 무게로 모두 섞습니다." },
 ];
 
-
-function isEngine(v: unknown): v is AutoEngine {
-  return v === "onto" || v === "quant" || v === "hybrid" || v === "ta";
+function normWeights(raw: Partial<EngineWeights>): EngineWeights {
+  const clamp = (v: unknown) => Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
+  const w = { onto: clamp(raw.onto), flow: clamp(raw.flow), chart: clamp(raw.chart) };
+  if (w.onto + w.flow + w.chart <= 0) throw new ApiError(400, "bad_weights", { hint: "가중치 합이 0입니다" });
+  return w;
 }
 
+function selFromWeights(w: EngineWeights): EngineSel {
+  const preset = AUTO_ENGINES.find((e) => e.w.onto === w.onto && e.w.flow === w.flow && e.w.chart === w.chart);
+  if (preset) return { id: preset.id, nameKo: preset.nameKo, w: preset.w, descKo: preset.desc };
+  return {
+    id: "custom",
+    nameKo: `커스텀 ${w.onto}·${w.flow}·${w.chart}`,
+    w,
+    descKo: `온톨로지 ${w.onto}% · 수급 ${w.flow}% · 차트 ${w.chart}% 가중 평균 — 이 비율의 백테스트는 아직 측정되지 않았습니다.`,
+  };
+}
+
+function parseEngineValue(v: string | null | undefined): EngineSel | null {
+  if (!v) return null;
+  const preset = AUTO_ENGINES.find((e) => e.id === v);
+  if (preset) return { id: preset.id, nameKo: preset.nameKo, w: preset.w, descKo: preset.desc };
+  const m = /^w:(\d+),(\d+),(\d+)$/.exec(v);
+  if (m) {
+    try { return selFromWeights(normWeights({ onto: Number(m[1]), flow: Number(m[2]), chart: Number(m[3]) })); } catch { return null; }
+  }
+  return null;
+}
+
+export async function getEngineSel(env: Env): Promise<EngineSel> {
+  return parseEngineValue(await env.CACHE.get(ENGINE_KEY))
+    ?? parseEngineValue(env.AUTO_ENGINE)
+    ?? parseEngineValue("onto")!;
+}
+
+/** 하위호환 — id 문자열만 필요한 자리 */
 export async function getEngine(env: Env): Promise<AutoEngine> {
-  const stored = await env.CACHE.get(ENGINE_KEY);
-  if (isEngine(stored)) return stored;
-  return isEngine(env.AUTO_ENGINE) ? env.AUTO_ENGINE : "onto";
+  return (await getEngineSel(env)).id;
 }
 
-export async function setEngine(env: Env, engine: string): Promise<AutoEngine> {
-  if (!isEngine(engine)) throw new ApiError(400, "bad_engine", { engine, allowed: AUTO_ENGINES.map((e) => e.id) });
-  await env.CACHE.put(ENGINE_KEY, engine);
-  return engine;
+/** 계획 캐시 키 조각 — 커스텀 가중치도 서로 다른 키를 갖게 한다 */
+export function engineKey(sel: EngineSel): string {
+  return sel.id === "custom" ? `w${sel.w.onto}-${sel.w.flow}-${sel.w.chart}` : sel.id;
+}
+
+export async function setEngine(env: Env, input: { engine?: string; weights?: Partial<EngineWeights> }): Promise<EngineSel> {
+  let sel: EngineSel;
+  if (input.weights) {
+    sel = selFromWeights(normWeights(input.weights));
+  } else {
+    const preset = parseEngineValue(String(input.engine ?? ""));
+    if (!preset) throw new ApiError(400, "bad_engine", { engine: input.engine, allowed: AUTO_ENGINES.map((e) => e.id) });
+    sel = preset;
+  }
+  await env.CACHE.put(ENGINE_KEY, sel.id === "custom" ? `w:${sel.w.onto},${sel.w.flow},${sel.w.chart}` : sel.id);
+  return sel;
 }
 
 /**
@@ -456,42 +510,41 @@ export async function setEngine(env: Env, engine: string): Promise<AutoEngine> {
  */
 async function applyEngine(
   env: Env,
-  engine: AutoEngine,
+  sel: EngineSel,
   scores: TickerScore[],
 ): Promise<{ scores: TickerScore[]; note: string }> {
-  if (engine === "onto") return { scores, note: "온톨로지 점수로 순위를 정합니다." };
+  const { w } = sel;
+  const mixKo = `온톨로지 ${w.onto}% · 수급 ${w.flow}% · 차트 ${w.chart}%`;
+  if (w.flow === 0 && w.chart === 0) return { scores, note: "온톨로지 점수로 순위를 정합니다." };
 
   let rows: { code: string; score: number; taScore?: number }[] = [];
   try {
     rows = (await quantRank(env, "breakout", 400)).rows.map((r) => ({ code: r.code, score: r.score, taScore: r.taScore }));
   } catch {
-    return { scores, note: "퀀트 점수를 불러오지 못해 온톨로지 점수로 대체했습니다." };
+    return { scores, note: `퀀트 점수를 불러오지 못해 온톨로지 점수로 대체했습니다 (목표 조합: ${mixKo}).` };
   }
-  // ta 엔진은 차트 13종 합의 점수를, quant/hybrid 는 돌파 점수를 쓴다
-  const q = new Map(rows.map((r) => [r.code, engine === "ta" ? r.taScore : r.score]));
-  if (!q.size) return { scores, note: "퀀트 스캔 결과가 아직 없어 온톨로지 점수로 대체했습니다." };
+  const byCode = new Map(rows.map((r) => [r.code, r]));
+  if (!byCode.size) return { scores, note: `퀀트 스캔 결과가 아직 없어 온톨로지 점수로 대체했습니다 (목표 조합: ${mixKo}).` };
 
   const out: TickerScore[] = [];
   let covered = 0;
   for (const s of scores) {
-    const qs = q.get(s.code);
-    if (qs === undefined) {
-      if (engine === "quant" || engine === "ta") continue; // 점수가 없으면 순위를 못 매긴다
-      out.push(s); // hybrid: 퀀트 점수가 없으면 온톨로지 점수만 쓴다
-      continue;
-    }
-    covered++;
-    out.push({ ...s, score: round(engine === "quant" || engine === "ta" ? qs : (s.score + qs) / 2, 3) });
+    const q = byCode.get(s.code);
+    // 가중 평균 — 점수가 없는 축은 빼고 남은 가중치로 재정규화한다.
+    // 0으로 채우면 "정보가 없다"가 "나쁘다"로 둔갑하기 때문이다.
+    const comps: { wgt: number; val: number }[] = [{ wgt: w.onto, val: s.score }];
+    if (q?.score !== undefined) comps.push({ wgt: w.flow, val: q.score });
+    if (q?.taScore !== undefined) comps.push({ wgt: w.chart, val: q.taScore });
+    const denom = comps.reduce((a, c) => a + c.wgt, 0);
+    if (denom <= 0) continue; // 이 종목엔 이 조합을 매길 정보가 없다
+    // 수급·차트 정보가 아예 없는 종목은, 그 축이 조합의 절반 이상이면 후보에서 뺀다
+    if (denom < (w.onto + w.flow + w.chart) / 2) continue;
+    if (q) covered++;
+    const mixed = comps.reduce((a, c) => a + c.wgt * c.val, 0) / denom;
+    out.push({ ...s, score: round(mixed, 3) });
   }
   out.sort((a, b) => b.score - a.score);
-  return {
-    scores: out,
-    note: engine === "quant"
-      ? `수급·차트 점수로 순위를 정합니다 (후보 ${covered}종목).`
-      : engine === "ta"
-        ? `차트 거장 13종 합의 점수로 순위를 정합니다 (후보 ${covered}종목).`
-        : `온톨로지와 수급·차트를 반반 섞은 점수입니다 (퀀트 점수 있는 종목 ${covered}개).`,
-  };
+  return { scores: out, note: `${mixKo} 가중 평균으로 순위를 정합니다 (수급·차트 점수 있는 종목 ${covered}개).` };
 }
 
 export async function buildPlan(env: Env): Promise<AutoPlan> {
@@ -507,8 +560,8 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   let strategy: StrategyResult = strategyRaw;
 
   const state = await loadState(env);
-  const engine = await getEngine(env);
-  const engineApplied = await applyEngine(env, engine, strategy.scores);
+  const engineSel = await getEngineSel(env);
+  const engineApplied = await applyEngine(env, engineSel, strategy.scores);
   // 이후 로직은 전부 이 재정렬된 점수를 본다. 원본(strategy.scores)은 화면 설명용으로만 남긴다.
   strategy = { ...strategy, scores: engineApplied.scores };
   const scoreByCode = new Map(strategy.scores.map((s) => [s.code, s]));
@@ -687,7 +740,9 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
     cashKrw: Math.round(account.connected ? account.cash : 0),
     // 목표(+100만)는 봇이 벌어야 하는 돈이다 — 기존 보유분 등락은 목표 진행률에서 뺀다
     targetProgressPct: cfg.targetProfitKrw > 0 ? round((botPnl / cfg.targetProfitKrw) * 100, 1) : 0,
-    engine,
+    engine: engineSel.id,
+    engineName: engineSel.nameKo,
+    engineWeights: engineSel.w,
     engineNote: engineApplied.note,
     real: { startedAt: state.startedAt, botPnlCurve: state.botPnlCurve ?? [] },
     riskOff: strategy.riskOff,

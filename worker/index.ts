@@ -22,11 +22,11 @@ import {
   type OrderMarket,
   overseasReadiness,
 } from "./kis";
-import { adjustForDeposit, autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle, getEngine, setEngine, AUTO_ENGINES } from "./autotrade";
+import { adjustForDeposit, autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle, getEngine, getEngineSel, setEngine, engineKey, AUTO_ENGINES } from "./autotrade";
 import { runStrategy } from "./strategy";
 import { tickerNewsStatus } from "./tickernews";
 import { radarFind, radarOpps, radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
-import { labCycle, labOverview, quantRank, quantScanChunk, quantStatus, resetQuant, QUANT_PROFILE_LIST } from "./quant";
+import { comboRank, labCycle, labOverview, quantRank, quantScanChunk, quantStatus, resetQuant, QUANT_PROFILE_LIST } from "./quant";
 import { taCached } from "./ta";
 import { backtestResults } from "./backtest";
 import { briefIndex, briefPage, rssXml, sitemapXml } from "./rss";
@@ -345,20 +345,28 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     // 조회는 공개, 변경은 거래 암호 필요 — 실제 돈이 걸린 설정이다.
     if (request.method === "POST") {
       assertTradeAuth(env, request);
-      const body = (await request.json().catch(() => ({}))) as { engine?: string };
-      const engine = await setEngine(env, String(body.engine ?? ""));
-      // 옛 엔진으로 만든 계획이 남아 있으면 화면이 바로 안 바뀐다
-      await Promise.all(AUTO_ENGINES.map((e) => invalidateCache(env, `auto:plan:${e.id}`)));
+      const body = (await request.json().catch(() => ({}))) as { engine?: string; weights?: { onto?: number; flow?: number; chart?: number } };
+      const prev = await getEngineSel(env);
+      const sel = await setEngine(env, body);
+      // 옛 엔진으로 만든 계획이 남아 있으면 화면이 바로 안 바뀐다 — 프리셋 + 전후 커스텀 키 전부 비운다
+      await Promise.all([
+        ...AUTO_ENGINES.map((e) => invalidateCache(env, `auto:plan:${e.id}`)),
+        invalidateCache(env, `auto:plan:${engineKey(prev)}`),
+        invalidateCache(env, `auto:plan:${engineKey(sel)}`),
+      ]);
       // 사용자 지시(2026-08-16): 엔진은 바뀐 그 순간부터 작동한다.
       // 다음 크론(최대 15분)을 기다리지 않고 즉시 한 사이클을 돌린다 — 장중이면
       // 새 엔진 기준의 매도·매수가 바로 나가고, 장외면 계획·일지만 갱신된다.
       ctx.waitUntil(runCycle(env).catch(() => undefined));
-      return json({ ok: true, engine, engines: AUTO_ENGINES, note: "엔진 변경 즉시 사이클을 실행합니다 (장중이면 실주문 포함)." });
+      return json({ ok: true, engine: sel.id, engineName: sel.nameKo, weights: sel.w, engines: AUTO_ENGINES, note: "엔진 변경 즉시 사이클을 실행합니다 (장중이면 실주문 포함)." });
     }
-    return json({ engine: await getEngine(env), engines: AUTO_ENGINES });
+    const sel = await getEngineSel(env);
+    return json({ engine: sel.id, engineName: sel.nameKo, weights: sel.w, engines: AUTO_ENGINES });
   }
 
   if (path === "/api/auto/status") {
+    // 계좌 평가액·보유 내역이 담긴다 — 자동매매 화면과 함께 비공개(나만 보기)
+    assertTradeAuth(env, request);
     const state = await loadState(env);
     return json({
       ...autoStatus(env),
@@ -382,12 +390,29 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
   }
 
   if (path === "/api/auto/plan") {
-    // 계획 조회는 주문을 내지 않으므로 공개한다(어떤 근거로 매매하는지 보이게).
+    // 2026-08-16 사용자 지시("자동매매는 나만 보도록"): 계좌 금액·주문 계획이 담긴
+    // 화면이라 거래 암호 없이는 열리지 않는다. 공개 화면(전략실·조합 전략)은
+    // 백테스트·시뮬레이션·조합 순위만 보여준다.
+    assertTradeAuth(env, request);
     // 캐시 키에 엔진을 넣는다 — 넣지 않으면 엔진을 바꿔도 2분간 옛 계획이 돌아와
     // "버튼이 안 눌린다"로 보인다. 메모리 캐시는 아이솔레이트마다 따로라
     // 무효화만으로는 못 막고, 키를 갈라야 확실하다.
-    const engine = await getEngine(env);
-    const { data } = await cached(env, `auto:plan:${engine}`, 120, () => buildPlan(env));
+    const sel = await getEngineSel(env);
+    const { data } = await cached(env, `auto:plan:${engineKey(sel)}`, 120, () => buildPlan(env));
+    return json(data);
+  }
+
+  if (path === "/api/combo/rank") {
+    // 공개 추천 — "세 분석을 이 비율로 섞으면 지금 어떤 종목이 유리한가".
+    // 계좌와 무관한 조회 전용이라 공개한다.
+    const w = {
+      onto: num(url.searchParams.get("onto"), 34),
+      flow: num(url.searchParams.get("flow"), 33),
+      chart: num(url.searchParams.get("chart"), 33),
+    };
+    const limit = Math.min(50, Math.max(1, Math.floor(num(url.searchParams.get("limit"), 20))));
+    const key = `combo:rank:${w.onto}-${w.flow}-${w.chart}:${limit}`;
+    const { data } = await cached(env, key, 120, () => comboRank(env, w, limit));
     return json(data);
   }
 
@@ -489,6 +514,8 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
   }
 
   if (path === "/api/auto/journal") {
+    // 실제 주문 일지 — 자동매매 화면과 함께 비공개(나만 보기)
+    assertTradeAuth(env, request);
     return json({ items: await getJournal(env) });
   }
 

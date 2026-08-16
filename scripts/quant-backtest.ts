@@ -148,6 +148,11 @@ const SCENARIOS: QScenario[] = [
   { name: "QR 하이브리드·시장필터",      engine: "hybrid", ...BASE, marketMaDays: 20 },
   { name: "QS 하이브리드·저회전+필터",   engine: "hybrid", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
   { name: "QT 하이브리드·저회전 문턱0.3", engine: "hybrid", ...BASE, buyScore: 0.30, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
+  /* ⑨ 나머지 2·3개 조합 — 세 분석(온톨로지·수급·차트)의 모든 짝을 채운다.
+   *    다른 엔진과 공정 비교를 위해 같은 저회전+시장필터 규칙만 측정한다. */
+  { name: "XA 온톨로지+차트·저회전+필터", engine: "onto_ta",  ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
+  { name: "XB 수급+차트·저회전+필터",    engine: "quant_ta", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
+  { name: "XC 삼합(온톨+수급+차트)·저회전+필터", engine: "all3", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
 ];
 
 /* ── 데이터 ─────────────────────────────── */
@@ -204,7 +209,7 @@ async function buildDataset(): Promise<Dataset> {
   process.stderr.write(`점수 계산 — ${calendar[startIdx]} ~ ${calendar.at(-1)} …\n`);
   // hybrid = 온톨로지(거시 인과) 와 퀀트(수급·차트) 를 반반 섞은 점수.
   // ta = 차트 거장 전략 13종(이평교차·MACD·일목·터틀 등)의 합의 점수 — 전략실 3호의 검증판.
-  const engines = [...QUANT_PROFILES.map((p) => p.id), "onto", "hybrid", "ta"];
+  const engines = [...QUANT_PROFILES.map((p) => p.id), "onto", "hybrid", "ta", "onto_ta", "quant_ta", "all3"];
   const daily = new Map<string, Map<string, Cand[]>>();
   const have = uni.filter((u) => bars.has(u.symbol.toUpperCase()));
 
@@ -246,7 +251,12 @@ async function buildDataset(): Promise<Dataset> {
       }
 
       // 차트 전략 13종 합의 — 형태 분석(사다리·플랜)은 빼고 전략 판정만 돌린다(속도).
-      byEngine.get("ta")!.push({ ...common, score: consensus(runStrategies(hist)).score });
+      const taScore = consensus(runStrategies(hist)).score;
+      byEngine.get("ta")!.push({ ...common, score: taScore });
+      // 수급 축은 돌파 프로파일을 쓴다(퀀트 단독 비교에서 가장 나았던 판).
+      const qs = scoreFromParts(parts, profileById("breakout"));
+      // 수급+차트 — 거시 신호 없이도 계산 가능한 2개 조합
+      byEngine.get("quant_ta")!.push({ ...common, score: (qs + taScore) / 2 });
 
       if (macro.length >= 4) {
         const fake: UniverseTicker = {
@@ -258,9 +268,10 @@ async function buildDataset(): Promise<Dataset> {
         const ontoScore = composite(onto.score, priceSignal(hist).score, 0);
         byEngine.get("onto")!.push({ ...common, score: ontoScore });
         // 하이브리드 — 온톨로지 결론과 수급·차트 점수를 반반.
-        // 퀀트 쪽은 돌파 프로파일을 쓴다(퀀트 단독 비교에서 가장 나았던 판).
-        const qs = scoreFromParts(parts, profileById("breakout"));
         byEngine.get("hybrid")!.push({ ...common, score: (ontoScore + qs) / 2 });
+        // 온톨로지+차트 / 삼합 — 세 분석의 나머지 조합
+        byEngine.get("onto_ta")!.push({ ...common, score: (ontoScore + taScore) / 2 });
+        byEngine.get("all3")!.push({ ...common, score: (ontoScore + qs + taScore) / 3 });
       }
     }
 

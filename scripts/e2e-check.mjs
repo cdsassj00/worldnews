@@ -6,7 +6,7 @@
  * 사용: node scripts/e2e-check.mjs [baseUrl] [outDir]
  */
 import { chromium } from "playwright";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 
 const base = process.argv[2] ?? "http://127.0.0.1:8787";
 const outDir = process.argv[3] ?? "/tmp/wfg-shots";
@@ -240,9 +240,13 @@ if (cfg.ai?.enabled) {
   console.log(`[참고] AI 분석 검사 건너뜀 — ${cfg.ai?.reason ?? "상태 불명"}`);
 }
 
-// 자동매매 — 터미널 탭
+// 자동매매 — 운영자 전용 모달(거래 암호 게이트). 로컬 dev 토큰을 미리 넣는다.
+try {
+  const m = /^TRADE_TOKEN=(.+)$/m.exec(readFileSync(".dev.vars", "utf8"));
+  if (m) await page.evaluate((t) => sessionStorage.setItem("wfg.tradeToken", t), m[1].trim());
+} catch { /* 토큰 없으면 게이트 화면 검사로 전환된다 */ }
 await page.click("#btn-auto");
-await page.waitForSelector("#pane-auto:not([hidden])", { timeout: 10000 });
+await page.waitForSelector("#auto-modal:not([hidden])", { timeout: 10000 });
 await page.waitForSelector("#auto-body .auto-block", { timeout: 120000 });
 const autoBlocks = await page.locator("#auto-body .auto-block").count();
 const gateItems = await page.locator("#auto-body .gate-list li").count();
@@ -274,12 +278,15 @@ check("백테스트 결과 고지", (await page.locator("#auto-body .bt-block .b
 const autoBadge = (await page.locator("#auto-badge").textContent()) ?? "";
 check("자동매매 상태 배지", autoBadge.trim().length > 0 && !/확인중/.test(autoBadge), autoBadge.trim());
 await page.screenshot({ path: `${outDir}/08-autotrade.png` });
-// 매매 엔진 선택 — 세 엔진 버튼과 현재 선택 표시
+// 매매 엔진 선택 — 7개 조합 프리셋 + 커스텀 슬라이더 3개
 {
   const btns = await page.locator(".engine-btn").count();
   const active = await page.locator(".engine-btn.active").count();
-  check(`매매 엔진 선택 — 버튼 ${btns} · 선택 ${active}`, btns === 3 && active === 1);
+  const sliders = await page.locator(".engine-custom input[type=range]").count();
+  check(`매매 엔진 선택 — 조합 ${btns} · 선택 ${active} · 슬라이더 ${sliders}`, btns === 7 && active === 1 && sliders === 3);
 }
+
+await page.click("#auto-close");
 
 // 수급분석 — 터미널 탭 (스캔 데이터가 없는 로컬 dev 에서는 API 기준으로 판정)
 {
@@ -292,6 +299,20 @@ await page.screenshot({ path: `${outDir}/08-autotrade.png` });
   const profiles = await page.locator("#flow-profiles .radar-tab").count();
   check(`수급분석 — 순위 ${Math.max(0, rows - 1)}종목(API ${apiRows}) · 프로파일 ${profiles}`,
     profiles === 3 && (apiRows === 0 || rows >= 11));
+}
+
+// 조합 전략 — 터미널 탭 (7개 프리셋 + 슬라이더 3개 + 조합 순위표)
+{
+  const apiRows = await page.evaluate(() =>
+    fetch("/api/combo/rank?onto=34&flow=33&chart=33").then((r) => r.json()).then((j) => j.rows?.length ?? 0).catch(() => 0));
+  await page.locator('#terminal-tabs .tt-tab[data-pane="combo"]').click();
+  if (apiRows > 0) await page.waitForSelector("#combo-body .combo-row", { timeout: 60000 });
+  else await page.waitForTimeout(800);
+  const rows = await page.locator("#combo-body .combo-row").count();
+  const presets = await page.locator("#combo-presets .combo-preset").count();
+  const sliders = await page.locator("#combo-sliders input[type=range]").count();
+  check(`조합 전략 — 프리셋 ${presets} · 슬라이더 ${sliders} · 순위 ${Math.max(0, rows - 1)}종목(API ${apiRows})`,
+    presets === 7 && sliders === 3 && (apiRows === 0 || rows >= 11));
 }
 
 // 티커테이프 & 좌측 요약

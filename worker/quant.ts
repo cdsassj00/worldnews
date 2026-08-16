@@ -692,6 +692,71 @@ export async function labOverview(env: Env): Promise<{
   };
 }
 
+/* ── 조합 순위 — "세 분석을 이 비율로 섞으면 지금 어떤 종목이 유리한가" ────
+ * 공개 추천 화면(분석 터미널 · 조합 전략 탭)용. 실계좌와 무관한 조회 전용이며,
+ * 점수 축은 실계좌 엔진(applyEngine)과 동일하다: 온톨로지=레이더 온톨로지 점수,
+ * 수급=돌파 프로파일, 차트=거장 13종 합의. 보여주는 숫자 = 매매하는 숫자. */
+
+export interface ComboWeights { onto: number; flow: number; chart: number }
+
+export interface ComboRow {
+  code: string; symbol: string; name: string; sector: string;
+  price: number; changePct: number;
+  onto: number | null; flow: number | null; chart: number | null;
+  total: number;
+}
+
+export async function comboRank(env: Env, wRaw: Partial<ComboWeights>, limit = 20): Promise<{
+  weights: ComboWeights;
+  universe: number; scanned: number; updatedAt: number;
+  rows: ComboRow[];
+}> {
+  const clamp = (v: unknown) => Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
+  const w: ComboWeights = { onto: clamp(wRaw.onto), flow: clamp(wRaw.flow), chart: clamp(wRaw.chart) };
+  if (w.onto + w.flow + w.chart <= 0) { w.onto = 34; w.flow = 33; w.chart = 33; }
+
+  const c = cfg(env);
+  const store = await loadRank(env);
+  const ontoByCode = new Map<string, number>();
+  try {
+    const { radarTop } = await import("./radarscan");
+    const top = await radarTop(env, 500, "desc") as { items?: { code: string; score: number; market: string }[] };
+    for (const it of top.items ?? []) if (it.market !== "US") ontoByCode.set(it.code, it.score);
+  } catch { /* 온톨로지 축만 빈다 */ }
+
+  const totalW = w.onto + w.flow + w.chart;
+  const rows: ComboRow[] = [];
+  for (const r of Object.values(store.rows)) {
+    if (r.turnover < c.minTurnover) continue;
+    const onto = ontoByCode.get(r.code);
+    const flow = r.scores["breakout"];
+    const chart = r.taScore;
+    // 점수 없는 축은 빼고 남은 가중치로 재정규화 — 정보 없음 ≠ 나쁨
+    const comps: { wgt: number; val: number }[] = [];
+    if (onto !== undefined) comps.push({ wgt: w.onto, val: onto });
+    if (flow !== undefined) comps.push({ wgt: w.flow, val: flow });
+    if (chart !== undefined) comps.push({ wgt: w.chart, val: chart });
+    const denom = comps.reduce((a, x) => a + x.wgt, 0);
+    if (denom < totalW / 2) continue; // 조합의 절반 이상이 깜깜이면 순위에 안 올린다
+    rows.push({
+      code: r.code, symbol: r.symbol, name: r.name, sector: r.sector,
+      price: r.price, changePct: r.changePct,
+      onto: onto !== undefined ? round(onto, 3) : null,
+      flow: flow !== undefined ? round(flow, 3) : null,
+      chart: chart !== undefined ? round(chart, 3) : null,
+      total: round(comps.reduce((a, x) => a + x.wgt * x.val, 0) / denom, 3),
+    });
+  }
+  rows.sort((a, b) => b.total - a.total);
+  return {
+    weights: w,
+    universe: UNIVERSE.length,
+    scanned: Object.keys(store.rows).length,
+    updatedAt: store.updatedAt,
+    rows: rows.slice(0, Math.min(50, Math.max(1, limit))),
+  };
+}
+
 /* ── 조회 ─────────────────────────────── */
 
 
@@ -773,7 +838,7 @@ export async function quantStatus(env: Env): Promise<QuantStatus> {
     scanUpdatedAt: store.updatedAt,
     equityCurve: state.equityCurve ?? [],
     maxDrawdownPct: (() => {
-      let peak = capital, dd = 0;
+      let peak = c.capital, dd = 0;
       for (const pt of state.equityCurve ?? []) {
         if (pt.e > peak) peak = pt.e;
         dd = Math.max(dd, ((peak - pt.e) / peak) * 100);

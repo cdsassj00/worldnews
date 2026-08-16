@@ -56,18 +56,33 @@ export class AutoPanel {
 
   async load(): Promise<void> {
     this.deps.root.replaceChildren(el("p", { class: "note", text: "자동매매 상태를 불러오는 중… (거시지표·종목 시세를 계산하느라 10초 정도 걸릴 수 있습니다)" }));
-    const [status, plan, journal, graph] = await Promise.allSettled([
+    const [status, plan, journal, graph, bt] = await Promise.allSettled([
       api.autoStatus(),
       api.autoPlan(),
       api.autoJournal(),
       this.graph ? Promise.resolve(this.graph) : api.autoGraph(),
+      // 엔진 프리셋 카드가 백테스트 성적을 붙이므로 렌더 전에 받아 둔다
+      this.bt ? Promise.resolve(this.bt) : api.backtest(),
     ]);
     this.status = status.status === "fulfilled" ? status.value : null;
     this.plan = plan.status === "fulfilled" ? plan.value : null;
     this.journal = journal.status === "fulfilled" ? journal.value.items : [];
     if (graph.status === "fulfilled") this.graph = graph.value;
+    if (bt.status === "fulfilled") this.bt = bt.value;
     if (!this.plan && plan.status === "rejected") {
-      const msg = plan.reason instanceof ApiFailure ? plan.reason.message : String(plan.reason);
+      const err = plan.reason;
+      // 2026-08-16 이후 이 화면은 운영자 전용 — 암호가 없거나 틀리면 그 자리에서 받는다
+      const needsAuth = err instanceof ApiFailure && (err.code === "no_local_token" || err.status === 401);
+      if (needsAuth) {
+        this.deps.root.replaceChildren(
+          el("p", { class: "note", text: "자동매매 화면은 운영자 전용입니다. 거래 암호를 입력하면 열립니다." }),
+          this.inlineAuth,
+        );
+        this.renderBadge();
+        this.askAuthInline("자동매매 화면을 엽니다", () => this.load());
+        return;
+      }
+      const msg = err instanceof ApiFailure ? err.message : String(err);
       this.deps.root.replaceChildren(el("p", { class: "note err", text: `계획을 만들지 못했습니다: ${msg}` }));
       this.renderBadge();
       return;
@@ -218,47 +233,92 @@ export class AutoPanel {
    * 실제 돈이 걸린 선택이라 각 엔진의 검증 성적을 바로 옆에 붙인다.
    * 숫자를 감추고 고르게 하면 그건 선택이 아니라 도박이다.
    */
-  private engineBlock(p: AutoPlan): HTMLElement {
-    const perf: Record<string, { kr: string; us: string }> = {
-      onto: { kr: "3개월 -1.5% / 6개월 +39.7% / 1년 +81.9%", us: "3개월 -18.7% / 6개월 +5.6% / 1년 +49.5%" },
-      quant: { kr: "3개월 -5.8% / 6개월 -11.5% / 1년 +66.9%", us: "3개월 -19.5% / 6개월 +13.9% / 1년 +67.9%" },
-      hybrid: { kr: "3개월 -18.0% / 6개월 +3.6% / 1년 +2.2%", us: "3개월 -18.8% / 6개월 +16.5% / 1년 +36.5%" },
-    };
-    const label: Record<string, string> = { onto: "온톨로지", quant: "수급·차트", hybrid: "온톨로지+수급" };
+  /* 세 분석(온톨로지·수급·차트)의 7개 조합 + 커스텀 가중치.
+   * 각 프리셋에는 백테스트(고정 실측값)의 국내·미국 수익률을 그대로 붙인다 —
+   * 숫자를 감추고 고르게 하면 그건 선택이 아니라 도박이다. */
+  private static readonly ENGINE_PRESETS: { id: string; nameKo: string; w: { onto: number; flow: number; chart: number } }[] = [
+    { id: "onto", nameKo: "온톨로지", w: { onto: 100, flow: 0, chart: 0 } },
+    { id: "quant", nameKo: "수급", w: { onto: 0, flow: 100, chart: 0 } },
+    { id: "ta", nameKo: "차트", w: { onto: 0, flow: 0, chart: 100 } },
+    { id: "hybrid", nameKo: "온톨로지+수급", w: { onto: 50, flow: 50, chart: 0 } },
+    { id: "onto_ta", nameKo: "온톨로지+차트", w: { onto: 50, flow: 0, chart: 50 } },
+    { id: "quant_ta", nameKo: "수급+차트", w: { onto: 0, flow: 50, chart: 50 } },
+    { id: "all3", nameKo: "삼합", w: { onto: 34, flow: 33, chart: 33 } },
+  ];
 
+  private perfLine(id: string, mkt: "KR" | "US"): string {
+    const row = this.bt?.engineComparison.engines.find((e) => e.id === id);
+    const r = mkt === "KR" ? row?.KR?.returns : row?.US?.returns;
+    if (!r || r.length < 3) return `${mkt === "KR" ? "국내" : "미국"} 미측정`;
+    const f = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
+    return `${mkt === "KR" ? "국내" : "미국"} ${f(r[0])} / ${f(r[1])} / ${f(r[2])}`;
+  }
+
+  private engineBlock(p: AutoPlan): HTMLElement {
     const buttons = el("div", { class: "engine-picker" });
-    for (const id of ["onto", "quant", "hybrid"]) {
-      const active = p.engine === id;
+    for (const preset of AutoPanel.ENGINE_PRESETS) {
+      const active = p.engine === preset.id;
       const b = el("button", {
         type: "button",
         class: `engine-btn${active ? " active" : ""}`,
         "aria-pressed": active ? "true" : "false",
       }, [
-        el("span", { class: "engine-name", text: label[id] }),
-        el("span", { class: "engine-perf", text: `국내 ${perf[id].kr}` }),
-        el("span", { class: "engine-perf", text: `미국 ${perf[id].us}` }),
+        el("span", { class: "engine-name", text: preset.nameKo }),
+        el("span", { class: "engine-perf", text: this.perfLine(preset.id, "KR") }),
+        el("span", { class: "engine-perf", text: this.perfLine(preset.id, "US") }),
       ]);
       b.addEventListener("click", () => {
         if (active) return; // 이미 쓰고 있는 엔진
         // 먼저 눌린 티를 낸다 — 서버 왕복 동안 아무 반응이 없으면 "안 눌린다"로 읽힌다
         buttons.querySelectorAll(".engine-btn").forEach((n) => n.classList.remove("active"));
         b.classList.add("active");
-        this.engineStatus.textContent = `${label[id]} 로 바꾸는 중…`;
+        this.engineStatus.textContent = `${preset.nameKo} 로 바꾸는 중…`;
         this.engineStatus.className = "modal-status";
-        void this.switchEngine(id);
+        void this.switchEngine({ engine: preset.id }, preset.nameKo);
       });
       buttons.append(b);
     }
 
+    // 커스텀 가중치 — 조합의 비율을 직접 정한다. 적용 버튼을 눌러야 실계좌에 반영.
+    const w = { ...p.engineWeights };
+    const sliderRow = (key: "onto" | "flow" | "chart", label: string) => {
+      const input = el("input", { type: "range", min: 0, max: 100, step: 5, value: w[key] }) as HTMLInputElement;
+      const val = el("span", { class: "combo-slider-val", text: `${w[key]}%` });
+      input.addEventListener("input", () => { w[key] = Number(input.value); val.textContent = `${w[key]}%`; });
+      return el("label", { class: "combo-slider" }, [el("span", { class: "combo-slider-label", text: label }), input, val]);
+    };
+    const applyBtn = el("button", { class: "btn btn-ghost", type: "button", text: "이 비율로 실계좌 적용" });
+    applyBtn.addEventListener("click", () => {
+      if (w.onto + w.flow + w.chart <= 0) {
+        this.engineStatus.textContent = "가중치 합이 0입니다 — 적어도 한 축은 올려야 합니다.";
+        this.engineStatus.className = "modal-status err";
+        return;
+      }
+      this.engineStatus.textContent = `온톨로지 ${w.onto}% · 수급 ${w.flow}% · 차트 ${w.chart}% 로 바꾸는 중…`;
+      this.engineStatus.className = "modal-status";
+      void this.switchEngine({ weights: { ...w } }, `커스텀 ${w.onto}·${w.flow}·${w.chart}`);
+    });
+    const custom = el("div", { class: "engine-custom" }, [
+      el("p", { class: "note", text: "직접 조합 — 세 분석의 비율을 정하면 그 가중 평균 점수로 종목을 고릅니다. 프리셋 밖 비율은 백테스트 미측정입니다." }),
+      sliderRow("onto", "온톨로지"),
+      sliderRow("flow", "수급"),
+      sliderRow("chart", "차트"),
+      applyBtn,
+    ]);
+
     return el("section", { class: "auto-block engine-block" }, [
-      el("h3", {}, [el("span", { text: "매매 엔진" }), el("span", { class: "gate-pill", text: label[p.engine] ?? p.engine })]),
+      el("h3", {}, [
+        el("span", { text: "매매 엔진 — 조합 선택" }),
+        el("span", { class: "gate-pill", text: `${p.engineName} (${p.engineWeights.onto}·${p.engineWeights.flow}·${p.engineWeights.chart})` }),
+      ]),
       buttons,
+      custom,
       this.engineStatus,
       this.inlineAuth,
       el("p", { class: "note", text: p.engineNote }),
       el("p", {
         class: "note",
-        text: "성적은 코스피200+코스닥150 350종목 / S&P100 104종목, 저회전+시장국면 필터 규칙 기준입니다. 국내 1년 구간은 코스피 자체가 +106% 라 세 엔진 모두 지수 보유에는 못 미칩니다. 주문·손절·한도 같은 안전장치는 엔진과 무관하게 동일하게 작동합니다.",
+        text: "프리셋 성적은 3개월/6개월/1년 백테스트 수익률(저회전+시장국면 필터 규칙, 2026-08-16 재측정)입니다. 바꾸는 즉시 한 사이클이 돌아 장중이면 실주문까지 나갑니다. 주문·손절·한도 같은 안전장치는 조합과 무관하게 동일하게 작동합니다.",
       }),
     ]);
   }
@@ -298,12 +358,12 @@ export class AutoPanel {
     input.focus();
   }
 
-  private async switchEngine(engine: string): Promise<void> {
+  private async switchEngine(payload: { engine?: string; weights?: { onto: number; flow: number; chart: number } }, label: string): Promise<void> {
     try {
-      const res = await api.autoSetEngine(engine);
+      const res = await api.autoSetEngine(payload);
       await this.load();
       // load() 가 새로 그리므로 이 노드는 살아남는다(같은 인스턴스를 다시 붙인다)
-      this.engineStatus.textContent = `엔진을 ${res.engine} 로 바꿨습니다.`;
+      this.engineStatus.textContent = `엔진을 ${res.engineName} 로 바꿨습니다 — 즉시 사이클이 실행됩니다.`;
       this.engineStatus.className = "modal-status ok";
     } catch (err) {
       const failed = err instanceof ApiFailure;
@@ -313,7 +373,7 @@ export class AutoPanel {
         : failed ? `엔진 변경 실패 — ${err.message}` : String(err);
       this.engineStatus.className = "modal-status err";
       await this.load(); // 낙관적으로 바꿔 둔 표시를 서버 상태로 되돌린다
-      if (needsAuth) this.askAuthInline(`${engine} 엔진으로 바꿉니다`, () => this.switchEngine(engine));
+      if (needsAuth) this.askAuthInline(`${label} 엔진으로 바꿉니다`, () => this.switchEngine(payload, label));
     }
   }
 

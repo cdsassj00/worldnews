@@ -280,8 +280,10 @@ export interface AutoPlan {
   pnlKrw: number;
   botPnlKrw: number;
   otherPnlKrw: number;
-  /** 지금 종목 선정에 쓰는 점수 엔진 */
-  engine: "onto" | "quant" | "hybrid" | "ta";
+  /** 지금 종목 선정에 쓰는 점수 엔진 — 프리셋 id 또는 "custom" */
+  engine: string;
+  engineName: string;
+  engineWeights: EngineWeights;
   engineNote: string;
   real: { startedAt: number; botPnlCurve: { d: string; v: number }[] };
   depositKrw: number;
@@ -581,6 +583,25 @@ export interface QuantRank {
   rows: QuantRow[];
 }
 
+/* ── 조합 전략 ─────────────────────────────── */
+
+export interface EngineWeights { onto: number; flow: number; chart: number }
+
+export interface EnginePreset { id: string; nameKo: string; w: EngineWeights; desc: string }
+
+export interface ComboRow {
+  code: string; symbol: string; name: string; sector: string;
+  price: number; changePct: number;
+  onto: number | null; flow: number | null; chart: number | null;
+  total: number;
+}
+
+export interface ComboRank {
+  weights: EngineWeights;
+  universe: number; scanned: number; updatedAt: number;
+  rows: ComboRow[];
+}
+
 export interface QuantPosition {
   code: string; name: string; symbol: string; qty: number;
   avgPrice: number; lastPrice: number; enteredAt: number; score: number;
@@ -708,7 +729,7 @@ export const api = {
     confirm: string;
   }) => request<OrderResponse>("/api/kis/order", { method: "POST", auth: true, body: JSON.stringify(payload) }),
 
-  autoStatus: () => request<AutoStatus>("/api/auto/status"),
+  autoStatus: () => request<AutoStatus>("/api/auto/status", { auth: true }),
   autoGraph: () => request<OntologyGraph>("/api/auto/graph"),
   ontoState: () => request<OntoState>("/api/onto/state"),
   radarTop: (limit = 12) => request<{ available: boolean; items: RadarItem[] }>(`/api/radar/top?limit=${limit}`),
@@ -716,8 +737,9 @@ export const api = {
   radarStatus: () => request<{ available: boolean; tickers?: number; scored?: number; newestScoreAt?: number }>("/api/radar/status"),
   radarOpps: (limit = 8, market: "KR" | "US" = "KR") => request<RadarOpps>(`/api/radar/opps?limit=${limit}&market=${market}`),
   ontoVerdict: (market: "KR" | "US" = "KR") => request<OntoVerdict>(`/api/onto/verdict?market=${market}`),
-  autoPlan: () => request<AutoPlan>("/api/auto/plan"),
-  autoJournal: () => request<{ items: JournalEntry[] }>("/api/auto/journal"),
+  // 자동매매 화면은 운영자 전용(2026-08-16) — 서버도 거래 암호를 요구한다
+  autoPlan: () => request<AutoPlan>("/api/auto/plan", { auth: true }),
+  autoJournal: () => request<{ items: JournalEntry[] }>("/api/auto/journal", { auth: true }),
   autoRun: (shadow: boolean) =>
     request<CycleResponse>("/api/auto/run", { method: "POST", auth: true, body: JSON.stringify({ shadow }) }),
   autoResume: () => request<{ ok: true }>("/api/auto/resume", { method: "POST", auth: true, body: "{}" }),
@@ -728,9 +750,12 @@ export const api = {
   ta: (symbol: string, days = 180) => request<TaResponse>(`/api/ta?symbol=${encodeURIComponent(symbol)}&days=${days}`),
   overseasCheck: () =>
     request<OverseasReadiness>("/api/kis/overseas-check", { method: "POST", auth: true, body: "{}" }),
-  autoEngine: () => request<{ engine: string; engines: { id: string; nameKo: string; desc: string }[] }>("/api/auto/engine"),
-  autoSetEngine: (engine: string) =>
-    request<{ ok: true; engine: string }>("/api/auto/engine", { method: "POST", auth: true, body: JSON.stringify({ engine }) }),
+  autoEngine: () => request<{ engine: string; engineName: string; weights: EngineWeights; engines: EnginePreset[] }>("/api/auto/engine"),
+  autoSetEngine: (payload: { engine?: string; weights?: EngineWeights }) =>
+    request<{ ok: true; engine: string; engineName: string; weights: EngineWeights }>(
+      "/api/auto/engine", { method: "POST", auth: true, body: JSON.stringify(payload) }),
+  comboRank: (w: EngineWeights, limit = 20) =>
+    request<ComboRank>(`/api/combo/rank?onto=${w.onto}&flow=${w.flow}&chart=${w.chart}&limit=${limit}`),
 
   quantStatus: () => request<QuantStatus>("/api/quant/status"),
   quantRank: (profile?: string, limit = 12) =>

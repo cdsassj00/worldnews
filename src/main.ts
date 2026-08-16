@@ -3,6 +3,7 @@ import { Globe, type CountryRef } from "./globe";
 import { api, ApiFailure, getTradeToken, setTradeToken, type ConfigResponse, type KisStatus, type Snapshot } from "./api";
 import { Panel, type OrderDraft } from "./panel";
 import { AutoPanel } from "./autopanel";
+import { ComboPanel } from "./combopanel";
 import { FlowPanel } from "./flowpanel";
 import { LabPanel } from "./labpanel";
 import usUniverse from "../shared/us-universe.json";
@@ -50,6 +51,7 @@ let autoPanel: AutoPanel | null = null;
 let labPanel: LabPanel | null = null;
 let taPanel: TaPanel | null = null;
 let flowPanel: FlowPanel | null = null;
+let comboPanel: ComboPanel | null = null;
 let onto: Ontology3D | null = null;
 let miniGlobe: Globe | null = null;
 let ontoState: OntoState | null = null;
@@ -245,16 +247,16 @@ function setupAuthModal(): void {
 /* ── 터미널 탭 — 온톨로지 · 차트분석 · 수급분석 · 자동매매 ─────────────
  * 한 화면에 전부 펼치던 것을 탭 전환으로 바꿨다(가독성 피드백).
  * 각 탭의 데이터는 처음 열 때 불러온다 — 안 여는 탭 비용은 0. */
-type PaneId = "onto" | "ta" | "flow" | "auto";
+type PaneId = "onto" | "ta" | "flow" | "combo";
 const PANE_SUBS: Record<PaneId, string> = {
   onto: "거시요인 → 섹터 → 종목으로 신호가 전파되는 3D 인과 그래프. 확대는 Ctrl(⌘)+스크롤, 일반 스크롤은 페이지를 내립니다.",
   ta: "창시자가 있는 차트 전략 13종이 종목 하나를 두고 각자 판정합니다 — 패턴·매물대·매매 플랜까지.",
   flow: "자금흐름(MFI)·매집(CLV)·거래대금 급증 — 큰손이 사는 흔적을 점수로 만든 수급 순위입니다.",
-  auto: "이 전략들이 실제로 운영자 계좌를 자동매매하는 현황 — 판단 근거·주문 일지·엔진 선택.",
+  combo: "세 분석을 원하는 비율로 섞은 조합 기준으로, 지금 시점 어떤 종목이 유리한지 보여줍니다. 과거 성적(백테스트)은 전략실에.",
 };
 
 function selectPane(id: PaneId, scroll = false): void {
-  for (const p of ["onto", "ta", "flow", "auto"] as PaneId[]) {
+  for (const p of ["onto", "ta", "flow", "combo"] as PaneId[]) {
     $(`pane-${p}`).hidden = p !== id;
   }
   document.querySelectorAll<HTMLButtonElement>("#terminal-tabs .tt-tab").forEach((b) => {
@@ -265,7 +267,7 @@ function selectPane(id: PaneId, scroll = false): void {
   $("terminal-sub").textContent = PANE_SUBS[id];
   if (id === "ta") void taPanel?.load();
   if (id === "flow") void flowPanel?.load();
-  if (id === "auto") void autoPanel?.load();
+  if (id === "combo") void comboPanel?.load();
   if (scroll) $("terminal").scrollIntoView({ behavior: "smooth" });
 }
 
@@ -275,15 +277,23 @@ function setupTerminalTabs(): void {
   });
 }
 
-function setupAutoPane(): void {
+/* 자동매매 — 운영자 전용 모달(우측 상단). 공개 터미널에서 분리했다(2026-08-16 지시).
+ * 서버(/api/auto/plan 등)가 거래 암호를 요구하므로 화면도 암호부터 받는다. */
+function setupAutoModal(): void {
+  const modal = $("auto-modal");
   autoPanel = new AutoPanel({
     root: $("auto-body"),
     badge: $("auto-badge"),
     onNeedAuth: () => openAuthModal(),
   });
-  const open = () => selectPane("auto", true);
+  const open = () => {
+    modal.hidden = false;
+    void autoPanel!.load();
+  };
   $("btn-auto").addEventListener("click", open);
   $("auto-refresh").addEventListener("click", () => void autoPanel!.load());
+  $("auto-close").addEventListener("click", () => (modal.hidden = true));
+  modal.addEventListener("click", (e) => { if (e.target === modal) modal.hidden = true; });
   const w = window as unknown as { __wfg?: Record<string, unknown> };
   w.__wfg = { ...(w.__wfg ?? {}), openAuto: open };
 }
@@ -389,6 +399,7 @@ function setupOrderModal(): void {
     if (e.key !== "Escape") return;
     $("order-modal").hidden = true;
     $("auth-modal").hidden = true;
+    $("auto-modal").hidden = true;
     $("onto-help-modal").hidden = true;
   });
 }
@@ -1071,10 +1082,13 @@ function setupHero(): void {
 }
 
 async function fillHero(): Promise<void> {
-  const names: Record<string, string> = { onto: "1호 온톨로지", quant: "2호 수급·차트", ta: "3호 차트 거장", hybrid: "4호 융합" };
+  const names: Record<string, string> = {
+    onto: "온톨로지", quant: "수급", ta: "차트", hybrid: "온톨로지+수급",
+    onto_ta: "온톨로지+차트", quant_ta: "수급+차트", all3: "삼합",
+  };
   try {
     const bt = await api.backtest();
-    // 챔피언 = 국내 백테스트 최근 1년 수익률 1위 엔진
+    // 챔피언 = 국내 백테스트 최근 1년 수익률 1위 엔진 (7개 조합 전부 비교)
     let best: { name: string; year: number } | null = null;
     for (const e of bt.engineComparison.engines) {
       const year = e.KR?.returns?.[2];
@@ -1089,7 +1103,8 @@ async function fillHero(): Promise<void> {
   } catch { /* 못 채우면 그대로 둔다 */ }
   try {
     const lab = await api.labOverview();
-    $("hero-engine").textContent = `${names[lab.liveEngine] ?? lab.liveEngine} 가동 중`;
+    const engineName = names[lab.liveEngine] ?? (lab.liveEngine.startsWith("w:") ? "커스텀 조합" : lab.liveEngine);
+    $("hero-engine").textContent = `${engineName} 가동 중`;
     if (lab.universe) $("hero-universe").textContent = `${lab.universe.toLocaleString("ko-KR")}종목`;
   } catch { /* 못 채우면 그대로 둔다 */ }
 }
@@ -1117,7 +1132,7 @@ async function boot(): Promise<void> {
   setupAuthModal();
   setupOrderModal();
   setupTerminalTabs();
-  setupAutoPane();
+  setupAutoModal();
   setupTickerSearch();
   setupOntoHelp();
   setupRadarTabs();
@@ -1133,6 +1148,15 @@ async function boot(): Promise<void> {
   flowPanel = new FlowPanel({
     root: $("flow-body"),
     profileTabs: $("flow-profiles"),
+    onPick: (symbol, name) => {
+      selectPane("ta", true);
+      void taPanel?.show(symbol, name);
+    },
+  });
+  comboPanel = new ComboPanel({
+    presets: $("combo-presets"),
+    sliders: $("combo-sliders"),
+    body: $("combo-body"),
     onPick: (symbol, name) => {
       selectPane("ta", true);
       void taPanel?.show(symbol, name);

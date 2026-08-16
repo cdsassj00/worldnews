@@ -168,8 +168,8 @@
         <button type="button" class="tt-tab" data-pane="flow" role="tab" aria-selected="false">
           <b>수급분석</b><span>자금흐름 · 매집 순위</span>
         </button>
-        <button type="button" class="tt-tab" data-pane="auto" role="tab" aria-selected="false">
-          <b>자동매매</b><span>실계좌 봇 현황</span>
+        <button type="button" class="tt-tab" data-pane="combo" role="tab" aria-selected="false">
+          <b>조합 전략</b><span>세 분석을 섞으면 지금 뭐가 유리한가</span>
         </button>
       </div>
       <p class="lab-sub" id="terminal-sub">거시요인 → 섹터 → 종목으로 신호가 전파되는 3D 인과 그래프. 확대는 <b>Ctrl(⌘)+스크롤</b>, 일반 스크롤은 페이지를 내립니다.</p>
@@ -335,15 +335,15 @@
       </div>
     </section>
 
-    <!-- 자동매매 탭 — 이전의 전폭 모달을 인라인 화면으로 -->
-    <section class="terminal-pane" id="pane-auto" hidden aria-label="자동매매">
+    <!-- 조합 전략 탭 — 온톨로지·수급·차트를 가중치로 섞은 "지금 시점" 종목 순위.
+         백테스트(과거 성적)는 전략실이 담당하고, 여기는 추천(현재)만 담당한다 —
+         2026-08-16 사용자 지시: 백스테이징과 추천 종목은 분리한다. -->
+    <section class="terminal-pane" id="pane-combo" hidden aria-label="조합 전략">
       <div class="pane-inner">
-        <div class="pane-toolbar">
-          <span id="auto-badge" class="badge badge-muted">상태 확인중…</span>
-          <span class="spacer"></span>
-          <button class="btn btn-ghost" id="auto-refresh" type="button">새로고침</button>
-        </div>
-        <div class="auto-body pane-body" id="auto-body"></div>
+        <p class="card-sub">세 분석(온톨로지·수급·차트)을 원하는 비율로 섞으면, 그 조합 기준으로 지금 어떤 종목이 유리한지 보여줍니다. 종목을 누르면 차트분석으로 이어집니다.</p>
+        <div id="combo-presets" class="combo-presets" role="tablist"></div>
+        <div id="combo-sliders" class="combo-sliders"></div>
+        <div id="combo-body"><p class="note">조합 순위를 불러오는 중…</p></div>
       </div>
     </section>
 
@@ -455,6 +455,21 @@
           <span class="spacer"></span>
           <button class="btn btn-primary" id="onto-help-close" type="button">알겠습니다</button>
         </div>
+      </div>
+    </div>
+
+    <!-- 자동매매 — 운영자 전용(거래 암호). 공개 화면(전략실·조합 전략)과 분리해
+         우측 상단 버튼으로만 연다. 2026-08-16 사용자 지시: "나만 보도록". -->
+    <div class="modal modal-wide" id="auto-modal" hidden>
+      <div class="modal-card auto-card" role="dialog" aria-modal="true" aria-labelledby="auto-title">
+        <div class="auto-head">
+          <h2 id="auto-title">자동매매 (운영자 전용)</h2>
+          <span id="auto-badge" class="badge badge-muted">상태 확인중…</span>
+          <span class="spacer"></span>
+          <button class="btn btn-ghost" id="auto-refresh" type="button">새로고침</button>
+          <button class="btn btn-ghost" id="auto-close" type="button">닫기</button>
+        </div>
+        <div class="auto-body" id="auto-body"></div>
       </div>
     </div>
 
