@@ -129,6 +129,10 @@ export interface QuantTrade {
 }
 
 export interface QuantState {
+  /** 이 원장의 시작 원금 — 생성 시점의 설정값을 고정해 둔다.
+   * env 만 믿으면 나중에 원금 설정을 바꿨을 때 기존 원장의 수익률이 왜곡된다
+   * (원금 600만으로 바꾸는 순간 400만짜리 원장이 -33%로 보인다). */
+  capital?: number;
   cash: number;
   positions: Record<string, QuantPosition>;
   realizedPnl: number;
@@ -346,9 +350,11 @@ export const LAB_STRATEGIES: {
   },
 ];
 
-/** quant 원장은 예전 퀀트 트랙 키를 그대로 이어받는다(쌓인 성적 유지) */
+/* v2 — 2026-08-16 가상 원금을 400만 → 600만(실계좌와 동일)으로 통일하며 리그 재시작.
+ * 예전 퀀트 트랙(400만 기준, 11일)의 기록은 잇지 않는다 — 원금 스케일이 다른 원장을
+ * 한 표에 섞으면 수익률 비교가 성립하지 않는다. */
 function labStateKey(id: LabId): string {
-  return id === "quant" ? STATE_KEY : `lab:state:${id}`;
+  return `lab:state:v2:${id}`;
 }
 
 async function loadLabState(env: Env, id: LabId): Promise<QuantState> {
@@ -356,6 +362,7 @@ async function loadLabState(env: Env, id: LabId): Promise<QuantState> {
   if (raw && typeof raw === "object") return raw as QuantState;
   const c = cfg(env);
   return {
+    capital: c.capital,
     cash: c.capital, positions: {}, realizedPnl: 0, trades: [], day: "", buysToday: 0,
     peakEquity: c.capital, haltedPermanent: false, haltReason: "", startedAt: Date.now(),
     lastCycleAt: 0, lastNote: "",
@@ -612,6 +619,7 @@ export async function labOverview(env: Env): Promise<{
   const strategies: LabStrategyView[] = [];
   for (const st of LAB_STRATEGIES) {
     const state = await loadLabState(env, st.id);
+    const capital = state.capital ?? c.capital;
     const positions = Object.values(state.positions).map((p) => {
       const px = p.lastPrice || p.avgPrice;
       return {
@@ -625,7 +633,7 @@ export async function labOverview(env: Env): Promise<{
     const equity = Math.round(state.cash + holdingsValue);
     const sells = state.trades.filter((t) => t.side === "SELL");
     const wins = sells.filter((t) => (t.pnl ?? 0) > 0).length;
-    let peak = c.capital, dd = 0;
+    let peak = capital, dd = 0;
     for (const pt of state.equityCurve ?? []) {
       if (pt.e > peak) peak = pt.e;
       dd = Math.max(dd, ((peak - pt.e) / peak) * 100);
@@ -634,11 +642,11 @@ export async function labOverview(env: Env): Promise<{
       id: st.id, no: st.no, nameKo: st.nameKo, tagKo: st.tagKo, descKo: st.descKo,
       engineId: st.engineId,
       liveNow: st.engineId !== null && st.engineId === liveEngine,
-      capital: c.capital,
+      capital,
       equity,
       cash: Math.round(state.cash),
-      pnlKrw: equity - c.capital,
-      pnlPct: c.capital ? round(((equity - c.capital) / c.capital) * 100, 2) : 0,
+      pnlKrw: equity - capital,
+      pnlPct: capital ? round(((equity - capital) / capital) * 100, 2) : 0,
       maxDrawdownPct: round(dd, 2),
       positions,
       exits: sells.slice(-10).reverse(),
@@ -654,8 +662,8 @@ export async function labOverview(env: Env): Promise<{
 
   return {
     disclaimer:
-      "전략실의 모든 수치는 가상 원금 400만원으로 돌리는 시뮬레이션(모의매매) 기록입니다. " +
-      "1호가 실계좌 엔진으로 선택된 경우에도 이 카드의 숫자는 모의 원장 기준입니다. " +
+      `전략실의 모든 수치는 실계좌와 같은 가상 원금 ${Math.round(c.capital / 10000).toLocaleString("ko-KR")}만원으로 돌리는 시뮬레이션(모의매매) 기록입니다. ` +
+      "실계좌 운용 중인 전략 카드의 금색 블록만 진짜 돈 기준입니다. " +
       "특정 종목의 매수·매도를 권유하지 않으며, 투자 판단과 책임은 이용자 본인에게 있습니다.",
     universe: UNIVERSE.length,
     scanned: Object.keys(store.rows).length,
@@ -746,7 +754,7 @@ export async function quantStatus(env: Env): Promise<QuantStatus> {
     scanUpdatedAt: store.updatedAt,
     equityCurve: state.equityCurve ?? [],
     maxDrawdownPct: (() => {
-      let peak = c.capital, dd = 0;
+      let peak = capital, dd = 0;
       for (const pt of state.equityCurve ?? []) {
         if (pt.e > peak) peak = pt.e;
         dd = Math.max(dd, ((peak - pt.e) / peak) * 100);
