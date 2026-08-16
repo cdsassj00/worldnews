@@ -69,6 +69,8 @@ export interface VerdictStockNode {
 export interface Onto3DOptions {
   onSelect: (kind: "macro" | "sector" | "ticker", id: string) => void;
   onHover: (label: string | null, x: number, y: number) => void;
+  /** Ctrl 없이 휠을 굴렸을 때 — "확대는 Ctrl+스크롤" 힌트를 잠깐 띄우는 용도 */
+  onScrollHint?: () => void;
 }
 
 type NodeKind = "macro" | "sector" | "ticker";
@@ -564,9 +566,16 @@ export class Ontology3D {
       this.dragging = false;
       this.opts.onHover(null, 0, 0);
     });
+    /* 휠 = 페이지 스크롤, Ctrl(⌘)+휠·트랙패드 핀치 = 확대.
+     * 캔버스가 모든 휠을 preventDefault 로 잡으면 이 구획 위에서 페이지를
+     * 내릴 수 없다(전략실이 캔버스 아래에 있을 때 아예 못 내려간다는 피드백). */
     c.addEventListener(
       "wheel",
       (e) => {
+        if (!e.ctrlKey && !e.metaKey) {
+          this.opts.onScrollHint?.();
+          return; // 브라우저 기본 동작 = 페이지 스크롤
+        }
         e.preventDefault();
         this.zoom(e.deltaY > 0 ? 0.9 : -0.9);
       },

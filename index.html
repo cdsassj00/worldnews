@@ -125,6 +125,7 @@
         </div>
         <div class="hero-cta">
           <button class="btn btn-primary hero-btn" id="hero-goto-lab" type="button">전략실 — 4개 전략 성적 보기</button>
+          <button class="btn btn-ghost hero-btn" id="hero-goto-terminal" type="button">3D 온톨로지 터미널</button>
           <button class="btn btn-ghost hero-btn" id="hero-open-ta" type="button">종목 차트 분석</button>
           <button class="btn btn-ghost hero-btn" id="hero-open-auto" type="button">자동매매 현황</button>
         </div>
@@ -140,6 +141,24 @@
       </div>
     </section>
 
+    <!-- ══ 전략실 — 히어로 바로 아래. 사이트의 자랑거리가 첫 스크롤에 나와야 한다.
+         (무거운 3D 터미널은 아래로 내렸다 — 캔버스가 휠을 잡아먹어 아래 내용에
+         닿기 어렵다는 사용자 피드백에 따른 재배치) ══ -->
+    <section class="lab-strip" id="lab-strip" aria-label="전략실">
+      <div class="lab-head">
+        <h2 class="lab-title">전략실 <span class="lab-tag">시뮬레이션 리그</span></h2>
+        <p class="lab-sub" id="lab-sub">백테스트 성적순으로 4개 전략을 세우고, 같은 가상 원금·같은 규칙의 실시간 리그로 다시 검증합니다. 이긴 전략을 실계좌 엔진으로 선택할 수 있습니다.</p>
+      </div>
+      <div class="lab-grid" id="lab-grid"><p class="note">전략실을 불러오는 중…</p></div>
+      <div class="lab-detail" id="lab-detail" hidden></div>
+      <p class="note lab-note" id="lab-disclaimer"></p>
+    </section>
+
+    <!-- ══ 온톨로지 터미널 — 실시간 분석 화면 ══ -->
+    <div class="terminal-head" id="terminal">
+      <h2 class="lab-title">온톨로지 터미널 <span class="lab-tag">실시간</span></h2>
+      <p class="lab-sub">거시요인 → 섹터 → 종목으로 신호가 전파되는 3D 인과 그래프와 실시간 결론. 그래프 확대는 <b>Ctrl(⌘)+스크롤</b>, 일반 스크롤은 페이지를 내립니다.</p>
+    </div>
     <main class="layout">
       <aside class="rail" aria-label="온톨로지 요약">
         <section class="card card-verdict">
@@ -229,7 +248,7 @@
               <span><i class="layer layer-sector"></i>섹터 (결론에 오른 것만)</span>
               <span><i class="layer layer-ticker"></i>종목 (결론 + 검색)</span>
             </div>
-            <p class="onto-help">노드를 클릭하면 그와 이어진 경로만 남습니다. 드래그로 회전, 휠로 확대.</p>
+            <p class="onto-help">노드를 클릭하면 그와 이어진 경로만 남습니다. 드래그로 회전 · Ctrl(⌘)+스크롤로 확대.</p>
             <button class="btn btn-ghost onto-what" id="btn-onto-help" type="button">온톨로지란? · 갱신 주기</button>
           </div>
           <div class="globe-hint" id="onto-hint">불러오는 중…</div>
@@ -277,18 +296,6 @@
         <div class="panel-body" id="panel-body" hidden></div>
       </section>
     </main>
-
-    <!-- ══ 전략실 — 4개 전략이 같은 규칙·같은 가상 원금으로 겨루는 곳 ══ -->
-    <section class="lab-strip" id="lab-strip" aria-label="전략실">
-      <div class="lab-head">
-        <h2 class="lab-title">전략실 <span class="lab-tag">시뮬레이션 리그</span></h2>
-        <p class="lab-sub" id="lab-sub">백테스트 성적순으로 4개 전략을 세우고, 같은 가상 원금·같은 규칙의 실시간 리그로 다시 검증합니다. 이긴 전략을 실계좌 엔진으로 선택할 수 있습니다.</p>
-      </div>
-      <div class="lab-grid" id="lab-grid"><p class="note">전략실을 불러오는 중…</p></div>
-      <div class="lab-detail" id="lab-detail" hidden></div>
-      <p class="note lab-note" id="lab-disclaimer"></p>
-    </section>
-
 
     <footer class="footer">
       <span id="disclaimer">

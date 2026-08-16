@@ -389,6 +389,17 @@ function setupOntology(): void {
       tooltip.style.top = `${y - host.top}px`;
       tooltip.hidden = false;
     },
+    onScrollHint: (() => {
+      // 일반 휠은 페이지 스크롤로 흘려보내고, 확대 방법만 잠깐 알려준다
+      let timer = 0;
+      const hint = el("div", { class: "stage-scroll-hint", text: "그래프 확대는 Ctrl(⌘) + 스크롤" });
+      $("onto-host").append(hint);
+      return () => {
+        hint.classList.add("show");
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => hint.classList.remove("show"), 1200);
+      };
+    })(),
   });
   onto.init();
 
@@ -1033,6 +1044,7 @@ function setupGlobe(liveCodes: Set<string>, orderCodes: Set<string>): void {
  * 어떤 엔진이 가동 중인지(금액 없이)만 보여준다. 실패하면 "—" 로 둔다. */
 function setupHero(): void {
   $("hero-goto-lab").addEventListener("click", () => $("lab-strip").scrollIntoView({ behavior: "smooth" }));
+  $("hero-goto-terminal").addEventListener("click", () => $("terminal").scrollIntoView({ behavior: "smooth" }));
   $("hero-open-ta").addEventListener("click", () => $("btn-ta").click());
   $("hero-open-auto").addEventListener("click", () => $("btn-auto").click());
   void fillHero();
