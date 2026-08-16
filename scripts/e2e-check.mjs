@@ -293,12 +293,23 @@ check("지금 움직이는 시장", (await page.locator("#hot-list button").coun
   await page.fill("#ta-search", "삼성전자");
   await page.waitForSelector("#ta-results button", { timeout: 30000 });
   await page.locator("#ta-results button").first().click();
+  // 기본 탭 = 매매 플랜
+  await page.waitForSelector(".ta-plan-head", { timeout: 40000 });
+  await page.waitForTimeout(500);
+  const planRows = await page.locator(".ta-plan-row").count();
+  const checks = await page.locator(".ta-check li").count();
+  const ladder = await page.locator(".ta-lvl").count();
+  const cons = await page.locator(".ta-cons-row").count();
+  const trend = await page.locator(".ta-trend-pill").count();
+  check(`기술적 분석 플랜 — 가격행 ${planRows} · 체크 ${checks} · 사다리 ${ladder} · 컨센서스 ${cons} · 추세 ${trend}`,
+    planRows === 5 && checks === 5 && ladder >= 4 && cons === 4 && trend === 4);
+
+  await page.locator("#ta-modal .radar-tab").nth(1).click();
   await page.waitForSelector(".ta-chart", { timeout: 40000 });
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(600);
   const charts = await page.locator(".ta-chart").count();
   const box = await page.locator(".ta-chart").first().boundingBox();
-  await page.locator("#ta-body").locator("xpath=preceding-sibling::*").last().waitFor({ timeout: 5000 }).catch(() => {});
-  await page.locator("#ta-modal .radar-tab").nth(1).click();
+  await page.locator("#ta-modal .radar-tab").nth(2).click();
   await page.waitForTimeout(400);
   const strats = await page.locator(".ta-strat").count();
   check(`기술적 분석 — 차트 ${charts}단 · 폭 ${Math.round(box?.width ?? 0)}px · 전략 ${strats}개`, charts === 3 && strats >= 13 && (box?.width ?? 0) > 600);

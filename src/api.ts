@@ -484,6 +484,30 @@ export interface TaStrategy {
   levels?: { label: string; value: number }[];
 }
 
+export interface TaLevel {
+  price: number; distPct: number; sources: string[]; touches: number; strength: number;
+  kind: "support" | "resistance";
+}
+
+export interface TaTrend {
+  short: "up" | "down" | "flat"; mid: "up" | "down" | "flat"; long: "up" | "down" | "flat";
+  adx: number; trending: boolean; text: string; alignment: string;
+}
+
+export interface TaPlan {
+  bias: "long" | "wait" | "avoid";
+  biasKo: string;
+  entry: { low: number; high: number; note: string };
+  stop: { price: number; pct: number; note: string };
+  targets: { price: number; pct: number; note: string }[];
+  rr: number;
+  riskPerShare: number;
+  invalidation: string;
+  grade: "good" | "fair" | "poor";
+  gradeKo: string;
+  checklist: { text: string; pass: boolean }[];
+}
+
 export interface TaResponse {
   symbol: string;
   name: string;
@@ -498,6 +522,10 @@ export interface TaResponse {
   levels: { support: number | null; resistance: number | null };
   indicators: { rsi: number; macdHist: number; adx: number; atr: number; mfi: number; bbPercentB: number };
   suggestedStop: number | null;
+  ladder: TaLevel[];
+  trend: TaTrend;
+  plan: TaPlan;
+  groups: { nameKo: string; score: number; buy: number; sell: number; ids: string[] }[];
   chart: {
     t: number[];
     open: number[]; high: number[]; low: number[]; close: number[]; volume: number[];

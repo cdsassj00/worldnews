@@ -2490,3 +2490,57 @@ font[style] { background: transparent !important; box-shadow: none !important; }
   padding: var(--space-3, 14px);
 }
 .card-wide { max-width: 1100px; margin: 0 auto; }
+
+/* ── 기술적 분석: 추세·컨센서스·플랜 ─────────────────────────── */
+.ta-trend { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+.ta-trend-pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; opacity: 0.9; }
+.ta-trend-pill.up { color: #e0524a; }
+.ta-trend-pill.down { color: #3b82f6; }
+.ta-trend-pill.flat { color: #94a3b8; }
+
+.ta-cons { margin: 8px 0; display: grid; gap: 4px; }
+.ta-cons-row { display: grid; grid-template-columns: 68px 1fr 52px 46px; align-items: center; gap: 8px; font-size: 11px; }
+.ta-cons-name { opacity: 0.8; }
+.ta-cons-track { position: relative; height: 10px; border-radius: 5px; background: rgba(148,163,184,0.14); overflow: hidden; }
+.ta-cons-fill { position: absolute; top: 0; bottom: 0; border-radius: 5px; }
+.ta-cons-fill.up { background: #e0524a; }
+.ta-cons-fill.down { background: #3b82f6; }
+.ta-cons-zero { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(148,163,184,0.5); }
+.ta-cons-num { text-align: right; font-weight: 600; }
+.ta-cons-vote { text-align: right; opacity: 0.6; }
+
+.ta-plan-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; padding: 8px 10px; border-radius: 9px; border: 1px solid currentColor; }
+.ta-plan-head.up { color: #22c55e; }
+.ta-plan-head.down { color: #f43f5e; }
+.ta-plan-head.flat { color: #94a3b8; }
+.ta-plan-bias { font-size: 15px; font-weight: 800; }
+.ta-plan-grade, .ta-plan-rr { font-size: 12px; opacity: 0.9; }
+
+.ta-plan-rows { margin: 10px 0; display: grid; gap: 2px; }
+.ta-plan-row { display: grid; grid-template-columns: 74px 130px 62px 1fr; align-items: baseline; gap: 8px; padding: 5px 8px; border-radius: 7px; font-size: 12px; }
+.ta-plan-row.up { background: color-mix(in srgb, #22c55e 10%, transparent); }
+.ta-plan-row.down { background: color-mix(in srgb, #f43f5e 12%, transparent); }
+.ta-plan-row.flat { background: rgba(148,163,184,0.10); }
+.ta-plan-label { opacity: 0.75; }
+.ta-plan-price { font-weight: 700; font-size: 13px; }
+.ta-plan-delta.up { color: #22c55e; }
+.ta-plan-delta.down { color: #f43f5e; }
+.ta-plan-note { font-size: 11px; opacity: 0.72; line-height: 1.45; }
+
+.ta-check { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.ta-check li { display: flex; gap: 8px; font-size: 12px; align-items: baseline; }
+.ta-check-mark { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
+.ta-check li.pass .ta-check-mark { background: color-mix(in srgb, #22c55e 22%, transparent); color: #22c55e; }
+.ta-check li.fail .ta-check-mark { background: color-mix(in srgb, #f43f5e 20%, transparent); color: #f43f5e; }
+
+.ta-ladder { display: grid; gap: 2px; }
+.ta-lvl { display: grid; grid-template-columns: 40px 92px 56px 70px 1fr; align-items: center; gap: 8px; font-size: 11.5px; padding: 4px 6px; border-radius: 6px; }
+.ta-lvl.res { background: color-mix(in srgb, #ef4444 8%, transparent); }
+.ta-lvl.sup { background: color-mix(in srgb, #22c55e 8%, transparent); }
+.ta-lvl.now { background: rgba(148,163,184,0.2); font-weight: 700; }
+.ta-lvl-tag { font-size: 10px; opacity: 0.75; }
+.ta-lvl-price { font-weight: 600; }
+.ta-lvl-bar { height: 6px; border-radius: 3px; background: rgba(148,163,184,0.18); overflow: hidden; }
+.ta-lvl-bar i { display: block; height: 100%; background: currentColor; opacity: 0.55; }
+.ta-lvl-src { font-size: 10.5px; opacity: 0.7; }
+.note.err-soft { color: #f59e0b; }

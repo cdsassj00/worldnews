@@ -92,7 +92,7 @@ export class TaPanel {
   private data: TaResponse | null = null;
   private symbol = "";
   private nameHint = "";
-  private tab: "chart" | "strategy" = "chart";
+  private tab: "plan" | "chart" | "strategy" = "plan";
   private loading = false;
 
   constructor(opts: { root: HTMLElement; sub: HTMLElement }) {
@@ -136,7 +136,7 @@ export class TaPanel {
       `시세 기준 ${d.asOf ? timeAgo(d.asOf) : "-"}`;
 
     const tabs = el("div", { class: "radar-tabs" });
-    for (const [id, t] of [["chart", "차트"], ["strategy", `전략 판정 (${v.buy}매수/${v.sell}매도)`]] as const) {
+    for (const [id, t] of [["plan", "매매 플랜"], ["chart", "차트"], ["strategy", `전략 판정 (${v.buy}매수/${v.sell}매도)`]] as const) {
       const b = el("button", { type: "button", class: `radar-tab${this.tab === id ? " active" : ""}`, text: t });
       b.addEventListener("click", () => { this.tab = id; this.render(); });
       tabs.append(b);
@@ -145,7 +145,7 @@ export class TaPanel {
     this.root.replaceChildren(
       this.headerBlock(d),
       tabs,
-      ...(this.tab === "chart" ? this.chartBlocks(d) : [this.strategyBlock(d)]),
+      ...(this.tab === "plan" ? this.planBlocks(d) : this.tab === "chart" ? this.chartBlocks(d) : [this.strategyBlock(d)]),
     );
   }
 
@@ -160,6 +160,14 @@ export class TaPanel {
         el("span", { class: "ta-score", text: `종합 ${v.score >= 0 ? "+" : ""}${v.score.toFixed(2)}` }),
       ]),
       el("p", { class: "note", text: v.text }),
+      this.consensusBar(d),
+      el("div", { class: "ta-trend" }, [
+        el("span", { class: `ta-trend-pill ${d.trend.long}`, text: `장기 ${DIR_KO[d.trend.long]}` }),
+        el("span", { class: `ta-trend-pill ${d.trend.mid}`, text: `중기 ${DIR_KO[d.trend.mid]}` }),
+        el("span", { class: `ta-trend-pill ${d.trend.short}`, text: `단기 ${DIR_KO[d.trend.short]}` }),
+        el("span", { class: `ta-trend-pill ${d.trend.trending ? "up" : "flat"}`, text: `ADX ${d.trend.adx} ${d.trend.trending ? "추세" : "횡보"}` }),
+      ]),
+      el("p", { class: "note", text: `${d.trend.alignment} · ${d.trend.text}` }),
       el("div", { class: "ta-ind" }, [
         ind("RSI", i.rsi.toFixed(0), i.rsi >= 70 ? "down" : i.rsi <= 30 ? "up" : ""),
         ind("MACD", i.macdHist >= 0 ? "+" + i.macdHist.toFixed(0) : i.macdHist.toFixed(0), i.macdHist >= 0 ? "up" : "down"),
@@ -173,6 +181,101 @@ export class TaPanel {
         (d.suggestedStop ? ` · 변동성 손절 제안 ${fmtKrw(d.suggestedStop)} (2×ATR)` : ""),
       ]),
     ]);
+  }
+
+
+  /** 컨센서스 — 성격별로 나눈 막대. "추세는 좋은데 모멘텀이 죽었다"가 한눈에 보이게 */
+  private consensusBar(d: TaResponse): HTMLElement {
+    const box = el("div", { class: "ta-cons" });
+    const row = (name: string, score: number, buy: number, sell: number) => {
+      const pct = Math.min(100, Math.abs(score) * 100);
+      const bar = el("div", { class: "ta-cons-track" }, [
+        el("div", {
+          class: `ta-cons-fill ${score >= 0 ? "up" : "down"}`,
+          style: `width:${pct / 2}%; ${score >= 0 ? "left:50%" : `left:${50 - pct / 2}%`}`,
+        }),
+        el("div", { class: "ta-cons-zero" }),
+      ]);
+      return el("div", { class: "ta-cons-row" }, [
+        el("span", { class: "ta-cons-name", text: name }),
+        bar,
+        el("span", { class: `ta-cons-num ${score >= 0 ? "up" : score < 0 ? "down" : ""}`, text: `${score >= 0 ? "+" : ""}${score.toFixed(2)}` }),
+        el("span", { class: "ta-cons-vote", text: buy || sell ? `${buy}↑ ${sell}↓` : "—" }),
+      ]);
+    };
+    box.append(row("종합", d.consensus.score, d.consensus.buy, d.consensus.sell));
+    for (const g of d.groups) box.append(row(g.nameKo, g.score, g.buy, g.sell));
+    return box;
+  }
+
+  /** 매매 플랜 — 판정을 진입·손절·목표라는 숫자로 옮긴 화면 */
+  private planBlocks(d: TaResponse): HTMLElement[] {
+    const p = d.plan;
+    const w = (n: number) => fmtKrw(Math.round(n));
+    const gradeTone = p.grade === "good" ? "up" : p.grade === "fair" ? "flat" : "down";
+
+    const head = el("div", { class: `ta-plan-head ${gradeTone}` }, [
+      el("span", { class: "ta-plan-bias", text: p.biasKo }),
+      el("span", { class: "ta-plan-grade", text: p.gradeKo }),
+      el("span", { class: "ta-plan-rr", text: `손익비 ${p.rr.toFixed(2)} : 1` }),
+    ]);
+
+    const rows = el("div", { class: "ta-plan-rows" }, [
+      planRow("목표 2차", w(p.targets[1].price), `+${p.targets[1].pct}%`, p.targets[1].note, "up"),
+      planRow("목표 1차", w(p.targets[0].price), `+${p.targets[0].pct}%`, p.targets[0].note, "up"),
+      planRow("진입 구간", `${w(p.entry.low)} ~ ${w(p.entry.high)}`, "", p.entry.note, "flat"),
+      planRow("현재가", w(d.price), fmtPct(d.changePct), "", "flat"),
+      planRow("손절", w(p.stop.price), `${p.stop.pct}%`, p.stop.note, "down"),
+    ]);
+
+    const size = el("div", { class: "ta-plan-size" }, [
+      el("h4", { class: "ta-h4", text: "수량 계산 (1회 손실을 원금의 1%로 제한할 때)" }),
+      el("p", { class: "note", text: `1주를 잃을 때의 손실 = ${w(p.riskPerShare)}원. 원금 400만원의 1%(4만원)를 건다면 ${Math.max(0, Math.floor(40000 / Math.max(1, p.riskPerShare)))}주가 상한입니다. 종목당 한도(120만원)와 비교해 더 작은 쪽을 따릅니다.` }),
+    ]);
+
+    const check = el("ul", { class: "ta-check" }, p.checklist.map((c) =>
+      el("li", { class: c.pass ? "pass" : "fail" }, [
+        el("span", { class: "ta-check-mark", text: c.pass ? "충족" : "미충족" }),
+        el("span", { text: c.text }),
+      ]),
+    ));
+
+    return [
+      el("div", { class: "ta-panel" }, [head, rows, el("p", { class: "note err-soft", text: p.invalidation })]),
+      el("div", { class: "ta-panel" }, [el("h4", { class: "ta-h4", text: "진입 조건 점검" }), check]),
+      el("div", { class: "ta-panel" }, [size]),
+      el("div", { class: "ta-panel" }, [
+        el("h4", { class: "ta-h4", text: "지지·저항 사다리 — 여러 근거가 겹치는 가격일수록 강합니다" }),
+        this.ladderBlock(d),
+      ]),
+    ];
+  }
+
+  private ladderBlock(d: TaResponse): HTMLElement {
+    const ul = el("div", { class: "ta-ladder" });
+    for (const l of d.ladder) {
+      const isRes = l.kind === "resistance";
+      ul.append(
+        el("div", { class: `ta-lvl ${isRes ? "res" : "sup"}` }, [
+          el("span", { class: "ta-lvl-tag", text: isRes ? "저항" : "지지" }),
+          el("span", { class: "ta-lvl-price", text: fmtKrw(l.price) }),
+          el("span", { class: `ta-lvl-dist ${l.distPct >= 0 ? "up" : "down"}`, text: `${l.distPct >= 0 ? "+" : ""}${l.distPct}%` }),
+          el("span", { class: "ta-lvl-bar" }, [el("i", { style: `width:${Math.round(l.strength * 100)}%` })]),
+          el("span", { class: "ta-lvl-src", text: l.sources.join(" · ") }),
+        ]),
+      );
+      if (!isRes && d.ladder.indexOf(l) === d.ladder.findIndex((x) => x.kind === "support")) {
+        // 현재가 위치를 사다리 사이에 끼워 넣는다
+        ul.insertBefore(
+          el("div", { class: "ta-lvl now" }, [
+            el("span", { class: "ta-lvl-tag", text: "현재" }),
+            el("span", { class: "ta-lvl-price", text: fmtKrw(Math.round(d.price)) }),
+          ]),
+          ul.lastChild,
+        );
+      }
+    }
+    return ul;
   }
 
   /** ① 가격 + 이평 + 볼린저 + 지지/저항 + 거래량 */
@@ -223,9 +326,25 @@ export class TaPanel {
     }
     // 이동평균
     s1.append(path(linePath(c.ma20, sc), C.ma20, 1.3), path(linePath(c.ma60, sc), C.ma60, 1.3));
-    // 지지·저항
-    if (d.levels.support) s1.append(hLine(sc.y(d.levels.support), PAD, W - 8, C.sup, "6 3"), label(W - 10, sc.y(d.levels.support) - 3, `지지 ${fmtKrw(d.levels.support)}`, C.sup, "end"));
-    if (d.levels.resistance) s1.append(hLine(sc.y(d.levels.resistance), PAD, W - 8, C.res, "6 3"), label(W - 10, sc.y(d.levels.resistance) - 3, `저항 ${fmtKrw(d.levels.resistance)}`, C.res, "end"));
+    // 지지·저항 사다리 — 강할수록 진하게. 화면 밖 가격은 건너뛴다
+    for (const lv of d.ladder) {
+      if (lv.price > max + pad || lv.price < min - pad) continue;
+      const col = lv.kind === "support" ? C.sup : C.res;
+      const ln = hLine(sc.y(lv.price), PAD, W - 8, col, lv.strength >= 0.5 ? "8 3" : "3 4");
+      ln.setAttribute("stroke-width", String(0.8 + lv.strength * 1.4));
+      ln.setAttribute("opacity", String(0.35 + lv.strength * 0.5));
+      s1.append(ln, label(W - 10, sc.y(lv.price) - 3, `${lv.kind === "support" ? "지지" : "저항"} ${fmtKrw(lv.price)}`, col, "end"));
+    }
+    // 매매 플랜의 손절·목표를 같은 그림에 겹친다 — 계획과 차트가 따로 놀지 않게
+    for (const [v2, txt, col] of [
+      [d.plan.stop.price, `손절 ${fmtKrw(d.plan.stop.price)}`, "#f43f5e"],
+      [d.plan.targets[0].price, `목표1 ${fmtKrw(d.plan.targets[0].price)}`, "#14b8a6"],
+    ] as [number, string, string][]) {
+      if (v2 > max + pad || v2 < min - pad) continue;
+      const ln = hLine(sc.y(v2), PAD, W - 8, col, "2 2");
+      ln.setAttribute("stroke-width", "1.6");
+      s1.append(ln, label(PAD + 4, sc.y(v2) - 3, txt, col, "start"));
+    }
     // 거래량
     const vmax = Math.max(...c.volume, 1);
     for (let i = 0; i < n; i++) {
@@ -327,6 +446,17 @@ export class TaPanel {
     }
     return box;
   }
+}
+
+const DIR_KO: Record<string, string> = { up: "상승", down: "하락", flat: "횡보" };
+
+function planRow(label2: string, price: string, delta: string, note: string, tone: string): HTMLElement {
+  return el("div", { class: `ta-plan-row ${tone}` }, [
+    el("span", { class: "ta-plan-label", text: label2 }),
+    el("span", { class: "ta-plan-price", text: price }),
+    el("span", { class: `ta-plan-delta ${tone}`, text: delta }),
+    el("span", { class: "ta-plan-note", text: note }),
+  ]);
 }
 
 const VERDICT_KO: Record<string, string> = {

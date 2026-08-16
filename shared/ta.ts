@@ -729,6 +729,14 @@ export interface TaReport {
   indicators: { rsi: number; macdHist: number; adx: number; atr: number; mfi: number; bbPercentB: number };
   /** 변동성 기반 손절 제안 (2×ATR) — 전략과 무관하게 위험 관리용 */
   suggestedStop: number | null;
+  /** 지지·저항 사다리 (위에서 아래로) */
+  ladder: Level[];
+  /** 단기·중기·장기 추세 상태 */
+  trend: TrendState;
+  /** 판정을 숫자로 옮긴 매매 플랜 */
+  plan: TradePlan;
+  /** 컨센서스를 성격별로 나눈 집계 — 무엇이 엇갈리는지 보이게 */
+  groups: { nameKo: string; score: number; buy: number; sell: number; ids: string[] }[];
 }
 
 /**
@@ -765,8 +773,268 @@ export function consensus(sigs: StrategySignal[]): TaReport["consensus"] {
   };
 }
 
+
+/* ══ ⑤ 레벨·추세·매매 플랜 ══════════════════════════════ */
+
+export interface Level {
+  price: number;
+  /** 현재가 대비 % */
+  distPct: number;
+  /** 어디서 나온 선인가 — 근거가 여러 개면 그만큼 신뢰도가 높다 */
+  sources: string[];
+  /** 과거에 몇 번 부딪혔나 (스윙 고저 기준) */
+  touches: number;
+  /** 0~1 — 근거 수·접촉 횟수·거리로 매긴 신뢰도 */
+  strength: number;
+  kind: "support" | "resistance";
+}
+
+/**
+ * 지지·저항 사다리.
+ *
+ * "가장 가까운 선 하나"만 주면 실전에서 못 쓴다. 손절은 그 아래에, 목표는 그 위에
+ * 두어야 하고, 되돌림이 어디서 멈출지 보려면 여러 단계가 필요하다.
+ * 그래서 **여러 출처의 선을 모아 가격이 비슷한 것끼리 묶는다**(1.2% 이내면 같은 선).
+ * 서로 다른 방식이 같은 가격을 가리키면 그 가격은 실제로 시장이 기억하는 자리다.
+ */
+export function levelLadder(s: PriceHistory, maxEach = 4): Level[] {
+  const px = s.price;
+  const n = s.closes.length;
+  const raw: { price: number; source: string; touch: number }[] = [];
+
+  // ① 스윙 고저 (좌우 2봉보다 높은/낮은 자리)
+  const from = Math.max(2, n - 250);
+  const swings: number[] = [];
+  for (let i = from; i < n - 2; i++) {
+    if (s.highs[i] > s.highs[i - 1] && s.highs[i] > s.highs[i - 2] && s.highs[i] > s.highs[i + 1] && s.highs[i] > s.highs[i + 2]) swings.push(s.highs[i]);
+    if (s.lows[i] < s.lows[i - 1] && s.lows[i] < s.lows[i - 2] && s.lows[i] < s.lows[i + 1] && s.lows[i] < s.lows[i + 2]) swings.push(s.lows[i]);
+  }
+  for (const v of swings) raw.push({ price: v, source: "스윙 고저", touch: 1 });
+
+  // ② 이동평균 — 살아 있는 지지·저항으로 가장 널리 쓰인다
+  for (const [n2, ko] of [[20, "20일선"], [60, "60일선"], [120, "120일선"], [200, "200일선"]] as [number, string][]) {
+    if (n > n2) {
+      const v = last(smaSeries(s.closes, n2));
+      if (ok(v)) raw.push({ price: v, source: ko, touch: 0 });
+    }
+  }
+
+  // ③ 볼린저 상·하단
+  const bb = bollinger(s.closes, 20, 2);
+  if (ok(last(bb.upper))) raw.push({ price: last(bb.upper), source: "볼린저 상단", touch: 0 });
+  if (ok(last(bb.lower))) raw.push({ price: last(bb.lower), source: "볼린저 하단", touch: 0 });
+
+  // ④ 일목 구름 — 일본식 지지·저항의 핵심
+  const ik = ichimoku(s.highs, s.lows, s.closes);
+  if (ok(last(ik.cloudA)) && ok(last(ik.cloudB))) {
+    raw.push({ price: Math.max(last(ik.cloudA), last(ik.cloudB)), source: "구름 상단", touch: 0 });
+    raw.push({ price: Math.min(last(ik.cloudA), last(ik.cloudB)), source: "구름 하단", touch: 0 });
+  }
+  if (ok(last(ik.kijun))) raw.push({ price: last(ik.kijun), source: "일목 기준선", touch: 0 });
+
+  // ⑤ 피보나치 되돌림
+  for (const f of fibonacci(s)) if (!/고점|저점/.test(f.label)) raw.push({ price: f.value, source: `피보 ${f.label}`, touch: 0 });
+
+  // ⑥ 돈치안 채널 (20일 신고·신저)
+  const d = donchian(s.highs, s.lows, 20);
+  if (ok(last(d.up))) raw.push({ price: last(d.up), source: "20일 고점", touch: 0 });
+  if (ok(last(d.dn))) raw.push({ price: last(d.dn), source: "20일 저점", touch: 0 });
+
+  // 가격이 비슷한 것끼리 묶는다 (1.2% 이내)
+  const sorted = raw.filter((r) => r.price > 0).sort((a, b) => a.price - b.price);
+  const clusters: { price: number; sources: string[]; touches: number }[] = [];
+  for (const r of sorted) {
+    const c = clusters[clusters.length - 1];
+    if (c && Math.abs(r.price - c.price) / c.price < 0.012) {
+      c.price = (c.price * c.sources.length + r.price) / (c.sources.length + 1);
+      if (!c.sources.includes(r.source)) c.sources.push(r.source);
+      c.touches += r.touch;
+    } else {
+      clusters.push({ price: r.price, sources: [r.source], touches: r.touch });
+    }
+  }
+
+  const out: Level[] = clusters.map((c) => {
+    const distPct = ((c.price - px) / px) * 100;
+    // 근거가 겹칠수록, 많이 부딪혔을수록, 가까울수록 강하다
+    const strength = clamp(
+      (Math.min(c.sources.length, 4) / 4) * 0.5 + (Math.min(c.touches, 4) / 4) * 0.3 + (1 - Math.min(Math.abs(distPct), 25) / 25) * 0.2,
+      0, 1,
+    );
+    return {
+      price: round(c.price, 0),
+      distPct: round(distPct, 1),
+      sources: c.sources,
+      touches: c.touches,
+      strength: round(strength, 2),
+      kind: c.price < px ? "support" : "resistance",
+    };
+  });
+
+  const sup = out.filter((x) => x.kind === "support").sort((a, b) => b.price - a.price).slice(0, maxEach);
+  const res = out.filter((x) => x.kind === "resistance").sort((a, b) => a.price - b.price).slice(0, maxEach);
+  return [...res.reverse(), ...sup]; // 위에서 아래로
+}
+
+export interface TrendState {
+  short: "up" | "down" | "flat";
+  mid: "up" | "down" | "flat";
+  long: "up" | "down" | "flat";
+  adx: number;
+  /** 추세가 있는 국면인가 (ADX 25 이상) */
+  trending: boolean;
+  /** 한 줄 요약 */
+  text: string;
+  /** 정렬 상태 문구 */
+  alignment: string;
+}
+
+/** 추세 상태 — 단기(20)·중기(60)·장기(120) 세 축을 따로 본다 */
+export function trendState(s: PriceHistory): TrendState {
+  const dir = (nn: number): "up" | "down" | "flat" => {
+    const ma = smaSeries(s.closes, nn);
+    if (!ok(last(ma)) || !ok(prev(ma, 5))) return "flat";
+    const slope = ((last(ma) - prev(ma, 5)) / prev(ma, 5)) * 100;
+    if (s.price > last(ma) && slope > 0.2) return "up";
+    if (s.price < last(ma) && slope < -0.2) return "down";
+    return "flat";
+  };
+  const short = dir(20), mid = dir(60), long = dir(Math.min(120, s.closes.length - 1));
+  const a = adxSeries(s.highs, s.lows, s.closes);
+  const adx = ok(last(a.adx)) ? round(last(a.adx), 0) : 0;
+  const trending = adx >= 25;
+  const KO = { up: "상승", down: "하락", flat: "횡보" } as const;
+  const same = short === mid && mid === long;
+  return {
+    short, mid, long, adx, trending,
+    alignment: same
+      ? `${KO[short]} 정렬 — 세 시간축이 모두 같은 방향입니다`
+      : `엇갈림 — 단기 ${KO[short]} / 중기 ${KO[mid]} / 장기 ${KO[long]}`,
+    text: trending
+      ? `ADX ${adx} — 추세가 살아 있는 국면입니다. 돌파·추세추종 신호가 유효합니다.`
+      : `ADX ${adx} — 추세가 없는 횡보 국면입니다. 돌파 신호는 속임수가 많고, 지지에서 사서 저항에서 파는 편이 맞습니다.`,
+  };
+}
+
+export interface TradePlan {
+  /** 방향 — 사도 되는 자리인가 */
+  bias: "long" | "wait" | "avoid";
+  biasKo: string;
+  /** 진입 구간 */
+  entry: { low: number; high: number; note: string };
+  stop: { price: number; pct: number; note: string };
+  targets: { price: number; pct: number; note: string }[];
+  /** 손익비 — 1회 손실 대비 1차 목표 이익 */
+  rr: number;
+  /** 원금 대비 1% 를 걸 때 살 수 있는 수량 계산에 쓰는 값 */
+  riskPerShare: number;
+  /** 이 계획이 깨지는 조건 */
+  invalidation: string;
+  /** 계획 등급 */
+  grade: "good" | "fair" | "poor";
+  gradeKo: string;
+  checklist: { text: string; pass: boolean }[];
+}
+
+/**
+ * 매매 플랜 — 판정을 **숫자로 옮긴다.**
+ *
+ * 기술적 분석이 실전에서 쓸모없어지는 지점은 "매수 의견"에서 끝날 때다.
+ * 어디서 사고, 어디서 틀렸다고 인정하고, 어디서 파는지가 없으면 아무 것도 실행할 수 없다.
+ * 그래서 손절은 **가장 가까운 지지선 아래 + ATR 여유**로, 목표는 **위쪽 저항선**으로 잡는다.
+ * 임의의 -5% 가 아니라 차트가 말하는 자리다.
+ */
+export function tradePlan(s: PriceHistory, cons: TaReport["consensus"], trend: TrendState, ladder: Level[]): TradePlan {
+  const px = s.price;
+  const atr = last(atrSeries(s.highs, s.lows, s.closes, 14)) || px * 0.02;
+  const sup = ladder.filter((l) => l.kind === "support");
+  const res = ladder.filter((l) => l.kind === "resistance");
+  const nearSup = sup[0];
+  const nearRes = res[res.length - 1]; // 위에서 아래로 정렬돼 있으므로 마지막이 가장 가깝다
+
+  /* 손절 — **차트가 정한 자리를 우선**한다.
+   * 가장 가까운 지지 아래로 ATR 의 절반만큼 여유를 둔다(지지선에 딱 붙이면 꼬리 한 번에 털린다).
+   * 다만 두 가지 한계를 둔다.
+   *   · 0.6×ATR 보다 가까우면 하루 변동에 그냥 걸린다 → 그만큼 넓힌다
+   *   · 3×ATR 보다 멀면 한 번 틀렸을 때 손실이 감당이 안 된다 → 그만큼 좁힌다
+   * 처음엔 하한을 1.2×ATR 로 뒀는데, 변동성이 큰 종목(일간 ATR 이 주가의 10%)에서는
+   * 이 하한이 지지선을 밀어내 손절이 -13% 까지 벌어졌다. 차트를 이기는 상수는 두지 않는다. */
+  let stopUse = nearSup ? nearSup.price - atr * 0.5 : px - atr * 2;
+  const dist = px - stopUse;
+  if (dist < atr * 0.6) stopUse = px - atr * 0.6;
+  if (dist > atr * 3) stopUse = px - atr * 3;
+
+  /* 목표 — 바로 위 저항이 1×ATR(또는 2%) 안쪽이면 그건 잡음이다.
+   * 그런 자리를 1차 목표로 잡으면 손익비가 구조적으로 나빠진다. 의미 있는 첫 저항을 찾는다. */
+  const minGap = Math.max(px * 0.02, atr * 0.8);
+  const upper = res.filter((r) => r.price > px).sort((a, b) => a.price - b.price);
+  const meaningful = upper.filter((r) => r.price - px >= minGap);
+  // 의미 있는 저항이 없으면(전부 잡음 거리) 사다리에서 가장 먼 저항을 쓴다.
+  // 여기서 "가장 가까운 저항"으로 떨어뜨리면 목표가 +0.9% 처럼 잡혀 손익비가 허위로 나빠진다.
+  const t1 = meaningful[0]?.price ?? upper[upper.length - 1]?.price ?? px + atr * 2;
+  const t2 = meaningful[1]?.price ?? t1 + atr * 2;
+  const t1FromLadder = meaningful[0] ?? (meaningful.length ? undefined : upper[upper.length - 1]);
+
+  const risk = Math.max(1, px - stopUse);
+  const rr = round((t1 - px) / risk, 2);
+
+  const checklist = [
+    { text: "장기 추세가 상승 또는 횡보 (하락 추세에서는 사지 않는다)", pass: trend.long !== "down" },
+    { text: "전략 컨센서스가 매도가 아님", pass: cons.score > -0.2 },
+    { text: "손익비 1.5 이상", pass: rr >= 1.5 },
+    { text: "1차 목표까지 여유가 3% 이상", pass: ((t1 - px) / px) * 100 >= 3 },
+    { text: trend.trending ? "ADX 25 이상 — 추세 국면" : "ADX 25 미만 — 횡보 국면(돌파 신호 신뢰도 낮음)", pass: trend.trending },
+  ];
+  const passed = checklist.filter((c) => c.pass).length;
+
+  let bias: TradePlan["bias"];
+  if (trend.long === "down" && cons.score < 0) bias = "avoid";
+  else if (cons.score >= 0.2 && passed >= 3) bias = "long";
+  else bias = "wait";
+
+  const grade: TradePlan["grade"] = rr >= 2 && passed >= 4 ? "good" : rr >= 1.2 && passed >= 3 ? "fair" : "poor";
+
+  // 진입 구간 — 지금 가격과 가장 가까운 지지 사이에서 눌림을 기다린다
+  const entryLow = nearSup ? Math.max(nearSup.price, px - atr) : px - atr;
+  const entryHigh = px + atr * 0.3;
+
+  return {
+    bias,
+    biasKo: bias === "long" ? "매수 검토 가능" : bias === "wait" ? "대기 — 조건 미충족" : "회피 — 하락 추세",
+    entry: {
+      low: round(entryLow, 0),
+      high: round(entryHigh, 0),
+      note: nearSup
+        ? `가장 가까운 지지 ${Math.round(nearSup.price).toLocaleString("ko-KR")}원 위에서 분할 진입. 추격매수보다 눌림을 기다리는 편이 손절폭을 줄입니다.`
+        : "지지선이 뚜렷하지 않아 진입 구간을 현재가 ±ATR 로 잡았습니다.",
+    },
+    stop: {
+      price: round(stopUse, 0),
+      pct: round(((stopUse - px) / px) * 100, 1),
+      note: nearSup
+        ? `지지 ${Math.round(nearSup.price).toLocaleString("ko-KR")}원 아래로 ATR 의 절반(${Math.round(atr * 0.5).toLocaleString("ko-KR")}원)만큼 여유. 지지선에 딱 붙이면 꼬리 한 번에 털립니다.`
+        : `현재가에서 2×ATR(${Math.round(atr * 2).toLocaleString("ko-KR")}원) 아래.`,
+    },
+    targets: [
+      { price: round(t1, 0), pct: round(((t1 - px) / px) * 100, 1), note: t1FromLadder ? `1차 — ${meaningful[0] ? "의미 있는 첫 저항" : "사다리 최상단 저항"} (${t1FromLadder.sources.join("·")})` : "1차 — 현재가 +2×ATR (위쪽 저항이 잡히지 않음)" },
+      { price: round(t2, 0), pct: round(((t2 - px) / px) * 100, 1), note: meaningful[1] ? `2차 — 그 위 저항대 (${meaningful[1].sources.join("·")})` : "2차 — 1차 목표 +2×ATR" },
+    ],
+    rr,
+    riskPerShare: round(risk, 0),
+    invalidation: nearSup
+      ? `종가가 ${Math.round(stopUse).toLocaleString("ko-KR")}원 아래로 마감하면 이 계획은 틀린 것입니다. 그때는 손절하고 다시 봅니다.`
+      : `종가가 ${Math.round(stopUse).toLocaleString("ko-KR")}원 아래면 계획 무효.`,
+    grade,
+    gradeKo: grade === "good" ? "괜찮은 자리" : grade === "fair" ? "보통 — 비중 축소" : "나쁨 — 진입 보류 권장",
+    checklist,
+  };
+}
+
 export function analyze(s: PriceHistory): TaReport {
   const strategies = runStrategies(s);
+  const cons = consensus(strategies);
+  const tr = trendState(s);
+  const ladder = levelLadder(s);
   const b = bollinger(s.closes, 20, 2);
   const r = rsiSeries(s.closes, 14);
   const m = macdSeries(s.closes);
@@ -779,7 +1047,7 @@ export function analyze(s: PriceHistory): TaReport {
   return {
     price: s.price,
     strategies,
-    consensus: consensus(strategies),
+    consensus: cons,
     patterns: candlePatterns(s),
     fib: fibonacci(s),
     levels: supportResistance(s),
@@ -792,5 +1060,29 @@ export function analyze(s: PriceHistory): TaReport {
       bbPercentB: round(pb, 0),
     },
     suggestedStop: atrNow ? round(s.price - 2 * atrNow, 0) : null,
+    ladder,
+    trend: tr,
+    plan: tradePlan(s, cons, tr, ladder),
+    groups: groupStrategies(strategies),
   };
+}
+
+/** 전략을 성격별로 묶어 집계한다 — "추세는 좋은데 모멘텀이 죽었다" 같은 엇갈림이 보이게 */
+export function groupStrategies(sigs: StrategySignal[]): TaReport["groups"] {
+  const GROUPS: { nameKo: string; ids: string[] }[] = [
+    { nameKo: "추세 추종", ids: ["ma_cross", "turtle", "supertrend", "weinstein", "minervini", "darvas", "ichimoku"] },
+    { nameKo: "모멘텀", ids: ["macd", "rsi", "stochastic", "elder"] },
+    { nameKo: "변동성·강도", ids: ["bollinger", "adx"] },
+  ];
+  return GROUPS.map((g) => {
+    const mine = sigs.filter((s) => g.ids.includes(s.id));
+    const score = mine.length ? mine.reduce((a, s) => a + s.score, 0) / mine.length : 0;
+    return {
+      nameKo: g.nameKo,
+      score: round(score, 2),
+      buy: mine.filter((s) => s.score >= 0.2).length,
+      sell: mine.filter((s) => s.score <= -0.2).length,
+      ids: mine.map((s) => s.id),
+    };
+  });
 }
