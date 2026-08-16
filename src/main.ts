@@ -3,6 +3,7 @@ import { Globe, type CountryRef } from "./globe";
 import { api, ApiFailure, getTradeToken, setTradeToken, type ConfigResponse, type KisStatus, type Snapshot } from "./api";
 import { Panel, type OrderDraft } from "./panel";
 import { AutoPanel } from "./autopanel";
+import { FlowPanel } from "./flowpanel";
 import { LabPanel } from "./labpanel";
 import usUniverse from "../shared/us-universe.json";
 import { TaPanel } from "./tapanel";
@@ -48,6 +49,7 @@ const panel = new Panel({
 let autoPanel: AutoPanel | null = null;
 let labPanel: LabPanel | null = null;
 let taPanel: TaPanel | null = null;
+let flowPanel: FlowPanel | null = null;
 let onto: Ontology3D | null = null;
 let miniGlobe: Globe | null = null;
 let ontoState: OntoState | null = null;
@@ -240,23 +242,48 @@ function setupAuthModal(): void {
   });
 }
 
-function setupAutoModal(): void {
-  const modal = $("auto-modal");
+/* ── 터미널 탭 — 온톨로지 · 차트분석 · 수급분석 · 자동매매 ─────────────
+ * 한 화면에 전부 펼치던 것을 탭 전환으로 바꿨다(가독성 피드백).
+ * 각 탭의 데이터는 처음 열 때 불러온다 — 안 여는 탭 비용은 0. */
+type PaneId = "onto" | "ta" | "flow" | "auto";
+const PANE_SUBS: Record<PaneId, string> = {
+  onto: "거시요인 → 섹터 → 종목으로 신호가 전파되는 3D 인과 그래프. 확대는 Ctrl(⌘)+스크롤, 일반 스크롤은 페이지를 내립니다.",
+  ta: "창시자가 있는 차트 전략 13종이 종목 하나를 두고 각자 판정합니다 — 패턴·매물대·매매 플랜까지.",
+  flow: "자금흐름(MFI)·매집(CLV)·거래대금 급증 — 큰손이 사는 흔적을 점수로 만든 수급 순위입니다.",
+  auto: "이 전략들이 실제로 운영자 계좌를 자동매매하는 현황 — 판단 근거·주문 일지·엔진 선택.",
+};
+
+function selectPane(id: PaneId, scroll = false): void {
+  for (const p of ["onto", "ta", "flow", "auto"] as PaneId[]) {
+    $(`pane-${p}`).hidden = p !== id;
+  }
+  document.querySelectorAll<HTMLButtonElement>("#terminal-tabs .tt-tab").forEach((b) => {
+    const on = b.dataset.pane === id;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  $("terminal-sub").textContent = PANE_SUBS[id];
+  if (id === "ta") void taPanel?.load();
+  if (id === "flow") void flowPanel?.load();
+  if (id === "auto") void autoPanel?.load();
+  if (scroll) $("terminal").scrollIntoView({ behavior: "smooth" });
+}
+
+function setupTerminalTabs(): void {
+  document.querySelectorAll<HTMLButtonElement>("#terminal-tabs .tt-tab").forEach((b) => {
+    b.addEventListener("click", () => selectPane(b.dataset.pane as PaneId));
+  });
+}
+
+function setupAutoPane(): void {
   autoPanel = new AutoPanel({
     root: $("auto-body"),
     badge: $("auto-badge"),
     onNeedAuth: () => openAuthModal(),
   });
-  const open = () => {
-    modal.hidden = false;
-    void autoPanel!.load();
-  };
+  const open = () => selectPane("auto", true);
   $("btn-auto").addEventListener("click", open);
   $("auto-refresh").addEventListener("click", () => void autoPanel!.load());
-  $("auto-close").addEventListener("click", () => (modal.hidden = true));
-  modal.addEventListener("click", (e) => {
-    if (e.target === modal) modal.hidden = true;
-  });
   const w = window as unknown as { __wfg?: Record<string, unknown> };
   w.__wfg = { ...(w.__wfg ?? {}), openAuto: open };
 }
@@ -362,7 +389,6 @@ function setupOrderModal(): void {
     if (e.key !== "Escape") return;
     $("order-modal").hidden = true;
     $("auth-modal").hidden = true;
-    $("auto-modal").hidden = true;
     $("onto-help-modal").hidden = true;
   });
 }
@@ -772,17 +798,10 @@ function radarToTicker(r: RadarItem): TickerScore {
 }
 
 
-/** 기술적 분석 모달 열고 닫기 */
-function setupTaModal(): void {
-  const modal = $("ta-modal");
-  const open = () => {
-    modal.hidden = false;
-    // 아직 아무 종목도 안 골랐으면 지금 화면에서 보고 있던 종목으로 채운다
-    void taPanel?.load();
-  };
+/** 차트분석 탭 열기 — 모달이었던 것을 터미널 탭으로 */
+function setupTaPane(): void {
+  const open = () => selectPane("ta", true);
   $("btn-ta").addEventListener("click", open);
-  $("ta-close").addEventListener("click", () => (modal.hidden = true));
-  modal.addEventListener("click", (e) => { if (e.target === modal) modal.hidden = true; });
   const w = window as unknown as { __wfgOpenTa?: () => void };
   w.__wfgOpenTa = open;
 }
@@ -1097,7 +1116,8 @@ async function boot(): Promise<void> {
   setupSearch();
   setupAuthModal();
   setupOrderModal();
-  setupAutoModal();
+  setupTerminalTabs();
+  setupAutoPane();
   setupTickerSearch();
   setupOntoHelp();
   setupRadarTabs();
@@ -1109,7 +1129,15 @@ async function boot(): Promise<void> {
   setupHero();
   taPanel = new TaPanel({ root: $("ta-body"), sub: $("ta-sub") });
   setupTaSearch();
-  setupTaModal();
+  setupTaPane();
+  flowPanel = new FlowPanel({
+    root: $("flow-body"),
+    profileTabs: $("flow-profiles"),
+    onPick: (symbol, name) => {
+      selectPane("ta", true);
+      void taPanel?.show(symbol, name);
+    },
+  });
   await Promise.allSettled([loadOntology(), loadTape(), loadRadar(), loadVerdict(), labPanel.load()]);
   // 시세는 주기적으로 갱신(90초 캐시와 맞춤), 온톨로지는 전략 캐시(5분)에 맞춘다
   setInterval(() => void loadTape(), 90_000);

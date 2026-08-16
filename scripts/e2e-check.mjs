@@ -240,8 +240,9 @@ if (cfg.ai?.enabled) {
   console.log(`[참고] AI 분석 검사 건너뜀 — ${cfg.ai?.reason ?? "상태 불명"}`);
 }
 
-// 자동매매 대시보드
+// 자동매매 — 터미널 탭
 await page.click("#btn-auto");
+await page.waitForSelector("#pane-auto:not([hidden])", { timeout: 10000 });
 await page.waitForSelector("#auto-body .auto-block", { timeout: 120000 });
 const autoBlocks = await page.locator("#auto-body .auto-block").count();
 const gateItems = await page.locator("#auto-body .gate-list li").count();
@@ -280,16 +281,27 @@ await page.screenshot({ path: `${outDir}/08-autotrade.png` });
   check(`매매 엔진 선택 — 버튼 ${btns} · 선택 ${active}`, btns === 3 && active === 1);
 }
 
-await page.click("#auto-close");
+// 수급분석 — 터미널 탭 (스캔 데이터가 없는 로컬 dev 에서는 API 기준으로 판정)
+{
+  const apiRows = await page.evaluate(() =>
+    fetch("/api/quant/rank?limit=20").then((r) => r.json()).then((j) => j.rows?.length ?? 0).catch(() => 0));
+  await page.locator('#terminal-tabs .tt-tab[data-pane="flow"]').click();
+  if (apiRows > 0) await page.waitForSelector("#flow-body .flow-row", { timeout: 60000 });
+  else await page.waitForTimeout(600);
+  const rows = await page.locator("#flow-body .flow-row").count();
+  const profiles = await page.locator("#flow-profiles .radar-tab").count();
+  check(`수급분석 — 순위 ${Math.max(0, rows - 1)}종목(API ${apiRows}) · 프로파일 ${profiles}`,
+    profiles === 3 && (apiRows === 0 || rows >= 11));
+}
 
 // 티커테이프 & 좌측 요약
 check("티커테이프", (await page.locator(".tape-item").count()) > 5);
 check("지금 움직이는 시장", (await page.locator("#hot-list button").count()) >= 3);
 
-// 기술적 분석 — 모달 열기 → 검색 → 차트 3단 + 전략 카드
+// 기술적 분석 — 터미널 탭 → 검색 → 차트 3단 + 전략 카드
 {
   await page.click("#btn-ta");
-  await page.waitForSelector("#ta-modal:not([hidden])", { timeout: 10000 });
+  await page.waitForSelector("#pane-ta:not([hidden])", { timeout: 10000 });
   await page.fill("#ta-search", "삼성전자");
   await page.waitForSelector("#ta-results button", { timeout: 30000 });
   await page.locator("#ta-results button").first().click();
@@ -304,16 +316,17 @@ check("지금 움직이는 시장", (await page.locator("#hot-list button").coun
   check(`기술적 분석 플랜 — 가격행 ${planRows} · 체크 ${checks} · 사다리 ${ladder} · 컨센서스 ${cons} · 추세 ${trend}`,
     planRows === 5 && checks === 5 && ladder >= 4 && cons === 4 && trend === 4);
 
-  await page.locator("#ta-modal .radar-tab").nth(1).click();
+  await page.locator("#pane-ta .radar-tab").nth(1).click();
   await page.waitForSelector(".ta-chart", { timeout: 40000 });
   await page.waitForTimeout(600);
   const charts = await page.locator(".ta-chart").count();
   const box = await page.locator(".ta-chart").first().boundingBox();
-  await page.locator("#ta-modal .radar-tab").nth(2).click();
+  await page.locator("#pane-ta .radar-tab").nth(2).click();
   await page.waitForTimeout(400);
   const strats = await page.locator(".ta-strat").count();
   check(`기술적 분석 — 차트 ${charts}단 · 폭 ${Math.round(box?.width ?? 0)}px · 전략 ${strats}개`, charts === 3 && strats >= 13 && (box?.width ?? 0) > 600);
-  await page.click("#ta-close");
+  // 온톨로지 탭으로 복귀 — 이후 검사(히어로·전략실)는 페이지 스크롤 기준
+  await page.locator('#terminal-tabs .tt-tab[data-pane="onto"]').click();
 }
 
 // 히어로 + 전략실 — 전면 개편의 핵심 구획

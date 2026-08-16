@@ -154,12 +154,27 @@
       <p class="note lab-note" id="lab-disclaimer"></p>
     </section>
 
-    <!-- ══ 온톨로지 터미널 — 실시간 분석 화면 ══ -->
+    <!-- ══ 분석 터미널 — 탭으로 전환되는 4개 화면(온톨로지·차트·수급·자동매매) ══
+         한 화면에 전부 욱여넣으면 가독성이 무너진다는 피드백에 따라 탭으로 분리 -->
     <div class="terminal-head" id="terminal">
-      <h2 class="lab-title">온톨로지 터미널 <span class="lab-tag">실시간</span></h2>
-      <p class="lab-sub">거시요인 → 섹터 → 종목으로 신호가 전파되는 3D 인과 그래프와 실시간 결론. 그래프 확대는 <b>Ctrl(⌘)+스크롤</b>, 일반 스크롤은 페이지를 내립니다.</p>
+      <h2 class="lab-title">분석 터미널 <span class="lab-tag">실시간</span></h2>
+      <div class="terminal-tabs" id="terminal-tabs" role="tablist" aria-label="터미널 화면 선택">
+        <button type="button" class="tt-tab active" data-pane="onto" role="tab" aria-selected="true">
+          <b>온톨로지</b><span>거시 인과 3D 그래프</span>
+        </button>
+        <button type="button" class="tt-tab" data-pane="ta" role="tab" aria-selected="false">
+          <b>차트분석</b><span>전략 13종 · 패턴 · 플랜</span>
+        </button>
+        <button type="button" class="tt-tab" data-pane="flow" role="tab" aria-selected="false">
+          <b>수급분석</b><span>자금흐름 · 매집 순위</span>
+        </button>
+        <button type="button" class="tt-tab" data-pane="auto" role="tab" aria-selected="false">
+          <b>자동매매</b><span>실계좌 봇 현황</span>
+        </button>
+      </div>
+      <p class="lab-sub" id="terminal-sub">거시요인 → 섹터 → 종목으로 신호가 전파되는 3D 인과 그래프. 확대는 <b>Ctrl(⌘)+스크롤</b>, 일반 스크롤은 페이지를 내립니다.</p>
     </div>
-    <main class="layout">
+    <main class="layout" id="pane-onto">
       <aside class="rail" aria-label="온톨로지 요약">
         <section class="card card-verdict">
           <h2 class="card-title">온톨로지 결론
@@ -297,6 +312,41 @@
       </section>
     </main>
 
+    <!-- 차트분석 탭 — 이전의 전폭 모달을 인라인 화면으로 -->
+    <section class="terminal-pane" id="pane-ta" hidden aria-label="차트분석">
+      <div class="pane-inner">
+        <p class="card-sub" id="ta-sub">종목을 고르면 창시자가 있는 차트 전략들이 각각 판정을 냅니다.</p>
+        <div class="ta-search">
+          <input id="ta-search" type="search" placeholder="종목명 또는 코드 (예: 현대백화점, 069960)" autocomplete="off" />
+          <ul id="ta-results" class="search-results" hidden></ul>
+        </div>
+        <div id="ta-body"><p class="note">종목을 검색하거나 목록에서 눌러 보세요.</p></div>
+      </div>
+    </section>
+
+    <!-- 수급분석 탭 — 자금흐름·매집·거래대금 급증 순위 -->
+    <section class="terminal-pane" id="pane-flow" hidden aria-label="수급분석">
+      <div class="pane-inner">
+        <div class="pane-toolbar">
+          <p class="card-sub">가격·거래대금에 남는 큰손의 흔적 — 자금흐름(MFI)·매집(CLV)·거래대금 급증을 점수로 만든 수급 순위입니다. 종목을 누르면 차트분석으로 이어집니다.</p>
+        </div>
+        <div class="radar-tabs flow-profiles" id="flow-profiles" role="tablist"></div>
+        <div id="flow-body"><p class="note">수급 순위를 불러오는 중…</p></div>
+      </div>
+    </section>
+
+    <!-- 자동매매 탭 — 이전의 전폭 모달을 인라인 화면으로 -->
+    <section class="terminal-pane" id="pane-auto" hidden aria-label="자동매매">
+      <div class="pane-inner">
+        <div class="pane-toolbar">
+          <span id="auto-badge" class="badge badge-muted">상태 확인중…</span>
+          <span class="spacer"></span>
+          <button class="btn btn-ghost" id="auto-refresh" type="button">새로고침</button>
+        </div>
+        <div class="auto-body pane-body" id="auto-body"></div>
+      </div>
+    </section>
+
     <footer class="footer">
       <span id="disclaimer">
         점수·의견은 가격지표와 공개 뉴스 키워드로 계산한 참고 자료입니다. 투자 자문이 아니며 매매 판단과 책임은 이용자 본인에게 있습니다.
@@ -404,41 +454,6 @@
         <div class="modal-actions">
           <span class="spacer"></span>
           <button class="btn btn-primary" id="onto-help-close" type="button">알겠습니다</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 자동매매 대시보드 -->
-    <div class="modal modal-wide" id="auto-modal" hidden>
-      <div class="modal-card auto-card" role="dialog" aria-modal="true" aria-labelledby="auto-title">
-        <div class="auto-head">
-          <h2 id="auto-title">AI 자동매매</h2>
-          <span id="auto-badge" class="badge badge-muted">상태 확인중…</span>
-          <span class="spacer"></span>
-          <button class="btn btn-ghost" id="auto-refresh" type="button">새로고침</button>
-          <button class="btn btn-ghost" id="auto-close" type="button">닫기</button>
-        </div>
-        <div class="auto-body" id="auto-body"></div>
-      </div>
-    </div>
-
-    <!-- 기술적 분석 — 차트를 넓게 봐야 하는 화면이라 자동매매와 같은 전폭 모달로 연다.
-         본문이 고정 높이 앱(body overflow:hidden)이라 인라인 섹션으로는 폭이 안 나온다. -->
-    <div class="modal modal-wide" id="ta-modal" hidden>
-      <div class="modal-card auto-card" role="dialog" aria-modal="true" aria-labelledby="ta-title">
-        <div class="auto-head">
-          <h2 id="ta-title">기술적 분석</h2>
-          <span class="badge badge-muted">차트 전략 13종</span>
-          <span class="spacer"></span>
-          <button class="btn btn-ghost" id="ta-close" type="button">닫기</button>
-        </div>
-        <div class="auto-body">
-          <p class="card-sub" id="ta-sub">종목을 고르면 창시자가 있는 차트 전략들이 각각 판정을 냅니다.</p>
-          <div class="ta-search">
-            <input id="ta-search" type="search" placeholder="종목명 또는 코드 (예: 현대백화점, 069960)" autocomplete="off" />
-            <ul id="ta-results" class="search-results" hidden></ul>
-          </div>
-          <div id="ta-body"><p class="note">종목을 검색하거나 목록에서 눌러 보세요.</p></div>
         </div>
       </div>
     </div>
