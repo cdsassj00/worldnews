@@ -513,7 +513,9 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   strategy = { ...strategy, scores: engineApplied.scores };
   const scoreByCode = new Map(strategy.scores.map((s) => [s.code, s]));
   const heldQty = new Map(account.holdings.map((h) => [h.symbol, h.qty]));
-  const priceOf = (code: string) => scoreByCode.get(code)?.price ?? 0;
+  // 편입된 종목은 점수 유니버스 밖일 수 있다 — 계좌가 주는 현재가로 손절·익절을 판단한다
+  const acctPrice = new Map(account.holdings.map((h) => [h.symbol, h.price]));
+  const priceOf = (code: string) => scoreByCode.get(code)?.price ?? acctPrice.get(code) ?? 0;
 
   const deployed = deployedValue(state, priceOf);
   const equity = account.connected ? account.totalEval : state.lastEquity || cfg.capitalKrw;
@@ -549,7 +551,7 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   for (const pos of Object.values(state.positions)) {
     const held = heldQty.get(pos.code) ?? 0;
     const sc = scoreByCode.get(pos.code);
-    const price = sc?.price ?? pos.avgPrice;
+    const price = sc?.price ?? acctPrice.get(pos.code) ?? pos.avgPrice;
     const pnlPct = pos.avgPrice ? ((price - pos.avgPrice) / pos.avgPrice) * 100 : 0;
     positionView.push({ ...pos, price, pnlPct: round(pnlPct, 2), heldQty: held });
 
@@ -780,6 +782,38 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
    *  ② 감소 방향만: 계좌 수량이 장부보다 많아도 올리지 않는다 — 사용자가 직접
    *     보유한 물량을 봇 장부가 흡수해 마음대로 팔면 안 된다. */
   const RECONCILE_GRACE_MS = 2 * 60 * 60 * 1000;
+
+  /* 편입 — 계좌에 있는데 봇 장부에 없는(또는 장부보다 많은) 보유분을 장부로 흡수한다.
+   *
+   * 2026-08-16 사용자 지시: "개인 보유 주식도 봇 운용으로 바꿔라."
+   * 예전에는 정반대(흡수 금지)가 안전장치였다 — 사용자 물량을 봇이 마음대로 팔면
+   * 안 됐기 때문이다. 이제 계좌 전체가 봇 운용 대상이므로 흡수가 맞다.
+   * 평단은 계좌가 주는 값(전체 매입 평균)을 쓴다. 편입된 종목도 손절·익절·신호이탈
+   * 규칙을 그대로 받는다(점수 유니버스 밖이면 신호이탈만 없고 손절·익절은 작동). */
+  if (plan.account.connected) {
+    for (const h of plan.account.holdings) {
+      if (h.qty <= 0) continue;
+      const pos = state.positions[h.symbol];
+      if (!pos) {
+        state.positions[h.symbol] = {
+          code: h.symbol,
+          nameKo: h.name || h.symbol,
+          qty: h.qty,
+          avgPrice: h.avgPrice || h.price,
+          enteredAt: Date.now(),
+          lastAddedAt: Date.now(),
+          reason: "계좌 보유분 편입 (사용자 지시 — 계좌 전체 봇 운용)",
+        };
+        journal.push(entry("cycle", `편입 — ${h.name || h.symbol} ${h.qty}주(평단 ${Math.round(h.avgPrice || h.price).toLocaleString("ko-KR")}원)를 봇 운용으로 흡수합니다.`));
+      } else if (h.qty > pos.qty) {
+        journal.push(entry("cycle", `편입 — ${pos.nameKo} 장부 ${pos.qty}주 → 계좌 ${h.qty}주로 확장(외부 매수분 흡수).`));
+        pos.qty = h.qty;
+        if (h.avgPrice) pos.avgPrice = h.avgPrice; // 계좌 평단이 전체 물량의 진짜 평균이다
+        pos.lastAddedAt = Date.now();
+      }
+    }
+  }
+
   if (plan.account.connected) {
     const heldByCode = new Map(plan.account.holdings.map((h) => [h.symbol, h.qty]));
     for (const pos of Object.values(state.positions)) {

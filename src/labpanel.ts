@@ -165,7 +165,7 @@ export class LabPanel {
           el("span", { class: "lab-real-tag", text: "실계좌 (진짜 돈)" }),
           el("span", { class: `lab-real-pnl ${dirClass(p.botPnlKrw)}`, text: `봇 손익 ${sign}${fmtKrw(p.botPnlKrw)}` }),
         ]),
-        el("p", { class: "lab-real-meta", text: `${started} 시작 · 봇 운용 상한 ${fmtKrw(p.config?.capitalKrw ?? 4000000)} · 보유 ${p.positions.length}종목 · 나머지 계좌 잔액은 개인 보유분` }),
+        el("p", { class: "lab-real-meta", text: `${started} 시작 · 봇 운용 상한 ${fmtKrw(p.config?.capitalKrw ?? 4000000)} · 보유 ${p.positions.length}종목 · 계좌 전체를 봇이 운용합니다` }),
         (p.real?.botPnlCurve?.length ?? 0) >= 2
           ? (sparkline(p.real.botPnlCurve.map((x) => ({ d: x.d, e: x.v })), 0, 220, 40) as unknown as HTMLElement)
           : el("p", { class: "lab-real-meta", text: "실계좌 곡선은 오늘부터 기록을 시작했습니다(과거는 재구성하지 않습니다)." }),

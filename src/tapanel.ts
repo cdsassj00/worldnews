@@ -238,7 +238,7 @@ export class TaPanel {
 
     const size = el("div", { class: "ta-plan-size" }, [
       el("h4", { class: "ta-h4", text: "수량 계산 (1회 손실을 원금의 1%로 제한할 때)" }),
-      el("p", { class: "note", text: `1주를 잃을 때의 손실 = ${w(p.riskPerShare)}원. 원금 400만원의 1%(4만원)를 건다면 ${Math.max(0, Math.floor(40000 / Math.max(1, p.riskPerShare)))}주가 상한입니다. 종목당 한도(120만원)와 비교해 더 작은 쪽을 따릅니다.` }),
+      el("p", { class: "note", text: `1주를 잃을 때의 손실 = ${w(p.riskPerShare)}. 원금 600만원의 1%(6만원)를 건다면 ${Math.max(0, Math.floor(60000 / Math.max(1, p.riskPerShare)))}주가 상한입니다. 종목당 한도(180만원)와 비교해 더 작은 쪽을 따릅니다.` }),
     ]);
 
     const check = el("ul", { class: "ta-check" }, p.checklist.map((c) =>

@@ -349,7 +349,11 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
       const engine = await setEngine(env, String(body.engine ?? ""));
       // 옛 엔진으로 만든 계획이 남아 있으면 화면이 바로 안 바뀐다
       await Promise.all(AUTO_ENGINES.map((e) => invalidateCache(env, `auto:plan:${e.id}`)));
-      return json({ ok: true, engine, engines: AUTO_ENGINES });
+      // 사용자 지시(2026-08-16): 엔진은 바뀐 그 순간부터 작동한다.
+      // 다음 크론(최대 15분)을 기다리지 않고 즉시 한 사이클을 돌린다 — 장중이면
+      // 새 엔진 기준의 매도·매수가 바로 나가고, 장외면 계획·일지만 갱신된다.
+      ctx.waitUntil(runCycle(env).catch(() => undefined));
+      return json({ ok: true, engine, engines: AUTO_ENGINES, note: "엔진 변경 즉시 사이클을 실행합니다 (장중이면 실주문 포함)." });
     }
     return json({ engine: await getEngine(env), engines: AUTO_ENGINES });
   }
