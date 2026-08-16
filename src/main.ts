@@ -3,7 +3,7 @@ import { Globe, type CountryRef } from "./globe";
 import { api, ApiFailure, getTradeToken, setTradeToken, type ConfigResponse, type KisStatus, type Snapshot } from "./api";
 import { Panel, type OrderDraft } from "./panel";
 import { AutoPanel } from "./autopanel";
-import { QuantPanel } from "./quantpanel";
+import { LabPanel } from "./labpanel";
 import { TaPanel } from "./tapanel";
 import { Ontology3D } from "./ontology3d";
 import type { OntoState, OntoVerdict, RadarItem, RadarOpps, SectorVerdict, StockVerdict, TickerScore } from "./api";
@@ -45,7 +45,7 @@ const panel = new Panel({
 });
 
 let autoPanel: AutoPanel | null = null;
-let quantPanel: QuantPanel | null = null;
+let labPanel: LabPanel | null = null;
 let taPanel: TaPanel | null = null;
 let onto: Ontology3D | null = null;
 let miniGlobe: Globe | null = null;
@@ -1003,6 +1003,37 @@ function setupGlobe(liveCodes: Set<string>, orderCodes: Set<string>): void {
     });
 }
 
+/* ── 히어로 — 실계좌가 지금 어떻게 돌고 있는지 살아 있는 숫자로 ───────────
+ * 신뢰는 문구가 아니라 숫자가 만든다. autoPlan(공개 API)에서 넣은 돈·평가·수익을
+ * 받아 채우고, 실패하면 "—" 로 둔다(가짜 숫자를 지어내지 않는다). */
+function setupHero(): void {
+  $("hero-goto-lab").addEventListener("click", () => $("lab-strip").scrollIntoView({ behavior: "smooth" }));
+  $("hero-open-ta").addEventListener("click", () => $("btn-ta").click());
+  $("hero-open-auto").addEventListener("click", () => $("btn-auto").click());
+  void fillHero();
+  setInterval(() => void fillHero(), 300_000);
+}
+
+async function fillHero(): Promise<void> {
+  try {
+    const p = await api.autoPlan();
+    $("hero-deposit").textContent = p.depositKrw ? fmtKrw(p.depositKrw) : "—";
+    $("hero-equity").textContent = p.account.connected ? fmtKrw(p.equity) : "계좌 조회 대기";
+    const pnlEl = $("hero-pnl");
+    if (p.account.connected && p.depositKrw) {
+      const sign = p.netProfitKrw >= 0 ? "+" : "";
+      pnlEl.textContent = `${sign}${fmtKrw(p.netProfitKrw)} (${fmtPct(p.netProfitPct)})`;
+      pnlEl.className = `hero-stat-value ${dirClass(p.netProfitKrw)}`;
+    } else {
+      pnlEl.textContent = "—";
+    }
+    const names: Record<string, string> = { onto: "1호 온톨로지", quant: "2호 수급·차트", ta: "3호 차트 거장", hybrid: "4호 융합" };
+    $("hero-engine").textContent = names[p.engine] ?? p.engine;
+  } catch {
+    /* 히어로 숫자는 못 채우면 그대로 둔다 */
+  }
+}
+
 /* ── 부트스트랩 ─────────────────────────────── */
 
 async function boot(): Promise<void> {
@@ -1033,17 +1064,18 @@ async function boot(): Promise<void> {
   setupVerdict();
   setupLang();
 
-  quantPanel = new QuantPanel({ root: $("quant-body"), sub: $("quant-sub") });
+  labPanel = new LabPanel({ grid: $("lab-grid"), detail: $("lab-detail"), disclaimer: $("lab-disclaimer") });
+  setupHero();
   taPanel = new TaPanel({ root: $("ta-body"), sub: $("ta-sub") });
   setupTaSearch();
   setupTaModal();
-  await Promise.allSettled([loadOntology(), loadTape(), loadRadar(), loadVerdict(), quantPanel.load()]);
+  await Promise.allSettled([loadOntology(), loadTape(), loadRadar(), loadVerdict(), labPanel.load()]);
   // 시세는 주기적으로 갱신(90초 캐시와 맞춤), 온톨로지는 전략 캐시(5분)에 맞춘다
   setInterval(() => void loadTape(), 90_000);
   setInterval(() => void loadOntology(), 300_000);
   setInterval(() => void loadRadar(), 300_000);
   setInterval(() => void loadVerdict(), 300_000);
-  setInterval(() => void quantPanel?.load(), 300_000);
+  setInterval(() => void labPanel?.load(), 300_000);
 }
 
 void boot();

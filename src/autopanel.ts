@@ -162,14 +162,10 @@ export class AutoPanel {
     const pct = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
     const cls = (v: number) => (v >= 0 ? "up" : "down");
 
-    const table = (windows: string[], benchName: string, benchReturns: number[], rows: { name: string; returns: number[] | null; dd?: number[]; note?: string; live?: boolean; pending?: string }[]) => {
+    const table = (windows: string[], rows: { name: string; returns: number[] | null; dd?: number[]; note?: string; live?: boolean; pending?: string }[]) => {
       const head = el("div", { class: "bt-row bt-head" }, [
         el("span", { text: "" }),
         ...windows.map((w) => el("span", { text: w === "3mo" ? "3개월" : w === "6mo" ? "6개월" : "1년" })),
-      ]);
-      const bench = el("div", { class: "bt-row" }, [
-        el("span", { class: "bt-period", text: benchName }),
-        ...benchReturns.map((v) => el("span", { class: `bt-num ${cls(v)}`, text: pct(v) })),
       ]);
       const body = rows.map((r) =>
         el("div", { class: `bt-row${r.live ? " bt-live" : ""}` }, [
@@ -181,7 +177,7 @@ export class AutoPanel {
         ]),
       );
       const notes = rows.filter((r) => r.note).map((r) => el("p", { class: "note", text: `· ${r.name} — ${r.note}` }));
-      return el("div", { class: "bt-table" }, [head, bench, ...body, ...notes]);
+      return el("div", { class: "bt-table" }, [head, ...body, ...notes]);
     };
 
     const ec = b.engineComparison;
@@ -201,8 +197,6 @@ export class AutoPanel {
       marketTabs,
       table(
         ec.windows,
-        ec.benchmark[market].nameKo,
-        ec.benchmark[market].returns,
         ec.engines.map((e) => {
           const m = market === "KR" ? e.KR : e.US;
           return { name: e.nameKo, returns: m ? m.returns : null, dd: m?.maxDd, pending: e.pending };
@@ -212,7 +206,7 @@ export class AutoPanel {
       el("p", { class: "note", text: `유니버스 ${ec.universe[market]} · 비용 ${ec.cost[market]}` }),
 
       el("h4", { class: "bt-h4", text: `② ${lr.title}` }),
-      table(lr.windows, lr.benchmark.nameKo, lr.benchmark.returns,
+      table(lr.windows,
         lr.variants.map((v) => ({ name: v.nameKo, returns: v.returns, dd: v.maxDd, note: v.note, live: v.live }))),
       el("p", { class: "note err-soft", text: lr.verdict }),
       el("p", { class: "note", text: `재현: ${lr.command}` }),

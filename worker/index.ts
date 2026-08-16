@@ -26,7 +26,7 @@ import { adjustForDeposit, autoStatus, buildPlan, getJournal, loadState, resetLe
 import { runStrategy } from "./strategy";
 import { tickerNewsStatus } from "./tickernews";
 import { radarFind, radarOpps, radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
-import { quantCycle, quantRank, quantScanChunk, quantStatus, resetQuant, QUANT_PROFILE_LIST } from "./quant";
+import { labCycle, labOverview, quantRank, quantScanChunk, quantStatus, resetQuant, QUANT_PROFILE_LIST } from "./quant";
 import { taCached } from "./ta";
 import { backtestResults } from "./backtest";
 import { briefIndex, briefPage, rssXml, sitemapXml } from "./rss";
@@ -543,6 +543,12 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
 
   /* ── 퀀트 트랙 (수급·차트 전용 · 모의매매) ───────────────── */
 
+  if (path === "/api/lab/overview") {
+    // 전략실 — 4개 전략의 모의 원장 성적. 조회는 공개(어떤 근거로 판단하는지 보이게).
+    const { data } = await cached(env, "lab:overview", 60, () => labOverview(env));
+    return json(data);
+  }
+
   if (path === "/api/quant/status") {
     return json(await quantStatus(env));
   }
@@ -564,7 +570,7 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     // 모의매매 한 사이클. 실주문 경로가 없으므로 계좌를 건드리지 않는다.
     if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
     assertTradeAuth(env, request);
-    return json(await quantCycle(env));
+    return json(await labCycle(env));
   }
 
   if (path === "/api/quant/reset") {
@@ -648,7 +654,7 @@ export default {
         // 순서가 마지막인 이유는 서브리퀘스트 예산(50) 때문이다 — 실주문(runCycle)이
         // 먼저 쓰고, 모의매매는 남은 예산으로 돈다(실패해도 손해가 없다).
         .then(() => quantScanChunk(env))
-        .then(() => (skipTrade ? undefined : quantCycle(env)))
+        .then(() => (skipTrade ? undefined : labCycle(env)))
         .catch(() => undefined),
     );
   },

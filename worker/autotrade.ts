@@ -411,18 +411,20 @@ function deployedValue(state: AutoState, priceOf: (code: string) => number): num
  * 선택값은 KV 에 둔다(재배포 없이 바꾸려고). 없으면 AUTO_ENGINE 환경변수, 그것도
  * 없으면 onto.
  */
-export type AutoEngine = "onto" | "quant" | "hybrid";
+export type AutoEngine = "onto" | "quant" | "hybrid" | "ta";
 
 const ENGINE_KEY = "auto:engine";
 
 export const AUTO_ENGINES: { id: AutoEngine; nameKo: string; desc: string }[] = [
-  { id: "onto", nameKo: "온톨로지", desc: "거시 요인 인과 → 섹터 → 종목. 백테스트에서 국내 3·6·12개월 모두 가장 앞섰다." },
-  { id: "quant", nameKo: "수급·차트", desc: "자금흐름·매집·거래대금 + 추세·모멘텀. 국내에서는 온톨로지에 뒤졌고, 미국에서는 비슷하거나 앞섰다." },
-  { id: "hybrid", nameKo: "온톨로지+수급", desc: "두 점수를 반반. 국내에서는 둘 중 어느 쪽보다도 못했고, 미국 6개월 구간에서만 가장 좋았다." },
+  { id: "onto", nameKo: "1호 온톨로지", desc: "거시 요인 인과 → 섹터 → 종목. 백테스트에서 국내 3·6·12개월 모두 가장 앞섰다." },
+  { id: "quant", nameKo: "2호 수급·차트", desc: "자금흐름·매집·거래대금 + 돌파. 국내에서는 온톨로지에 뒤졌고, 미국에서는 비슷하거나 앞섰다." },
+  { id: "ta", nameKo: "3호 차트 거장", desc: "창시자가 있는 차트 전략 13종의 합의. 백테스트 성적은 대시보드 성적표에서 확인." },
+  { id: "hybrid", nameKo: "4호 융합", desc: "온톨로지와 수급·차트를 반반. 국내에서는 어느 한쪽 단독보다 못했다." },
 ];
 
+
 function isEngine(v: unknown): v is AutoEngine {
-  return v === "onto" || v === "quant" || v === "hybrid";
+  return v === "onto" || v === "quant" || v === "hybrid" || v === "ta";
 }
 
 export async function getEngine(env: Env): Promise<AutoEngine> {
@@ -451,13 +453,14 @@ async function applyEngine(
 ): Promise<{ scores: TickerScore[]; note: string }> {
   if (engine === "onto") return { scores, note: "온톨로지 점수로 순위를 정합니다." };
 
-  let rows: { code: string; score: number }[] = [];
+  let rows: { code: string; score: number; taScore?: number }[] = [];
   try {
-    rows = (await quantRank(env, "breakout", 400)).rows.map((r) => ({ code: r.code, score: r.score }));
+    rows = (await quantRank(env, "breakout", 400)).rows.map((r) => ({ code: r.code, score: r.score, taScore: r.taScore }));
   } catch {
     return { scores, note: "퀀트 점수를 불러오지 못해 온톨로지 점수로 대체했습니다." };
   }
-  const q = new Map(rows.map((r) => [r.code, r.score]));
+  // ta 엔진은 차트 13종 합의 점수를, quant/hybrid 는 돌파 점수를 쓴다
+  const q = new Map(rows.map((r) => [r.code, engine === "ta" ? r.taScore : r.score]));
   if (!q.size) return { scores, note: "퀀트 스캔 결과가 아직 없어 온톨로지 점수로 대체했습니다." };
 
   const out: TickerScore[] = [];
@@ -465,19 +468,21 @@ async function applyEngine(
   for (const s of scores) {
     const qs = q.get(s.code);
     if (qs === undefined) {
-      if (engine === "quant") continue; // 점수가 없으면 순위를 못 매긴다
+      if (engine === "quant" || engine === "ta") continue; // 점수가 없으면 순위를 못 매긴다
       out.push(s); // hybrid: 퀀트 점수가 없으면 온톨로지 점수만 쓴다
       continue;
     }
     covered++;
-    out.push({ ...s, score: round(engine === "quant" ? qs : (s.score + qs) / 2, 3) });
+    out.push({ ...s, score: round(engine === "quant" || engine === "ta" ? qs : (s.score + qs) / 2, 3) });
   }
   out.sort((a, b) => b.score - a.score);
   return {
     scores: out,
     note: engine === "quant"
       ? `수급·차트 점수로 순위를 정합니다 (후보 ${covered}종목).`
-      : `온톨로지와 수급·차트를 반반 섞은 점수입니다 (퀀트 점수 있는 종목 ${covered}개).`,
+      : engine === "ta"
+        ? `차트 거장 13종 합의 점수로 순위를 정합니다 (후보 ${covered}종목).`
+        : `온톨로지와 수급·차트를 반반 섞은 점수입니다 (퀀트 점수 있는 종목 ${covered}개).`,
   };
 }
 

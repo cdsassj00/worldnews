@@ -600,6 +600,28 @@ export interface QuantStatus {
   maxDrawdownPct: number;
 }
 
+/* ── 전략실 ─────────────────────────────── */
+
+export interface LabStrategy {
+  id: string; no: number; nameKo: string; tagKo: string; descKo: string;
+  engineId: string | null; liveNow: boolean;
+  capital: number; equity: number; cash: number;
+  pnlKrw: number; pnlPct: number; maxDrawdownPct: number;
+  positions: (QuantPosition & { holdDays: number })[];
+  exits: QuantTrade[];
+  equityCurve: { d: string; e: number }[];
+  tradeStats: { total: number; wins: number; winRate: number };
+  haltedPermanent: boolean; haltReason: string;
+  lastNote: string; lastCycleAt: number; startedAt: number;
+}
+
+export interface LabOverview {
+  disclaimer: string;
+  universe: number; scanned: number; scanUpdatedAt: number;
+  liveEngine: string;
+  strategies: LabStrategy[];
+}
+
 export interface BacktestEngineRow {
   id: string; nameKo: string; scenario: string | null; pending?: string;
   KR: { returns: number[]; maxDd: number[]; trades: number[]; winRate: number[] } | null;
@@ -691,6 +713,7 @@ export const api = {
   autoReset: () => request<{ ok: true }>("/api/auto/reset", { method: "POST", auth: true, body: "{}" }),
 
   backtest: () => request<BacktestResults>("/api/backtest"),
+  labOverview: () => request<LabOverview>("/api/lab/overview"),
   ta: (symbol: string, days = 180) => request<TaResponse>(`/api/ta?symbol=${encodeURIComponent(symbol)}&days=${days}`),
   overseasCheck: () =>
     request<OverseasReadiness>("/api/kis/overseas-check", { method: "POST", auth: true, body: "{}" }),

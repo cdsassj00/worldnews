@@ -107,6 +107,39 @@
       <button class="btn btn-ghost" id="btn-auth" type="button">거래 암호</button>
     </header>
 
+    <!-- ══ 히어로 — 이 사이트가 무엇인지, 지금 실계좌가 어떻게 돌고 있는지 ══
+         마케팅 문구가 아니라 살아 있는 상태를 보여준다. 신뢰는 숫자가 만든다. -->
+    <section class="hero" id="hero">
+      <div class="hero-inner">
+        <p class="hero-eyebrow">실계좌 공개 운용 실험 · 한국투자증권 API 직결</p>
+        <h1 class="hero-title">세 가지 눈으로 시장을 읽고,<br /><em>실제 내 돈</em>으로 검증한다</h1>
+        <p class="hero-sub">
+          거시 인과(온톨로지) · 수급 · 차트 — 세 분석과 그 조합을 같은 규칙으로 나란히 돌려
+          성적을 공개하고, 가장 나은 전략이 15분마다 실계좌를 자동매매합니다.
+        </p>
+        <div class="hero-stats" id="hero-stats">
+          <div class="hero-stat"><span class="hero-stat-label">넣은 돈</span><span class="hero-stat-value" id="hero-deposit">—</span></div>
+          <div class="hero-stat"><span class="hero-stat-label">현재 평가</span><span class="hero-stat-value" id="hero-equity">—</span></div>
+          <div class="hero-stat"><span class="hero-stat-label">수익</span><span class="hero-stat-value" id="hero-pnl">—</span></div>
+          <div class="hero-stat"><span class="hero-stat-label">운용 엔진</span><span class="hero-stat-value gold" id="hero-engine">—</span></div>
+        </div>
+        <div class="hero-cta">
+          <button class="btn btn-primary hero-btn" id="hero-goto-lab" type="button">전략실 — 4개 전략 성적 보기</button>
+          <button class="btn btn-ghost hero-btn" id="hero-open-ta" type="button">종목 차트 분석</button>
+          <button class="btn btn-ghost hero-btn" id="hero-open-auto" type="button">자동매매 현황</button>
+        </div>
+        <ol class="hero-steps">
+          <li><b>① 전략실</b>에서 4개 전략의 시뮬레이션·백테스트 성적을 비교하고</li>
+          <li><b>② 종목 분석</b>에서 관심 종목의 온톨로지 경로·수급·차트 판정을 확인한 뒤</li>
+          <li><b>③ 자동매매</b>에서 마음에 드는 전략을 실계좌 엔진으로 선택합니다</li>
+        </ol>
+        <p class="hero-disclaimer">
+          본 사이트의 모든 수치·추천·시뮬레이션은 운영자 개인 계좌의 기록 공개이며 투자 자문·권유가 아닙니다.
+          전략실 수익률은 계좌 수익률이 아닌 가상 원금 기준 시뮬레이션입니다. 투자 판단과 책임은 이용자 본인에게 있습니다.
+        </p>
+      </div>
+    </section>
+
     <main class="layout">
       <aside class="rail" aria-label="온톨로지 요약">
         <section class="card card-verdict">
@@ -163,12 +196,6 @@
             <li class="skeleton-row"></li>
             <li class="skeleton-row"></li>
           </ul>
-        </section>
-
-        <section class="card">
-          <h2 class="card-title">퀀트 트랙 <span class="card-tag">수급·차트 전용 · 모의</span></h2>
-          <p class="card-sub" id="quant-sub">불러오는 중…</p>
-          <div id="quant-body"><p class="note">불러오는 중…</p></div>
         </section>
 
         <section class="card">
@@ -250,6 +277,18 @@
         <div class="panel-body" id="panel-body" hidden></div>
       </section>
     </main>
+
+    <!-- ══ 전략실 — 4개 전략이 같은 규칙·같은 가상 원금으로 겨루는 곳 ══ -->
+    <section class="lab-strip" id="lab-strip" aria-label="전략실">
+      <div class="lab-head">
+        <h2 class="lab-title">전략실 <span class="lab-tag">시뮬레이션 리그</span></h2>
+        <p class="lab-sub" id="lab-sub">4개 전략이 가상 원금 400만원으로 같은 규칙 아래 겨룹니다. 이긴 전략을 실계좌 엔진으로 선택할 수 있습니다.</p>
+      </div>
+      <div class="lab-grid" id="lab-grid"><p class="note">전략실을 불러오는 중…</p></div>
+      <div class="lab-detail" id="lab-detail" hidden></div>
+      <p class="note lab-note" id="lab-disclaimer"></p>
+    </section>
+
 
     <footer class="footer">
       <span id="disclaimer">

@@ -27,6 +27,7 @@ import { readFileSync } from "node:fs";
 import { MACRO, SENSITIVITY, US_SENSITIVITY, roundToTick, type MacroFactor, type MacroId, type SectorId, type UniverseTicker } from "../shared/ontology";
 import { composite, macroSignal, priceSignal, propagate, type MacroSignal, type PriceHistory } from "../shared/scoring";
 import { QUANT_PROFILES, profileById, quantSignal, scoreFromParts, type QuantParts } from "../shared/quant";
+import { consensus, runStrategies } from "../shared/ta";
 import { loadAll, dateKey, makeIdxAsOf, type Bars } from "./bars";
 
 /* ── 설정 (운영값과 맞춘다) ─────────────────────────── */
@@ -138,6 +139,10 @@ const SCENARIOS: QScenario[] = [
   { name: "QN 역추세",                engine: "meanrev",  ...BASE },
   { name: "QO 역추세·저회전+시장필터",    engine: "meanrev",  ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
   { name: "QP blend·저회전(필터없음)",   engine: "blend", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0 },
+  /* ⑧ 차트 거장 13종 합의 — 전략실 3호. 같은 저회전+시장필터 규칙으로 다른 엔진과 공정 비교 */
+  { name: "TA 차트합의",               engine: "ta", ...BASE },
+  { name: "TB 차트합의·저회전+시장필터",  engine: "ta", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
+  { name: "TC 차트합의·문턱0.25+필터",   engine: "ta", ...BASE, buyScore: 0.25, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
   /* ⑦ 하이브리드 — 온톨로지 + 수급·차트 반반 */
   { name: "QQ 하이브리드",             engine: "hybrid", ...BASE },
   { name: "QR 하이브리드·시장필터",      engine: "hybrid", ...BASE, marketMaDays: 20 },
@@ -198,8 +203,8 @@ async function buildDataset(): Promise<Dataset> {
 
   process.stderr.write(`점수 계산 — ${calendar[startIdx]} ~ ${calendar.at(-1)} …\n`);
   // hybrid = 온톨로지(거시 인과) 와 퀀트(수급·차트) 를 반반 섞은 점수.
-  // 두 엔진은 틀리는 방식이 달라서, 섞으면 서로의 오류를 상쇄할 수 있다는 가설을 검증한다.
-  const engines = [...QUANT_PROFILES.map((p) => p.id), "onto", "hybrid"];
+  // ta = 차트 거장 전략 13종(이평교차·MACD·일목·터틀 등)의 합의 점수 — 전략실 3호의 검증판.
+  const engines = [...QUANT_PROFILES.map((p) => p.id), "onto", "hybrid", "ta"];
   const daily = new Map<string, Map<string, Cand[]>>();
   const have = uni.filter((u) => bars.has(u.symbol.toUpperCase()));
 
@@ -239,6 +244,9 @@ async function buildDataset(): Promise<Dataset> {
       for (const p of QUANT_PROFILES) {
         byEngine.get(p.id)!.push({ ...common, score: p.id === QUANT_PROFILES[0].id ? q.score : scoreFromParts(parts, p) });
       }
+
+      // 차트 전략 13종 합의 — 형태 분석(사다리·플랜)은 빼고 전략 판정만 돌린다(속도).
+      byEngine.get("ta")!.push({ ...common, score: consensus(runStrategies(hist)).score });
 
       if (macro.length >= 4) {
         const fake: UniverseTicker = {

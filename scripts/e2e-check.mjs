@@ -316,12 +316,23 @@ check("지금 움직이는 시장", (await page.locator("#hot-list button").coun
   await page.click("#ta-close");
 }
 
-// 퀀트 트랙 카드 — 모의매매 고지와 성적 블록이 떠야 한다
+// 히어로 + 전략실 — 전면 개편의 핵심 구획
 {
-  const warn = (await page.locator("#quant-body .quant-warn").count()) > 0;
-  const stats = await page.locator("#quant-body .quant-stat").count();
-  const tabs = await page.locator("#quant-body .radar-tab").count();
-  check(`퀀트 트랙 카드 — 모의 고지 ${warn ? "O" : "X"} · 지표 ${stats} · 탭 ${tabs}`, warn && stats >= 4 && tabs >= 2);
+  const heroTitle = (await page.locator(".hero-title").textContent().catch(() => "")) ?? "";
+  const heroStats = await page.locator(".hero-stat").count();
+  const heroDisc = await page.locator(".hero-disclaimer").count();
+  check(`히어로 — 제목 "${heroTitle.slice(0, 14)}…" · 지표 ${heroStats} · 면책 ${heroDisc}`, heroTitle.length > 5 && heroStats === 4 && heroDisc === 1);
+
+  await page.locator("#lab-strip").scrollIntoViewIfNeeded();
+  await page.waitForSelector(".lab-card", { timeout: 30000 });
+  const cards = await page.locator(".lab-card").count();
+  const liveBadge = await page.locator(".lab-badge.live").count();
+  const sparks = await page.locator(".lab-spark").count();
+  check(`전략실 — 카드 ${cards} · 실계좌 배지 ${liveBadge} · 곡선 ${sparks}`, cards === 4 && liveBadge >= 1 && sparks === 4);
+  await page.locator(".lab-card").first().click();
+  await page.waitForTimeout(400);
+  const detailOpen = await page.locator("#lab-detail:not([hidden])").count();
+  check(`전략실 상세 열림 ${detailOpen}`, detailOpen === 1);
 }
 
 // 검색 (세계 경제 모달 안)
