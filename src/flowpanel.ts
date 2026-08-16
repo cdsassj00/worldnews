@@ -14,6 +14,15 @@ const PROFILES = [
   { id: "chart", nameKo: "차트 추세", descKo: "이평 정렬·모멘텀·상대강도에 무게 — 추세의 힘 순" },
 ];
 
+/* 축 설명 — 표의 "자금·매집·대금·추세"가 무슨 뜻인지 쌩 초보 기준으로.
+ * 큰손의 매수는 호가창엔 안 보여도 가격·거래대금에 흔적을 남긴다는 전제다. */
+const AXES = [
+  { k: "자금", t: "자금흐름 (MFI)", d: "주가가 오른 날에 거래대금이 실렸는지를 봅니다. \"사려는 돈\"이 들어오며 오르면 +, 팔리며 빠지면 −." },
+  { k: "매집", t: "매집 강도 (CLV 누적)", d: "종가가 그날 고가 근처에서 끝나는 날이 계속 쌓이는지. 누군가 조용히 사 모으면 장 마감까지 가격을 받쳐 +가 됩니다." },
+  { k: "대금", t: "거래대금 급증", d: "최근 며칠 거래대금이 평소의 몇 배인지. 평소보다 돈이 갑자기 몰리면 + — 큰손이 움직이기 시작했다는 신호입니다." },
+  { k: "추세", t: "추세 (이동평균 정렬)", d: "주가가 20·60일 평균선 위에 있는지. 이미 오름길에 들어선 종목인지 아닌지를 봅니다." },
+];
+
 /** 축 미니 막대 — -1~1 점수를 좌우 막대로 */
 function axisBar(label: string, v: number): HTMLElement {
   const pct = Math.min(100, Math.abs(v) * 100);
@@ -77,6 +86,16 @@ export class FlowPanel {
     const head = el("p", { class: "note flow-meta", text:
       `${prof?.descKo ?? data.profile.nameKo} · ${data.scanned}/${data.universe}종목 스캔 · 갱신 ${timeAgo(data.updatedAt)} · 점수는 -1(강한 이탈) ~ +1(강한 유입)` });
 
+    // 용어 범례 — 표의 축 이름만 보고는 아무도 모른다
+    const legend = el("div", { class: "flow-legend" }, AXES.map((a) =>
+      el("div", { class: "flow-legend-item" }, [
+        el("span", { class: "flow-legend-key", text: a.k }),
+        el("span", { class: "flow-legend-body" }, [
+          el("b", { text: a.t }),
+          el("span", { text: ` — ${a.d}` }),
+        ]),
+      ])));
+
     const table = el("div", { class: "flow-table" });
     table.append(el("div", { class: "flow-row flow-th" }, [
       el("span", { text: "#" }),
@@ -109,7 +128,7 @@ export class FlowPanel {
       table.append(row);
     });
 
-    this.root.replaceChildren(head, table,
+    this.root.replaceChildren(head, legend, table,
       el("p", { class: "note", text: "특정 종목의 매수·매도 권유가 아닙니다. 수급 점수는 가격·거래대금 기반 추정이며 실제 투자자별 매매 동향과 다를 수 있습니다." }));
   }
 }
