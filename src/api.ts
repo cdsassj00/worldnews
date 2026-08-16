@@ -281,8 +281,9 @@ export interface AutoPlan {
   botPnlKrw: number;
   otherPnlKrw: number;
   /** 지금 종목 선정에 쓰는 점수 엔진 */
-  engine: "onto" | "quant" | "hybrid";
+  engine: "onto" | "quant" | "hybrid" | "ta";
   engineNote: string;
+  real: { startedAt: number; botPnlCurve: { d: string; v: number }[] };
   depositKrw: number;
   netProfitKrw: number;
   netProfitPct: number;

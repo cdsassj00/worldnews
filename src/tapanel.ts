@@ -113,6 +113,14 @@ export class TaPanel {
     return this.nameHint || this.data?.name || this.symbol;
   }
 
+  /** 통화 인지 금액 표시 — 미국 종목을 "250원"으로 보여주면 그 순간 신뢰가 끝난다 */
+  private money(v: number): string {
+    if (this.data?.currency === "USD") {
+      return `$${v.toLocaleString("en-US", { maximumFractionDigits: v >= 100 ? 0 : 2 })}`;
+    }
+    return fmtKrw(Math.round(v));
+  }
+
   async load(): Promise<void> {
     if (!this.symbol || this.loading) return;
     this.loading = true;
@@ -177,8 +185,8 @@ export class TaPanel {
         ind("ATR", i.atr.toFixed(0), ""),
       ]),
       el("p", { class: "note" }, [
-        `지지 ${d.levels.support ? fmtKrw(d.levels.support) : "-"} · 저항 ${d.levels.resistance ? fmtKrw(d.levels.resistance) : "-"}` +
-        (d.suggestedStop ? ` · 변동성 손절 제안 ${fmtKrw(d.suggestedStop)} (2×ATR)` : ""),
+        `지지 ${d.levels.support ? this.money(d.levels.support) : "-"} · 저항 ${d.levels.resistance ? this.money(d.levels.resistance) : "-"}` +
+        (d.suggestedStop ? ` · 변동성 손절 제안 ${this.money(d.suggestedStop)} (2×ATR)` : ""),
       ]),
     ]);
   }
@@ -211,7 +219,7 @@ export class TaPanel {
   /** 매매 플랜 — 판정을 진입·손절·목표라는 숫자로 옮긴 화면 */
   private planBlocks(d: TaResponse): HTMLElement[] {
     const p = d.plan;
-    const w = (n: number) => fmtKrw(Math.round(n));
+    const w = (n: number) => this.money((n));
     const gradeTone = p.grade === "good" ? "up" : p.grade === "fair" ? "flat" : "down";
 
     const head = el("div", { class: `ta-plan-head ${gradeTone}` }, [
@@ -258,7 +266,7 @@ export class TaPanel {
       ul.append(
         el("div", { class: `ta-lvl ${isRes ? "res" : "sup"}` }, [
           el("span", { class: "ta-lvl-tag", text: isRes ? "저항" : "지지" }),
-          el("span", { class: "ta-lvl-price", text: fmtKrw(l.price) }),
+          el("span", { class: "ta-lvl-price", text: this.money(l.price) }),
           el("span", { class: `ta-lvl-dist ${l.distPct >= 0 ? "up" : "down"}`, text: `${l.distPct >= 0 ? "+" : ""}${l.distPct}%` }),
           el("span", { class: "ta-lvl-bar" }, [el("i", { style: `width:${Math.round(l.strength * 100)}%` })]),
           el("span", { class: "ta-lvl-src", text: l.sources.join(" · ") }),
@@ -269,7 +277,7 @@ export class TaPanel {
         ul.insertBefore(
           el("div", { class: "ta-lvl now" }, [
             el("span", { class: "ta-lvl-tag", text: "현재" }),
-            el("span", { class: "ta-lvl-price", text: fmtKrw(Math.round(d.price)) }),
+            el("span", { class: "ta-lvl-price", text: this.money((d.price)) }),
           ]),
           ul.lastChild,
         );
@@ -299,7 +307,7 @@ export class TaPanel {
     // 가로 격자 + 눈금
     for (let k = 0; k <= 4; k++) {
       const val = min - pad + ((max - min + 2 * pad) * k) / 4;
-      s1.append(hLine(sc.y(val), PAD, W - 8, C.grid, "2 3"), label(PAD - 4, sc.y(val) + 3, fmtKrw(Math.round(val)), "rgba(148,163,184,0.9)", "end"));
+      s1.append(hLine(sc.y(val), PAD, W - 8, C.grid, "2 3"), label(PAD - 4, sc.y(val) + 3, this.money((val)), "rgba(148,163,184,0.9)", "end"));
     }
     // 볼린저 밴드
     s1.append(path(linePath(c.bbUpper, sc), C.band, 1, "3 3"), path(linePath(c.bbLower, sc), C.band, 1, "3 3"));
@@ -333,12 +341,12 @@ export class TaPanel {
       const ln = hLine(sc.y(lv.price), PAD, W - 8, col, lv.strength >= 0.5 ? "8 3" : "3 4");
       ln.setAttribute("stroke-width", String(0.8 + lv.strength * 1.4));
       ln.setAttribute("opacity", String(0.35 + lv.strength * 0.5));
-      s1.append(ln, label(W - 10, sc.y(lv.price) - 3, `${lv.kind === "support" ? "지지" : "저항"} ${fmtKrw(lv.price)}`, col, "end"));
+      s1.append(ln, label(W - 10, sc.y(lv.price) - 3, `${lv.kind === "support" ? "지지" : "저항"} ${this.money(lv.price)}`, col, "end"));
     }
     // 매매 플랜의 손절·목표를 같은 그림에 겹친다 — 계획과 차트가 따로 놀지 않게
     for (const [v2, txt, col] of [
-      [d.plan.stop.price, `손절 ${fmtKrw(d.plan.stop.price)}`, "#f43f5e"],
-      [d.plan.targets[0].price, `목표1 ${fmtKrw(d.plan.targets[0].price)}`, "#14b8a6"],
+      [d.plan.stop.price, `손절 ${this.money(d.plan.stop.price)}`, "#f43f5e"],
+      [d.plan.targets[0].price, `목표1 ${this.money(d.plan.targets[0].price)}`, "#14b8a6"],
     ] as [number, string, string][]) {
       if (v2 > max + pad || v2 < min - pad) continue;
       const ln = hLine(sc.y(v2), PAD, W - 8, col, "2 2");
@@ -427,7 +435,7 @@ export class TaPanel {
           el("p", { class: "ta-strat-text", text: s.text }),
           el("p", { class: "ta-strat-author", text: s.author }),
           ...(s.levels?.length
-            ? [el("p", { class: "ta-strat-levels", text: s.levels.map((l) => `${l.label} ${fmtKrw(l.value)}`).join(" · ") })]
+            ? [el("p", { class: "ta-strat-levels", text: s.levels.map((l) => `${l.label} ${this.money(l.value)}`).join(" · ") })]
             : []),
         ]),
       );
@@ -441,7 +449,7 @@ export class TaPanel {
     if (d.fib.length) {
       box.append(el("div", { class: "ta-strat flat" }, [
         el("div", { class: "ta-strat-top" }, [el("span", { class: "ta-strat-name", text: "피보나치 되돌림" })]),
-        el("p", { class: "ta-strat-levels", text: d.fib.map((f) => `${f.label} ${fmtKrw(f.value)}`).join(" · ") }),
+        el("p", { class: "ta-strat-levels", text: d.fib.map((f) => `${f.label} ${this.money(f.value)}`).join(" · ") }),
       ]));
     }
     return box;

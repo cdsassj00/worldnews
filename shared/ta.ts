@@ -1005,15 +1005,15 @@ export function tradePlan(s: PriceHistory, cons: TaReport["consensus"], trend: T
       low: round(entryLow, 0),
       high: round(entryHigh, 0),
       note: nearSup
-        ? `가장 가까운 지지 ${Math.round(nearSup.price).toLocaleString("ko-KR")}원 위에서 분할 진입. 추격매수보다 눌림을 기다리는 편이 손절폭을 줄입니다.`
+        ? `가장 가까운 지지 ${Math.round(nearSup.price).toLocaleString("ko-KR")} 위에서 분할 진입. 추격매수보다 눌림을 기다리는 편이 손절폭을 줄입니다.`
         : "지지선이 뚜렷하지 않아 진입 구간을 현재가 ±ATR 로 잡았습니다.",
     },
     stop: {
       price: round(stopUse, 0),
       pct: round(((stopUse - px) / px) * 100, 1),
       note: nearSup
-        ? `지지 ${Math.round(nearSup.price).toLocaleString("ko-KR")}원 아래로 ATR 의 절반(${Math.round(atr * 0.5).toLocaleString("ko-KR")}원)만큼 여유. 지지선에 딱 붙이면 꼬리 한 번에 털립니다.`
-        : `현재가에서 2×ATR(${Math.round(atr * 2).toLocaleString("ko-KR")}원) 아래.`,
+        ? `지지 ${Math.round(nearSup.price).toLocaleString("ko-KR")} 아래로 ATR 의 절반(${Math.round(atr * 0.5).toLocaleString("ko-KR")})만큼 여유. 지지선에 딱 붙이면 꼬리 한 번에 털립니다.`
+        : `현재가에서 2×ATR(${Math.round(atr * 2).toLocaleString("ko-KR")}) 아래.`,
     },
     targets: [
       { price: round(t1, 0), pct: round(((t1 - px) / px) * 100, 1), note: t1FromLadder ? `1차 — ${meaningful[0] ? "의미 있는 첫 저항" : "사다리 최상단 저항"} (${t1FromLadder.sources.join("·")})` : "1차 — 현재가 +2×ATR (위쪽 저항이 잡히지 않음)" },
@@ -1022,8 +1022,8 @@ export function tradePlan(s: PriceHistory, cons: TaReport["consensus"], trend: T
     rr,
     riskPerShare: round(risk, 0),
     invalidation: nearSup
-      ? `종가가 ${Math.round(stopUse).toLocaleString("ko-KR")}원 아래로 마감하면 이 계획은 틀린 것입니다. 그때는 손절하고 다시 봅니다.`
-      : `종가가 ${Math.round(stopUse).toLocaleString("ko-KR")}원 아래면 계획 무효.`,
+      ? `종가가 ${Math.round(stopUse).toLocaleString("ko-KR")} 아래로 마감하면 이 계획은 틀린 것입니다. 그때는 손절하고 다시 봅니다.`
+      : `종가가 ${Math.round(stopUse).toLocaleString("ko-KR")} 아래면 계획 무효.`,
     grade,
     gradeKo: grade === "good" ? "괜찮은 자리" : grade === "fair" ? "보통 — 비중 축소" : "나쁨 — 진입 보류 권장",
     checklist,

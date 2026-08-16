@@ -4,6 +4,7 @@ import { api, ApiFailure, getTradeToken, setTradeToken, type ConfigResponse, typ
 import { Panel, type OrderDraft } from "./panel";
 import { AutoPanel } from "./autopanel";
 import { LabPanel } from "./labpanel";
+import usUniverse from "../shared/us-universe.json";
 import { TaPanel } from "./tapanel";
 import { Ontology3D } from "./ontology3d";
 import type { OntoState, OntoVerdict, RadarItem, RadarOpps, SectorVerdict, StockVerdict, TickerScore } from "./api";
@@ -784,26 +785,49 @@ function setupTaSearch(): void {
   const results = $<HTMLUListElement>("ta-results");
   let timer = 0;
   const close = () => { results.hidden = true; results.replaceChildren(); };
+  // 미국 종목은 레이더 DB(국내 전용)에 없어서 번들에 실은 목록(104종목)에서 찾는다.
+  const usList = usUniverse as { code: string; symbol: string; name: string; sector: string }[];
+  // 유명 종목은 한글로 칠 것이다 — 영문 목록만으로는 "테슬라"가 안 잡힌다(실측)
+  const US_KO: Record<string, string> = {
+    "테슬라": "TSLA", "애플": "AAPL", "엔비디아": "NVDA", "마이크로소프트": "MSFT", "마소": "MSFT",
+    "구글": "GOOGL", "알파벳": "GOOGL", "아마존": "AMZN", "메타": "META", "페이스북": "META",
+    "넷플릭스": "NFLX", "브로드컴": "AVGO", "버크셔": "BRK-B", "일라이릴리": "LLY", "릴리": "LLY",
+    "코카콜라": "KO", "펩시": "PEP", "코스트코": "COST", "월마트": "WMT", "맥도날드": "MCD",
+    "디즈니": "DIS", "비자": "V", "마스터카드": "MA", "인텔": "INTC", "제이피모건": "JPM",
+  };
   const run = async () => {
     const q = input.value.trim();
     if (!q) return close();
+    const qUp = q.toUpperCase();
+    const alias = Object.entries(US_KO).find(([ko]) => ko.includes(q) || q.includes(ko))?.[1];
+    const usHits = usList
+      .filter((u) => u.symbol === alias || u.symbol.startsWith(qUp) || u.name.toUpperCase().includes(qUp))
+      .slice(0, 5);
     try {
-      const { items } = await api.radarFind(q);
-      if (!items.length) {
-        results.replaceChildren(el("li", { class: "note", text: "일치하는 종목이 없습니다 (KOSPI200·KOSDAQ150 안에서 검색)" }));
+      const { items } = await api.radarFind(q).catch(() => ({ items: [] as never[] }));
+      if (!items.length && !usHits.length) {
+        results.replaceChildren(el("li", { class: "note", text: "일치하는 종목이 없습니다 (국내 350 + 미국 104 종목에서 검색)" }));
         results.hidden = false;
         return;
       }
+      const pick = (symbol: string, name: string) => {
+        void taPanel?.show(symbol, name);
+        input.value = "";
+        close();
+      };
       results.replaceChildren(
         ...items.map((r) => {
           const btn = el("button", { type: "button" }, [
             el("span", {}, [el("span", { text: r.name }), el("span", { class: "cc", text: ` ${r.code} · ${r.sector ?? "미분류"}` })]),
           ]);
-          btn.addEventListener("click", () => {
-            void taPanel?.show(yahooSymbol(r.code, r.market), r.name);
-            input.value = "";
-            close();
-          });
+          btn.addEventListener("click", () => pick(yahooSymbol(r.code, r.market), r.name));
+          return el("li", {}, [btn]);
+        }),
+        ...usHits.map((u) => {
+          const btn = el("button", { type: "button" }, [
+            el("span", {}, [el("span", { text: u.name }), el("span", { class: "cc", text: ` ${u.symbol} · 미국 ${u.sector}` })]),
+          ]);
+          btn.addEventListener("click", () => pick(u.symbol, u.name));
           return el("li", {}, [btn]);
         }),
       );

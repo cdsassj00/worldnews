@@ -2767,3 +2767,20 @@ body {
   .lab-tr > :nth-child(4), .lab-tr > :nth-child(5) { display: none; }
   .layout { height: auto; min-height: 70vh; }
 }
+
+/* 실계좌 블록 — 모의 숫자와 확실히 구분되는 금색 프레임 */
+.lab-real {
+  border: 1px solid rgba(217, 164, 65, 0.5);
+  background: rgba(217, 164, 65, 0.07);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lab-real-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.lab-real-tag { font-size: 10.5px; font-weight: 800; color: #d9a441; letter-spacing: 0.04em; }
+.lab-real-pnl { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.lab-real-meta { margin: 0; font-size: 10.5px; line-height: 1.5; color: var(--fg-dim, #94a3b8); }
+.lab-fresh { color: #d9a441; }
+.lab-real-tr { background: rgba(217, 164, 65, 0.06) !important; }

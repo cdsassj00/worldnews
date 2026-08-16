@@ -7,7 +7,7 @@
  * 프레이밍이 핵심이다 — 여기 숫자는 전부 **가상 원금 시뮬레이션**이고, 화면이 그걸
  * 숨기지 않는다. 게임처럼 보여주되 게임인 것을 명시해야 유사투자자문 시비가 없다.
  */
-import { api, type BacktestResults, type LabOverview, type LabStrategy } from "./api";
+import { api, type AutoPlan, type BacktestResults, type LabOverview, type LabStrategy } from "./api";
 import { dirClass, el, fmtKrw, fmtPct, timeAgo } from "./format";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -56,6 +56,8 @@ export class LabPanel {
   private readonly disclaimer: HTMLElement;
   private data: LabOverview | null = null;
   private bt: BacktestResults | null = null;
+  /** 실계좌 현황(공개 API) — 실계좌 운용 중인 전략 카드에 진짜 돈 숫자를 붙인다 */
+  private plan: AutoPlan | null = null;
   private openId: string | null = null;
 
   constructor(opts: { grid: HTMLElement; detail: HTMLElement; disclaimer: HTMLElement }) {
@@ -66,12 +68,14 @@ export class LabPanel {
 
   async load(): Promise<void> {
     try {
-      const [data, bt] = await Promise.all([
+      const [data, bt, plan] = await Promise.all([
         api.labOverview(),
         this.bt ? Promise.resolve(this.bt) : api.backtest().catch(() => null),
+        api.autoPlan().catch(() => null),
       ]);
       this.data = data;
       if (bt) this.bt = bt;
+      if (plan) this.plan = plan;
       this.render();
     } catch (err) {
       this.grid.replaceChildren(el("p", { class: "note err", text: `전략실을 불러오지 못했습니다 — ${(err as Error).message}` }));
@@ -120,7 +124,11 @@ export class LabPanel {
       el("p", { class: "lab-desc", text: s.descKo }),
       el("div", { class: `lab-return ${dirClass(s.pnlPct)}`, text: `${sign}${s.pnlPct.toFixed(2)}%` }),
       el("p", { class: "lab-meta", text: `가상 원금 ${fmtKrw(s.capital)} → ${fmtKrw(s.equity)} · 보유 ${s.positions.length}종목${s.tradeStats.total ? ` · 승률 ${s.tradeStats.winRate}%` : ""}` }),
+      ...(s.positions.length === 0 && s.tradeStats.total === 0
+        ? [el("p", { class: "lab-meta lab-fresh", text: "이 원장은 방금 개설됐습니다 — 다음 거래일 09:00부터 매매를 시작합니다." })]
+        : []),
       sparkline(s.equityCurve, s.capital) as unknown as HTMLElement,
+      ...this.realBlock(s),
       el("div", { class: "lab-bt" },
         bt.returns
           ? [
@@ -138,6 +146,31 @@ export class LabPanel {
       if (this.openId) this.detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
     return card;
+  }
+
+
+  /**
+   * 실계좌 블록 — 이 전략이 실제 돈을 움직이고 있으면 카드에 진짜 계좌 숫자를 붙인다.
+   * 모의(가상 400만)와 실계좌(봇 상한 400만)를 한 카드에서 구분해 보여주는 것이 핵심이다 —
+   * 섞어 버리면 "시뮬레이션 게임" 프레이밍도, 숫자의 정직함도 다 무너진다.
+   */
+  private realBlock(s: LabStrategy): HTMLElement[] {
+    const p = this.plan;
+    if (!s.liveNow || !p || !p.account.connected) return [];
+    const sign = p.botPnlKrw >= 0 ? "+" : "";
+    const started = p.real?.startedAt ? new Date(p.real.startedAt).toISOString().slice(0, 10) : "2026-07-27";
+    return [
+      el("div", { class: "lab-real" }, [
+        el("div", { class: "lab-real-head" }, [
+          el("span", { class: "lab-real-tag", text: "실계좌 (진짜 돈)" }),
+          el("span", { class: `lab-real-pnl ${dirClass(p.botPnlKrw)}`, text: `봇 손익 ${sign}${fmtKrw(p.botPnlKrw)}` }),
+        ]),
+        el("p", { class: "lab-real-meta", text: `${started} 시작 · 봇 운용 상한 ${fmtKrw(p.config?.capitalKrw ?? 4000000)} · 보유 ${p.positions.length}종목 · 나머지 계좌 잔액은 개인 보유분` }),
+        (p.real?.botPnlCurve?.length ?? 0) >= 2
+          ? (sparkline(p.real.botPnlCurve.map((x) => ({ d: x.d, e: x.v })), 0, 220, 40) as unknown as HTMLElement)
+          : el("p", { class: "lab-real-meta", text: "실계좌 곡선은 오늘부터 기록을 시작했습니다(과거는 재구성하지 않습니다)." }),
+      ]),
+    ];
   }
 
   private detailView(s: LabStrategy): HTMLElement {
@@ -184,6 +217,24 @@ export class LabPanel {
           el("span", { class: "lab-td-reason", text: t.reason }),
           el("span", { class: dirClass(t.pnl ?? 0), text: t.pnl !== undefined ? `${t.pnl >= 0 ? "+" : ""}${fmtKrw(t.pnl)}` : "—" }),
           el("span", { text: timeAgo(t.at) }),
+        ]));
+      }
+      box.append(table);
+    }
+
+    if (s.liveNow && this.plan?.account.connected && this.plan.positions.length) {
+      const table = el("div", { class: "lab-table" });
+      table.append(el("div", { class: "lab-tr lab-th" }, [
+        el("span", { text: "실계좌 보유 (진짜 돈)" }), el("span", { text: "평단" }), el("span", { text: "현재가" }),
+        el("span", { text: "수량" }), el("span", { text: "수익률" }),
+      ]));
+      for (const bp of this.plan.positions) {
+        table.append(el("div", { class: "lab-tr lab-real-tr" }, [
+          el("span", { class: "lab-td-name", text: bp.name ?? bp.code }),
+          el("span", { text: fmtKrw(Math.round(bp.avgPrice)) }),
+          el("span", { text: fmtKrw(Math.round(bp.price)) }),
+          el("span", { text: `${bp.qty}주` }),
+          el("span", { class: dirClass(bp.pnlPct), text: fmtPct(bp.pnlPct) }),
         ]));
       }
       box.append(table);

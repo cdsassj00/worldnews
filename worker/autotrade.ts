@@ -138,6 +138,12 @@ export interface BotPosition {
 
 export interface AutoState {
   startedAt: number;
+  /**
+   * 실계좌 봇 손익 곡선(원) — 하루 한 점.
+   * 전략실이 "백테스트·모의만이 아니라 진짜 돈이 어떻게 돌았나"를 보여주기 위한 기록.
+   * 과거는 재구성하지 않는다(정직한 기록만) — 이 필드를 넣은 날부터 쌓인다.
+   */
+  botPnlCurve?: { d: string; v: number }[];
   /** 봇이 처음 관측한 평가금액 — 목표수익 계산 기준 */
   baselineEquity: number;
   peakEquity: number;
@@ -384,6 +390,8 @@ export interface AutoPlan {
   /** 지금 어떤 점수 엔진으로 종목을 고르고 있는가 */
   engine: AutoEngine;
   engineNote: string;
+  /** 실계좌 봇 이력 — 시작일 · 일별 손익 곡선 */
+  real: { startedAt: number; botPnlCurve: { d: string; v: number }[] };
   riskOff: number;
   macro: StrategyResult["macro"];
   top: TickerScore[];
@@ -679,6 +687,7 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
     targetProgressPct: cfg.targetProfitKrw > 0 ? round((botPnl / cfg.targetProfitKrw) * 100, 1) : 0,
     engine,
     engineNote: engineApplied.note,
+    real: { startedAt: state.startedAt, botPnlCurve: state.botPnlCurve ?? [] },
     riskOff: strategy.riskOff,
     macro: strategy.macro,
     top: strategy.scores.slice(0, 8),
@@ -727,6 +736,14 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
   if (plan.equity > state.peakEquity) state.peakEquity = plan.equity;
   state.lastEquity = plan.equity;
   state.lastCycleAt = Date.now();
+
+  /* 실계좌 봇 손익 곡선 — 하루 한 점(같은 날은 덮어쓴다) */
+  if (plan.account.connected) {
+    const curve = state.botPnlCurve ?? [];
+    if (curve.length && curve[curve.length - 1].d === now.date) curve[curve.length - 1].v = plan.botPnlKrw;
+    else curve.push({ d: now.date, v: plan.botPnlKrw });
+    state.botPnlCurve = curve.slice(-400);
+  }
 
   /* 정지선도 손익 기준으로 잰다. 평가액 기준이면 입금·정산으로 총평가가 흔들릴 때
    * 멀쩡한데 정지되거나(출금) 위험한데 안 멈추는(입금) 일이 생긴다.
