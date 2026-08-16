@@ -102,8 +102,19 @@ ${items}
 
 export async function sitemapXml(env: Env): Promise<Response> {
   const days = await loadDays(env);
+  const alt = [
+    `<xhtml:link rel="alternate" hreflang="ko" href="${SITE}/"/>`,
+    `<xhtml:link rel="alternate" hreflang="en" href="${SITE}/en"/>`,
+    `<xhtml:link rel="alternate" hreflang="ja" href="${SITE}/ja"/>`,
+    `<xhtml:link rel="alternate" hreflang="zh-Hans" href="${SITE}/zh"/>`,
+    `<xhtml:link rel="alternate" hreflang="x-default" href="${SITE}/"/>`,
+  ].join("");
   const urls = [
-    `  <url><loc>${SITE}/</loc><changefreq>hourly</changefreq><priority>1.0</priority></url>`,
+    `  <url><loc>${SITE}/</loc>${alt}<changefreq>hourly</changefreq><priority>1.0</priority></url>`,
+    // 언어별 진입 URL — head(title·description·hreflang)가 그 언어로 서빙된다
+    `  <url><loc>${SITE}/en</loc>${alt}<changefreq>daily</changefreq><priority>0.9</priority></url>`,
+    `  <url><loc>${SITE}/ja</loc>${alt}<changefreq>daily</changefreq><priority>0.9</priority></url>`,
+    `  <url><loc>${SITE}/zh</loc>${alt}<changefreq>daily</changefreq><priority>0.9</priority></url>`,
     `  <url><loc>${SITE}/brief</loc><changefreq>daily</changefreq><priority>0.8</priority></url>`,
     ...days.map(
       (d) =>
@@ -111,7 +122,7 @@ export async function sitemapXml(env: Env): Promise<Response> {
     ),
   ].join("\n");
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
 ${urls}
 </urlset>`;
   return new Response(xml, {

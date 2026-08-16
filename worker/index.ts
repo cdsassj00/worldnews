@@ -8,6 +8,7 @@ import { getGlobalNews, getNews } from "./news";
 import { DISCLAIMER, recommend } from "./recommend";
 import { aiStatus, getAnalysis } from "./analysis";
 import { translateBatch } from "./translate";
+import { langIndex } from "./langpages";
 import {
   assertOverseasAllowed,
   assertTradeAuth,
@@ -648,6 +649,11 @@ export default {
     const briefMatch = url.pathname.match(/^\/brief\/(\d{4}-\d{2}-\d{2})$/);
     if (briefMatch) {
       return briefPage(env, briefMatch[1]).catch(() => new Response("unavailable", { status: 503 }));
+    }
+    // 다국어 진입 URL — 검색엔진이 언어별로 색인할 수 있는 주소
+    const langMatch = url.pathname.match(/^\/(en|ja|zh)\/?$/);
+    if (langMatch) {
+      return langIndex(env, url.origin, langMatch[1]).catch(() => env.ASSETS.fetch(request));
     }
     if (!url.pathname.startsWith("/api/")) {
       return env.ASSETS.fetch(request);
