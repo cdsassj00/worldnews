@@ -40,6 +40,9 @@ const page = await browser.newPage({
   ignoreHTTPSErrors: Boolean(proxyServer),
 });
 
+// 온보딩 투어 자동 실행이 클릭을 가로채지 않게 "이미 봤다"로 표시
+await page.addInitScript(() => { try { localStorage.setItem("wfg-tour-done", "1"); } catch { /* 무시 */ } });
+
 const consoleErrors = [];
 page.on("console", (m) => {
   if (m.type() === "error") consoleErrors.push(m.text());

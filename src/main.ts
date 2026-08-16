@@ -10,6 +10,7 @@ import usUniverse from "../shared/us-universe.json";
 import { TaPanel } from "./tapanel";
 import { Ontology3D } from "./ontology3d";
 import { SiteTranslator } from "./translator";
+import { Tour } from "./tour";
 import type { OntoState, OntoVerdict, RadarItem, RadarOpps, SectorVerdict, StockVerdict, TickerScore } from "./api";
 import { dirClass, el, fmtKrw, fmtKst, fmtNum, fmtPct, timeAgo } from "./format";
 
@@ -1072,6 +1073,15 @@ function setupGlobe(liveCodes: Set<string>, orderCodes: Set<string>): void {
  * 2026-08-16 사용자 지시: 계좌 금액 대신 "가장 높은 수익률을 낸 조합"을 자랑한다.
  * 백테스트(측정 고정값)에서 1년 성적 1위 엔진을 챔피언으로 뽑아 걸고, 실계좌에는
  * 어떤 엔진이 가동 중인지(금액 없이)만 보여준다. 실패하면 "—" 로 둔다. */
+/* ── 온보딩 투어 — 첫 방문 자동 실행 + 상단 "사용법" 버튼 ─────────── */
+const tour = new Tour();
+
+function setupTour(): void {
+  $("btn-tour").addEventListener("click", () => tour.start());
+  // 첫 방문이면 데이터가 어느 정도 그려진 뒤 자동으로 안내를 시작한다
+  if (!Tour.seen()) window.setTimeout(() => { if (!tour.running) tour.start(); }, 3500);
+}
+
 function setupHero(): void {
   $("hero-goto-lab").addEventListener("click", () => $("lab-strip").scrollIntoView({ behavior: "smooth" }));
   $("hero-goto-terminal").addEventListener("click", () => $("terminal").scrollIntoView({ behavior: "smooth" }));
@@ -1142,6 +1152,7 @@ async function boot(): Promise<void> {
 
   labPanel = new LabPanel({ grid: $("lab-grid"), detail: $("lab-detail"), disclaimer: $("lab-disclaimer") });
   setupHero();
+  setupTour();
   taPanel = new TaPanel({ root: $("ta-body"), sub: $("ta-sub") });
   setupTaSearch();
   setupTaPane();
