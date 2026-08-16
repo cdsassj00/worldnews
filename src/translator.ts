@@ -78,6 +78,9 @@ const UNIT_RULES: Record<string, [RegExp, string][]> = {
 
 const SKIP_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEXTAREA", "CODE"]);
 
+/** 번역 대상 HTML 속성 — 눈에 보이는 문구인데 텍스트 노드가 아닌 것들 */
+const TR_ATTRS = ["placeholder", "title", "aria-label"] as const;
+
 export class SiteTranslator {
   private lang: "" | "en" | "ja" | "zh-CN" = "";
   private readonly cache = new Map<string, string>();
@@ -89,6 +92,9 @@ export class SiteTranslator {
    * "새 원문"으로 오인해 되돌리기가 깨지는 것을 막는 결정적 장치.
    * (applying 플래그는 콜백이 비동기라 소용없다 — 실측으로 배운 버그) */
   private readonly appliedText = new Map<Text, string>();
+  /** 속성(placeholder·title 등) — 원문 → 대상 목록, 요소 → 속성별 원문 */
+  private readonly attrTargets = new Map<string, Set<{ el: Element; attr: string }>>();
+  private readonly attrOriginals = new Map<Element, Map<string, string>>();
   private readonly queue = new Set<string>();
   /** 문장별 시도 횟수 — 계속 실패하는 문장으로 API 를 무한히 두드리지 않는다 */
   private readonly attempts = new Map<string, number>();
@@ -144,9 +150,14 @@ export class SiteTranslator {
     for (const [node, ko] of this.originals) {
       if (node.isConnected) node.data = ko;
     }
+    for (const [el, attrs] of this.attrOriginals) {
+      for (const [attr, ko] of attrs) el.setAttribute(attr, ko);
+    }
     this.originals.clear();
     this.appliedText.clear();
     this.nodesByText.clear();
+    this.attrTargets.clear();
+    this.attrOriginals.clear();
     this.attempts.clear();
     // 방금 우리가 만든 변경 기록을 버린다 — 콜백이 재등록하는 것을 막는다
     this.observer?.takeRecords();
@@ -164,6 +175,28 @@ export class SiteTranslator {
       },
     });
     for (let n = walker.nextNode(); n; n = walker.nextNode()) this.track(n as Text);
+    // 플레이스홀더·툴팁 같은 속성 문구도 잡는다
+    this.trackAttrs(root);
+    for (const el of root.querySelectorAll("[placeholder],[title],[aria-label]")) this.trackAttrs(el);
+  }
+
+  private trackAttrs(el: Element): void {
+    if (el.closest("[data-no-translate]")) return;
+    for (const attr of TR_ATTRS) {
+      const raw = el.getAttribute(attr);
+      if (!raw || this.attrOriginals.get(el)?.has(attr)) continue;
+      if (!worthTranslating(raw)) continue;
+      const ko = raw.trim().replace(/\s+/g, " ");
+      let m = this.attrOriginals.get(el);
+      if (!m) { m = new Map(); this.attrOriginals.set(el, m); }
+      m.set(attr, raw);
+      let set = this.attrTargets.get(ko);
+      if (!set) { set = new Set(); this.attrTargets.set(ko, set); }
+      set.add({ el, attr });
+      const hit = this.cache.get(ko);
+      if (hit) this.apply(ko, hit);
+      else this.queue.add(ko);
+    }
   }
 
   private track(node: Text): void {
@@ -196,6 +229,9 @@ export class SiteTranslator {
   }
 
   private apply(ko: string, translated: string): void {
+    for (const t of this.attrTargets.get(ko) ?? []) {
+      if (t.el.isConnected) t.el.setAttribute(t.attr, translated);
+    }
     const set = this.nodesByText.get(ko);
     if (!set) return;
     for (const node of set) {

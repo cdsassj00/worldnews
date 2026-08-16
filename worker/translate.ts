@@ -87,6 +87,12 @@ const STATIC_EN: Dict = {
   "차트 거장": "Chart Masters",
   "융합": "Fusion",
   "차트 분석": "Chart Analysis",
+  "예: 현대해상, 삼성전자, 005930": "e.g. Hyundai Marine, Samsung Electronics, 005930",
+  "종목명 또는 코드 (예: 현대백화점, 069960)": "Stock name or code (e.g. Hyundai Dept. Store, 069960)",
+  "자동회전 켜기/끄기": "Auto-rotate on/off",
+  "세계 경제 지표 열기": "Open world economy indicators",
+  "화면 밝기 전환": "Toggle light/dark theme",
+  "언어 / Language": "Language",
 };
 
 const STATICS: Record<string, Dict> = { en: STATIC_EN };
