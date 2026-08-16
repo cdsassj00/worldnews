@@ -101,7 +101,10 @@ ${items}
 /* ── 동적 사이트맵 — 메인 + 쌓인 브리핑 페이지 전부 ── */
 
 export async function sitemapXml(env: Env): Promise<Response> {
-  const days = await loadDays(env);
+  // 브리핑 목록을 못 읽어도 사이트맵 자체는 반드시 나간다 — 8/1 서치콘솔의
+  // "가져올 수 없음"이 이 경로의 503 때문이었을 가능성이 크다. 핵심 URL 이
+  // 죽는 것보다 브리핑 몇 개 빠지는 쪽이 낫다.
+  const days = await loadDays(env).catch(() => [] as Awaited<ReturnType<typeof loadDays>>);
   const alt = [
     `<xhtml:link rel="alternate" hreflang="ko" href="${SITE}/"/>`,
     `<xhtml:link rel="alternate" hreflang="en" href="${SITE}/en"/>`,
