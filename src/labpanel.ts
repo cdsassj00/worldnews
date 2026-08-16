@@ -12,6 +12,7 @@
  * 시비가 없다.
  */
 import { api, type BacktestResults, type LabOverview, type LabStrategy } from "./api";
+import { methodologyBox } from "./combopanel";
 import { dirClass, el, fmtKrw, fmtPct, timeAgo } from "./format";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -66,6 +67,9 @@ export class LabPanel {
     this.grid = opts.grid;
     this.detail = opts.detail;
     this.disclaimer = opts.disclaimer;
+    // 백테스트 숫자를 자랑하는 화면이므로, 어떻게 잰 숫자이고 어떤 한계가 있는지를
+    // 같은 화면에서 읽을 수 있게 한다 (2026-08-16 사용자 지시: 정확한 시뮬레이션 근거)
+    this.disclaimer.insertAdjacentElement("afterend", methodologyBox());
   }
 
   async load(): Promise<void> {
