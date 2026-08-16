@@ -790,12 +790,16 @@ export class AutoPanel {
             el("strong", { text: `${ok ? "가능" : "막힘"} · ${label}` }),
             el("span", { text: ` — ${detail}` }),
           ]);
+        const ready = r.balance.ok && (Boolean(r.usdCash) || Boolean(r.buyingPower?.ok));
         overseasOut.replaceChildren(
-          el("p", { class: `modal-status ${r.balance.ok && r.usdCash ? "ok" : "err"}`, text: r.verdict }),
+          el("p", { class: `modal-status ${ready ? "ok" : "err"}`, text: r.verdict }),
           el("ul", { class: "gate-list" }, [
             line("해외 시세(앱키 권한)", r.quote.ok, r.quote.detail),
             line("해외 잔고(계좌 개설)", r.balance.ok, r.balance.detail),
             line("달러 예수금", Boolean(r.usdCash), r.usdCash === null ? "잔고 조회가 막혀 확인 불가" : `${r.usdCash} USD`),
+            ...(r.buyingPower
+              ? [line("매수가능금액 (통합증거금 포함)", r.buyingPower.ok, r.buyingPower.detail)]
+              : []),
           ]),
           el("ul", { class: "gate-list" }, r.nextSteps.map((t) => el("li", { text: `다음 할 일 — ${t}` }))),
         );

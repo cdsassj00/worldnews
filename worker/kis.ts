@@ -40,6 +40,7 @@ const TRID: Record<string, { prod: string; vts: string }> = {
   "domestic.price": { prod: "FHKST01010100", vts: "FHKST01010100" },
   "overseas.price": { prod: "HHDFS00000300", vts: "HHDFS00000300" },
   "overseas.balance": { prod: "TTTS3012R", vts: "VTTS3012R" },
+  "overseas.psamount": { prod: "TTTS3007R", vts: "VTTS3007R" },
   // 미국(나스닥/뉴욕/아멕스)
   "overseas.NAS.buy": { prod: "JTTT1002U", vts: "VTTT1002U" },
   "overseas.NAS.sell": { prod: "JTTT1006U", vts: "VTTT1001U" },
@@ -151,6 +152,8 @@ export interface OverseasReadiness {
   balance: { ok: boolean; detail: string };
   usdCash: number | null;
   hasOverseasHoldings: boolean | null;
+  /** 매수가능금액 판정 — 통합증거금이면 달러 0 이어도 ok 가 된다 */
+  buyingPower: { ok: boolean; detail: string } | null;
   verdict: string;
   nextSteps: string[];
 }
@@ -164,13 +167,16 @@ export async function overseasReadiness(env: Env, cfg: KisConfig): Promise<Overs
     balance: { ok: false, detail: "미확인" },
     usdCash: null,
     hasOverseasHoldings: null,
+    buyingPower: null,
     verdict: "",
     nextSteps: [],
   };
 
   // ① 해외 시세 — 계좌가 아니라 앱키 권한을 본다
+  let aaplPrice = 0;
   try {
     const p = await overseasPrice(env, cfg, "NAS", "AAPL");
+    aaplPrice = p.price;
     out.quote = { ok: p.price > 0, detail: p.price > 0 ? `애플 현재가 ${p.price} 조회 성공` : "가격이 비어 있음" };
   } catch (err) {
     out.quote = { ok: false, detail: err instanceof ApiError ? `${err.code} — ${JSON.stringify(err.detail)}` : String(err) };
@@ -190,6 +196,21 @@ export async function overseasReadiness(env: Env, cfg: KisConfig): Promise<Overs
     }
   }
 
+  // ③ 매수가능금액 — 달러 예수금이 0이어도 통합증거금이면 원화로 매수 가능하다.
+  //    예수금(잔고)이 아니라 이 값이 "지금 살 수 있는가"의 결정적 판정이다.
+  if (out.balance.ok && aaplPrice > 0) {
+    try {
+      // 실전 매수가능금액 조회의 거래소 코드는 4자리(NASD)다 — 잔고(NAS)와 다르다
+      const ps = await overseasPsamount(env, cfg, "NASD", "AAPL", aaplPrice);
+      const orderable = Math.max(ps.totalOrderable, ps.frcrOrderable, ps.afterExchangeOrderable);
+      out.buyingPower = ps.maxQty > 0 || orderable > 0
+        ? { ok: true, detail: `주문가능 ${orderable.toFixed(2)} USD · 애플 기준 최대 ${ps.maxQty}주${ps.fx ? ` · 적용 환율 ${ps.fx}` : ""}${ps.frcrOrderable <= 0 ? " — 달러 예수금 없이 원화(통합증거금)로 계산된 금액입니다" : ""}` }
+        : { ok: false, detail: "주문가능금액 0 — 통합증거금 미반영 또는 예수금 부족" };
+    } catch (err) {
+      out.buyingPower = { ok: false, detail: err instanceof ApiError ? `${err.code} — ${JSON.stringify(err.detail)}` : String(err) };
+    }
+  }
+
   if (!out.quote.ok) {
     out.verdict = "해외 시세부터 막힙니다 — API 앱키에 해외주식 권한이 없을 수 있습니다.";
     out.nextSteps.push("KIS Developers 에서 앱키의 해외주식 서비스 신청 여부를 확인하세요.");
@@ -197,12 +218,18 @@ export async function overseasReadiness(env: Env, cfg: KisConfig): Promise<Overs
     out.verdict = "시세는 되지만 해외 잔고 조회가 막힙니다 — 계좌에 해외주식 거래가 신청되지 않았을 가능성이 큽니다.";
     out.nextSteps.push("한국투자 앱/HTS 에서 해외주식 거래 약정(신청)을 하세요. 보통 기존 계좌에 신청만 하면 되고 새 계좌를 만들 필요는 없습니다.");
     out.nextSteps.push("신청 직후에는 반영에 시간이 걸릴 수 있으니 다음 영업일에 다시 점검하세요.");
+  } else if (out.buyingPower?.ok) {
+    out.verdict = out.usdCash
+      ? `해외주식 거래 준비 완료 — 주문 가능 외화 ${out.usdCash} USD.`
+      : "해외주식 거래 준비 완료 — 달러 예수금은 0이지만 통합증거금으로 원화 매수가 가능합니다.";
+    out.nextSteps.push("자동매매를 켜기 전에 US_AUTOTRADE_ENABLED 를 여는 대신 미국 페이퍼(모의) 성적을 먼저 쌓는 것을 권합니다.");
   } else if (!out.usdCash) {
-    out.verdict = "해외 거래는 열려 있는데 달러 예수금이 0 입니다 — 이대로는 매수 주문이 거부됩니다.";
-    out.nextSteps.push("원화를 달러로 환전하거나, 통합증거금(원화로 해외주식 매수) 서비스를 신청하세요.");
+    out.verdict = "해외 거래는 열려 있는데 달러 예수금이 0이고 통합증거금 매수가능금액도 아직 잡히지 않습니다.";
+    out.nextSteps.push("통합증거금을 이미 신청했다면 반영(보통 신청 다음 영업일)까지 기다렸다가 다시 점검하세요.");
+    out.nextSteps.push("당장 사야 하면 한투 앱 환전 메뉴에서 원화→달러 환전 후 주문하면 됩니다.");
   } else {
     out.verdict = `해외주식 거래 준비 완료 — 주문 가능 외화 ${out.usdCash} USD.`;
-    out.nextSteps.push("자동매매를 켜기 전에 US_AUTOTRADE_ENABLED 를 여는 대신 모의로 먼저 성적을 쌓는 것을 권합니다(최근 3개월 백테스트가 시장에 크게 뒤졌습니다).");
+    out.nextSteps.push("자동매매를 켜기 전에 US_AUTOTRADE_ENABLED 를 여는 대신 미국 페이퍼(모의) 성적을 먼저 쌓는 것을 권합니다.");
   }
   return out;
 }
@@ -575,6 +602,39 @@ export async function overseasBalance(env: Env, cfg: KisConfig, excd: OrderMarke
       pnl: num(summaryRow["ovrs_rlzt_pfls_amt"]),
       currency,
     },
+  };
+}
+
+/**
+ * 해외주식 매수가능금액 조회 — 통합증거금 계좌면 달러 예수금이 0이어도
+ * 원화 예수금 기준으로 주문가능금액·수량이 잡힌다. "환전 없이 살 수 있나"의
+ * 결정적 판정은 예수금이 아니라 이 값이다.
+ */
+export async function overseasPsamount(env: Env, cfg: KisConfig, excd: string, symb: string, price: number) {
+  const out = await kisCall(env, cfg, {
+    method: "GET",
+    path: "/uapi/overseas-stock/v1/trading/inquire-psamount",
+    trId: trId(env, "overseas.psamount", cfg.isPaper),
+    query: {
+      CANO: cfg.cano,
+      ACNT_PRDT_CD: cfg.acntPrdtCd,
+      OVRS_EXCG_CD: excd,
+      OVRS_ORD_UNPR: String(price),
+      ITEM_CD: symb,
+    },
+  });
+  const o = (out["output"] ?? {}) as Record<string, string>;
+  return {
+    currency: o["tr_crcy_cd"] || "USD",
+    /** 외화(달러) 예수금 기준 주문가능금액 */
+    frcrOrderable: num(o["ord_psbl_frcr_amt"]),
+    /** 통합증거금 포함 주문가능금액(외화 환산) — 원화로 살 수 있으면 여기에 잡힌다 */
+    totalOrderable: num(o["ovrs_ord_psbl_amt"]),
+    /** 환전 후 주문가능금액 */
+    afterExchangeOrderable: num(o["echm_af_ord_psbl_amt"]),
+    /** 이 종목을 지금 가격에 살 수 있는 최대 수량 */
+    maxQty: num(o["ovrs_max_ord_psbl_qty"] || o["max_ord_psbl_qty"]),
+    fx: num(o["exrt"]),
   };
 }
 

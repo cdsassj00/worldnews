@@ -556,6 +556,8 @@ export interface OverseasReadiness {
   balance: { ok: boolean; detail: string };
   usdCash: number | null;
   hasOverseasHoldings: boolean | null;
+  /** 매수가능금액 판정 — 통합증거금이면 달러 0 이어도 ok */
+  buyingPower: { ok: boolean; detail: string } | null;
   verdict: string;
   nextSteps: string[];
 }
