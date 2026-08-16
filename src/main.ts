@@ -9,6 +9,7 @@ import { LabPanel } from "./labpanel";
 import usUniverse from "../shared/us-universe.json";
 import { TaPanel } from "./tapanel";
 import { Ontology3D } from "./ontology3d";
+import { SiteTranslator } from "./translator";
 import type { OntoState, OntoVerdict, RadarItem, RadarOpps, SectorVerdict, StockVerdict, TickerScore } from "./api";
 import { dirClass, el, fmtKrw, fmtKst, fmtNum, fmtPct, timeAgo } from "./format";
 
@@ -640,10 +641,13 @@ const RADAR_TAB_NOTE: Record<RadarTab, string> = {
   weak: "종합 점수 최하위 — 보유 중이면 매도·회피 관점",
 };
 
-/* ── 언어 전환 (국기 클릭 → 구글 웹사이트 번역) ─────────────────
- * 결론 엔진이 실시간으로 만드는 한국어 문장(국면·인과·근거)까지 통째로
- * 번역하려면 DOM 번역 방식이 유일하게 현실적이다. 3D 캔버스 안 라벨은
+/* ── 언어 전환 (국기 클릭 → 자체 실시간 번역) ─────────────────
+ * 2026-08-17 구글 번역 위젯 제거(사용자 지시). Workers AI 번역 모델 +
+ * KV 사전 캐시로 직접 번역한다 — 결론 엔진이 실시간으로 만드는 문장까지
+ * 따라가고, 원문 복귀도 새로고침 없이 즉시다. 3D 캔버스 안 라벨은
  * 그림이라 번역되지 않는다 — 알려진 한계. */
+
+const translator = new SiteTranslator();
 
 function setupLang(): void {
   const box = $("lang-switch");
@@ -652,33 +656,29 @@ function setupLang(): void {
   const mark = (lang: string) => {
     for (const b of box.querySelectorAll<HTMLButtonElement>("button")) {
       b.classList.toggle("active", (b.dataset.lang ?? "") === lang);
+      b.classList.remove("busy");
     }
   };
   mark(saved);
+  translator.onBusy = (busy) => {
+    box.querySelector<HTMLButtonElement>("button.active")?.classList.toggle("busy", busy);
+  };
 
-  if (saved) {
-    // googtrans 쿠키를 심어 두면 위젯이 로드 즉시 그 언어로 번역한다
-    document.cookie = `googtrans=/ko/${saved};path=/`;
-    (window as unknown as { googleTranslateElementInit?: () => void }).googleTranslateElementInit = () => {
-      const g = (window as unknown as { google?: { translate?: { TranslateElement?: new (o: object, id: string) => void } } }).google;
-      if (g?.translate?.TranslateElement) {
-        new g.translate.TranslateElement({ pageLanguage: "ko", autoDisplay: false }, "google_translate_element");
-      }
-    };
-    const s = document.createElement("script");
-    s.src = "https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit";
-    s.async = true;
-    document.head.appendChild(s);
-  }
+  const applyLang = (lang: string) => {
+    if (lang === "en" || lang === "ja" || lang === "zh-CN") translator.enable(lang);
+    else translator.disable();
+    mark(lang);
+  };
+
+  // 저장된 언어는 첫 데이터가 그려진 뒤에 켠다 — 빈 화면을 번역해 봐야 헛돈다
+  if (saved) window.setTimeout(() => applyLang(saved), 2500);
 
   box.addEventListener("click", (ev) => {
     const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("button");
     if (!btn) return;
     const lang = btn.dataset.lang ?? "";
     try { localStorage.setItem("wfg-lang", lang); } catch { /* 무시 */ }
-    if (lang) document.cookie = `googtrans=/ko/${lang};path=/`;
-    else document.cookie = "googtrans=;path=/;expires=Thu, 01 Jan 1970 00:00:00 GMT";
-    location.reload();
+    applyLang(lang);
   });
 }
 

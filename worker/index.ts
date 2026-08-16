@@ -7,6 +7,7 @@ import { getManySeries, getSeries, toSnapshot } from "./quotes";
 import { getGlobalNews, getNews } from "./news";
 import { DISCLAIMER, recommend } from "./recommend";
 import { aiStatus, getAnalysis } from "./analysis";
+import { translateBatch } from "./translate";
 import {
   assertOverseasAllowed,
   assertTradeAuth,
@@ -400,6 +401,13 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     const sel = await getEngineSel(env);
     const { data } = await cached(env, `auto:plan:${engineKey(sel)}`, 120, () => buildPlan(env));
     return json(data);
+  }
+
+  if (path === "/api/translate") {
+    // 실시간 번역 — 공개, 캐시 우선. 남용 방지는 배치 크기·미스 상한으로.
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    const body = (await request.json().catch(() => ({}))) as { target?: string; texts?: unknown };
+    return json(await translateBatch(env, String(body.target ?? ""), body.texts));
   }
 
   if (path === "/api/combo/rank") {

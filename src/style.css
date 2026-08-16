@@ -565,31 +565,39 @@ body {
 }
 
 /* 언어 전환 국기 버튼 + 구글 번역 위젯 UI 숨김 */
+/* 언어 전환 — 국기 이모지는 작아서 안 보인다는 피드백(2026-08-17)에 따라
+ * 글자 알약 버튼으로. 자체 번역기라 클릭 즉시 새로고침 없이 전환된다. */
 .lang-switch {
   display: flex;
-  gap: 2px;
+  gap: 3px;
   align-items: center;
+  padding: 3px 6px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.55);
 }
+.lang-globe { font-size: 13px; margin-right: 1px; }
 .lang-switch button {
   border: 1px solid transparent;
   background: none;
-  font-size: 17px;
+  color: var(--fg-dim, #94a3b8);
+  font-size: 11.5px;
+  font-weight: 700;
   line-height: 1;
-  padding: 3px 4px;
-  border-radius: var(--radius);
+  padding: 5px 8px;
+  border-radius: 999px;
   cursor: pointer;
-  opacity: 0.55;
+  white-space: nowrap;
 }
-.lang-switch button:hover { opacity: 1; }
+.lang-switch button:hover { color: var(--fg, #e2e8f0); border-color: rgba(148, 163, 184, 0.35); }
 .lang-switch button.active {
-  opacity: 1;
-  border-color: var(--border-strong);
-  background: var(--panel-2);
+  color: #050b18;
+  background: #d9a441;
+  border-color: #d9a441;
 }
-/* 구글 번역이 끼워 넣는 상단 배너·툴팁을 숨기고 레이아웃 밀림을 막는다 */
-.goog-te-banner-frame, #goog-gt-tt, .goog-te-balloon-frame, .skiptranslate iframe { display: none !important; }
-body { top: 0 !important; }
-font[style] { background: transparent !important; box-shadow: none !important; }
+/* 번역 진행 중 표시 — 큐가 남아 있는 동안 활성 버튼이 은은히 깜빡인다 */
+.lang-switch button.active.busy { animation: lang-busy 1.2s ease-in-out infinite; }
+@keyframes lang-busy { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 
 /* 자동매매 자금 블록의 소제목 — 어떤 합계인지 식으로 밝힌다 */
 .auto-sub {
