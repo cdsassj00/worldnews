@@ -67,6 +67,7 @@ export class RadarDB extends DurableObject {
       );
       CREATE INDEX IF NOT EXISTS idx_scores_score ON scores(score);
       CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
+      CREATE TABLE IF NOT EXISTS dict(target TEXT NOT NULL, ko TEXT NOT NULL, tr TEXT NOT NULL, PRIMARY KEY(target, ko));
     `);
     // 기존 테이블에 상대강도 컬럼 추가 (이미 있으면 무시)
     try {
@@ -91,6 +92,34 @@ export class RadarDB extends DurableObject {
 
   count(): number {
     return Number(this.sql.exec(`SELECT COUNT(*) AS n FROM tickers`).one().n ?? 0);
+  }
+
+  /* ── 번역 사전 ────────────────────────────────────────
+   * KV 가 아니라 여기 두는 이유: KV 읽기는 엣지에서 60초 캐시돼, 번역이
+   * 몰리는 세션 중에는 낡은 사전을 읽고 통짜로 다시 써서 서로의 항목을
+   * 덮어썼다(두 번째 방문도 느린 원인). SQLite DO 는 강한 일관성 + 행 단위
+   * upsert 라 유실이 없다. */
+
+  dictGet(target: string, texts: string[]): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const t of texts.slice(0, 100)) {
+      const rows = this.sql.exec(`SELECT tr FROM dict WHERE target=? AND ko=?`, target, t).toArray() as { tr?: string }[];
+      if (rows[0]?.tr) out[t] = rows[0].tr;
+    }
+    return out;
+  }
+
+  dictPut(target: string, entries: Record<string, string>): number {
+    let n = 0;
+    for (const [ko, tr] of Object.entries(entries).slice(0, 64)) {
+      if (!ko || !tr) continue;
+      this.sql.exec(
+        `INSERT INTO dict(target,ko,tr) VALUES(?,?,?) ON CONFLICT(target,ko) DO UPDATE SET tr=excluded.tr`,
+        target, ko, tr,
+      );
+      n++;
+    }
+    return n;
   }
 
   /** 커서 위치부터 n개 반환하고 커서를 전진(끝나면 0으로 되감기). */

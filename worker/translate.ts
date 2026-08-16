@@ -28,8 +28,6 @@ const TARGETS: Record<string, string> = {
 
 type Dict = Record<string, string>;
 
-const dictKey = (target: string) => `tr:dict:${target}`;
-
 /* 간판 문구 손번역 — 히어로·탭·전략실 제목처럼 첫인상을 좌우하는 문장은
  * 기계번역 품질에 맡기지 않는다. 여기 없는 문장만 AI 가 처리한다. */
 const STATIC_EN: Dict = {
@@ -111,13 +109,18 @@ export async function translateBatch(env: Env, targetRaw: string, textsRaw: unkn
     .slice(0, MAX_TEXTS);
   if (!texts.length) return { target, map: {}, skipped: [] };
 
-  const dict = ((await env.CACHE.get(dictKey(target), "json")) ?? {}) as Dict;
+  // 사전은 레이더와 같은 SQLite DO 에 둔다 — KV 는 읽기 60초 엣지 캐시 때문에
+  // 번역 세션 중 통짜 덮어쓰기로 항목이 유실됐다(재방문도 느린 원인이었다).
+  if (!env.RADAR) throw new ApiError(503, "dict_unavailable", { hint: "RadarDB 바인딩이 없습니다." });
+  const db = env.RADAR.get(env.RADAR.idFromName("main"));
   const statics = STATICS[target] ?? {};
 
+  const unique = [...new Set(texts)];
+  const stored = await db.dictGet(target, unique.filter((t) => !statics[t]));
   const out: Dict = {};
   const misses: string[] = [];
-  for (const t of [...new Set(texts)]) {
-    const hit = statics[t] ?? dict[t];
+  for (const t of unique) {
+    const hit = statics[t] ?? stored[t];
     if (hit) out[t] = hit;
     else misses.push(t);
   }
@@ -134,17 +137,15 @@ export async function translateBatch(env: Env, targetRaw: string, textsRaw: unkn
       if (!tr) throw new Error("empty");
       return [t, tr] as const;
     }));
-    let added = 0;
+    const fresh: Dict = {};
     for (const r of results) {
       if (r.status !== "fulfilled") continue;
       const [ko, tr] = r.value;
       out[ko] = tr;
-      dict[ko] = tr;
-      added++;
+      fresh[ko] = tr;
     }
-    // 사전은 통짜 한 키 — 쓰기 1회로 끝낸다(KV 쓰기 한도 보호). 동시 요청이
-    // 서로를 덮어써도 잃는 건 "방금 번역한 몇 문장"뿐이고 다음 요청이 메꾼다.
-    if (added) await env.CACHE.put(dictKey(target), JSON.stringify(dict));
+    // 행 단위 upsert — 동시 요청이 있어도 서로의 항목을 지우지 않는다
+    if (Object.keys(fresh).length) await db.dictPut(target, fresh);
   }
 
   return { target, map: out, skipped: misses.slice(MAX_MISSES) };

@@ -25,6 +25,57 @@ function worthTranslating(s: string): boolean {
   return true;
 }
 
+/* 숫자+단위 문자열은 AI 에 보내지 않고(고유 문자열이 무한히 생긴다) 규칙으로
+ * 즉시 바꾼다 — "120종목" → "120 stocks", "128,700원" → "₩128,700".
+ * 순서 중요: 만원 → 원, 개월 → 개, "N분 전" → 분. */
+const UNIT_RULES: Record<string, [RegExp, string][]> = {
+  en: [
+    [/([\d,.]+)\s*만원/g, "$1×10k KRW"],
+    [/([\d,.]+)\s*개월/g, "$1mo"],
+    [/([\d,.]+)\s*년/g, "$1y"],
+    [/([\d,.]+)\s*분 ?전/g, "$1 min ago"],
+    [/([\d,.]+)\s*시간 ?전/g, "$1h ago"],
+    [/([\d,.]+)\s*초 ?전/g, "$1s ago"],
+    [/([\d,.]+)\s*일/g, "$1d"],
+    [/([\d,.]+)\s*종목/g, "$1 stocks"],
+    [/([\d,.]+)\s*주(?![가-힣])/g, "$1 sh"],
+    [/([\d,.]+)\s*원/g, "₩$1"],
+    [/([\d,.]+)\s*건/g, "$1"],
+    [/([\d,.]+)\s*개(?!월)/g, "$1"],
+    [/([\d,.]+)\s*명/g, "$1"],
+  ],
+  ja: [
+    [/([\d,.]+)\s*만원/g, "$1万ウォン"],
+    [/([\d,.]+)\s*개월/g, "$1ヶ月"],
+    [/([\d,.]+)\s*년/g, "$1年"],
+    [/([\d,.]+)\s*분 ?전/g, "$1分前"],
+    [/([\d,.]+)\s*시간 ?전/g, "$1時間前"],
+    [/([\d,.]+)\s*초 ?전/g, "$1秒前"],
+    [/([\d,.]+)\s*일/g, "$1日"],
+    [/([\d,.]+)\s*종목/g, "$1銘柄"],
+    [/([\d,.]+)\s*주(?![가-힣])/g, "$1株"],
+    [/([\d,.]+)\s*원/g, "$1ウォン"],
+    [/([\d,.]+)\s*건/g, "$1件"],
+    [/([\d,.]+)\s*개(?!월)/g, "$1個"],
+    [/([\d,.]+)\s*명/g, "$1名"],
+  ],
+  "zh-CN": [
+    [/([\d,.]+)\s*만원/g, "$1万韩元"],
+    [/([\d,.]+)\s*개월/g, "$1个月"],
+    [/([\d,.]+)\s*년/g, "$1年"],
+    [/([\d,.]+)\s*분 ?전/g, "$1分钟前"],
+    [/([\d,.]+)\s*시간 ?전/g, "$1小时前"],
+    [/([\d,.]+)\s*초 ?전/g, "$1秒前"],
+    [/([\d,.]+)\s*일/g, "$1天"],
+    [/([\d,.]+)\s*종목/g, "$1只"],
+    [/([\d,.]+)\s*주(?![가-힣])/g, "$1股"],
+    [/([\d,.]+)\s*원/g, "$1韩元"],
+    [/([\d,.]+)\s*건/g, "$1件"],
+    [/([\d,.]+)\s*개(?!월)/g, "$1个"],
+    [/([\d,.]+)\s*명/g, "$1名"],
+  ],
+};
+
 const SKIP_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEXTAREA", "CODE"]);
 
 export class SiteTranslator {
@@ -119,7 +170,7 @@ export class SiteTranslator {
     if (this.originals.has(node)) return; // 이미 등록(또는 우리가 번역해 둔) 노드
     const raw = node.data;
     if (this.appliedText.get(node) === raw) return; // 우리가 써넣은 번역문
-    if (!worthTranslating(raw)) return;
+    if (!worthTranslating(raw)) { this.tryUnits(node, raw); return; }
     // 서버 사전 키와 맞도록 공백을 접는다 (HTML 개행·들여쓰기 무시)
     const ko = raw.trim().replace(/\s+/g, " ");
     this.originals.set(node, raw);
@@ -129,6 +180,19 @@ export class SiteTranslator {
     const hit = this.cache.get(ko);
     if (hit) this.apply(ko, hit);
     else this.queue.add(ko);
+  }
+
+  /** 숫자+단위 문자열의 로컬 치환 — 남는 한글이 없을 때만 적용한다 */
+  private tryUnits(node: Text, raw: string): void {
+    const rules = UNIT_RULES[this.lang];
+    if (!rules || !/[가-힣]/.test(raw) || !/\d/.test(raw)) return;
+    let next = raw;
+    for (const [re, rep] of rules) next = next.replace(re, rep);
+    if (next === raw) return;
+    if (this.lang === "en" && /[가-힣]/.test(next)) return; // 못 소화한 한글이 남으면 원문 유지
+    this.originals.set(node, raw);
+    this.appliedText.set(node, next);
+    node.data = next;
   }
 
   private apply(ko: string, translated: string): void {
