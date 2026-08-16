@@ -594,6 +594,8 @@ export interface LabStrategyView {
   positions: (QuantPosition & { pnl: number; pnlPct: number; holdDays: number })[];
   /** 최근 이탈(매도) 종목 */
   exits: QuantTrade[];
+  /** 지금 이 전략의 점수 상위 종목 — "이 전략이 지금 고른 종목" 쇼케이스 */
+  picks: { code: string; name: string; sector: string; score: number; price: number; changePct: number }[];
   equityCurve: { d: string; e: number }[];
   tradeStats: { total: number; wins: number; winRate: number };
   haltedPermanent: boolean;
@@ -615,6 +617,22 @@ export async function labOverview(env: Env): Promise<{
   const store = await loadRank(env);
   const liveEngine = (await env.CACHE.get("auto:engine")) || "onto";
   const now = Date.now();
+
+  // 전략별 현재 추천 종목 — 사이클과 같은 점수 함수를 써서 화면과 매매가 어긋나지 않게 한다
+  const ontoByCode = new Map<string, number>();
+  try {
+    const { radarTop } = await import("./radarscan");
+    const top = await radarTop(env, 500, "desc") as { items?: { code: string; score: number; market: string }[] };
+    for (const it of top.items ?? []) if (it.market !== "US") ontoByCode.set(it.code, it.score);
+  } catch { /* 추천만 빈다 */ }
+  const rowsAll = Object.values(store.rows).filter((r) => r.turnover >= c.minTurnover);
+  const picksFor = (id: LabId) =>
+    rowsAll
+      .map((r) => ({ r, score: labScore(id, r, ontoByCode) }))
+      .filter((x): x is { r: QuantRow; score: number } => x.score !== undefined)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map(({ r, score }) => ({ code: r.code, name: r.name, sector: r.sector, score: round(score, 3), price: r.price, changePct: r.changePct }));
 
   const strategies: LabStrategyView[] = [];
   for (const st of LAB_STRATEGIES) {
@@ -650,6 +668,7 @@ export async function labOverview(env: Env): Promise<{
       maxDrawdownPct: round(dd, 2),
       positions,
       exits: sells.slice(-10).reverse(),
+      picks: picksFor(st.id),
       equityCurve: state.equityCurve ?? [],
       tradeStats: { total: sells.length, wins, winRate: sells.length ? round((wins / sells.length) * 100, 1) : 0 },
       haltedPermanent: state.haltedPermanent,
@@ -662,8 +681,8 @@ export async function labOverview(env: Env): Promise<{
 
   return {
     disclaimer:
-      `전략실의 모든 수치는 실계좌와 같은 가상 원금 ${Math.round(c.capital / 10000).toLocaleString("ko-KR")}만원으로 돌리는 시뮬레이션(모의매매) 기록입니다. ` +
-      "실계좌 운용 중인 전략 카드의 금색 블록만 진짜 돈 기준입니다. " +
+      "전략실의 수익률은 계좌 수익률이 아니라, 4개 전략을 같은 가상 원금·같은 규칙으로 돌리는 백테스트·시뮬레이션(모의매매) 기록입니다. " +
+      "'실계좌 운용 중' 배지는 그 전략이 현재 운영자 계좌의 매매 엔진이라는 표시일 뿐, 금액은 공개하지 않습니다. " +
       "특정 종목의 매수·매도를 권유하지 않으며, 투자 판단과 책임은 이용자 본인에게 있습니다.",
     universe: UNIVERSE.length,
     scanned: Object.keys(store.rows).length,

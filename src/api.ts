@@ -618,6 +618,8 @@ export interface LabStrategy {
   pnlKrw: number; pnlPct: number; maxDrawdownPct: number;
   positions: (QuantPosition & { holdDays: number })[];
   exits: QuantTrade[];
+  /** 지금 이 전략의 점수 상위 종목 — "이 전략이 지금 고른 종목" 쇼케이스 */
+  picks: { code: string; name: string; sector: string; score: number; price: number; changePct: number }[];
   equityCurve: { d: string; e: number }[];
   tradeStats: { total: number; wins: number; winRate: number };
   haltedPermanent: boolean; haltReason: string;

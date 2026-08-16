@@ -2768,22 +2768,40 @@ body {
   .layout { height: auto; min-height: 70vh; }
 }
 
-/* 실계좌 블록 — 모의 숫자와 확실히 구분되는 금색 프레임 */
-.lab-real {
-  border: 1px solid rgba(217, 164, 65, 0.5);
-  background: rgba(217, 164, 65, 0.07);
-  border-radius: 10px;
-  padding: 8px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+/* 쇼케이스 — 챔피언 카드·간판 숫자·전략 픽 */
+.lab-card.champ {
+  border-color: rgba(217, 164, 65, 0.65);
+  background: linear-gradient(160deg, rgba(217, 164, 65, 0.10), rgba(15, 23, 42, 0.5) 45%);
 }
-.lab-real-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-.lab-real-tag { font-size: 10.5px; font-weight: 800; color: #d9a441; letter-spacing: 0.04em; }
-.lab-real-pnl { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.lab-real-meta { margin: 0; font-size: 10.5px; line-height: 1.5; color: var(--fg-dim, #94a3b8); }
+.lab-badge.champ {
+  color: #050b18;
+  background: linear-gradient(120deg, #e8c06a, #d9a441);
+  border-color: #d9a441;
+}
+.lab-headline { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.lab-headline-label { font-size: 10.5px; font-weight: 700; color: var(--fg-faint, #64748b); letter-spacing: 0.03em; }
+.lab-picks {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  align-items: center;
+  border-top: 1px dashed rgba(148, 163, 184, 0.2);
+  padding-top: 8px;
+}
+.lab-picks-label { flex-basis: 100%; font-size: 10px; font-weight: 800; color: #d9a441; letter-spacing: 0.04em; }
+.lab-pick {
+  display: inline-flex;
+  gap: 5px;
+  align-items: baseline;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(148, 163, 184, 0.06);
+}
+.lab-pick b { font-weight: 700; }
+.lab-pick-chg { font-size: 10px; font-variant-numeric: tabular-nums; }
 .lab-fresh { color: #d9a441; }
-.lab-real-tr { background: rgba(217, 164, 65, 0.06) !important; }
 
 /* ── 차트 확대·구간 분석 ─────────────────────────────── */
 .ta-zoom { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 6px 0; }

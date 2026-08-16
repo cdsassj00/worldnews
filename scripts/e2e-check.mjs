@@ -328,7 +328,15 @@ check("지금 움직이는 시장", (await page.locator("#hot-list button").coun
   const cards = await page.locator(".lab-card").count();
   const liveBadge = await page.locator(".lab-badge.live").count();
   const sparks = await page.locator(".lab-spark").count();
-  check(`전략실 — 카드 ${cards} · 실계좌 배지 ${liveBadge} · 곡선 ${sparks}`, cards === 4 && liveBadge >= 1 && sparks === 4);
+  const champ = await page.locator(".lab-badge.champ").count();
+  const picks = await page.locator(".lab-pick").count();
+  // 픽은 서버 스캔 데이터가 있어야 나온다 — 로컬 dev(빈 랭크 저장소)에서는 API 기준으로 판정
+  const apiPicks = await page.evaluate(() =>
+    fetch("/api/lab/overview").then((r) => r.json()).then((j) => j.strategies.reduce((n, s) => n + (s.picks?.length ?? 0), 0)).catch(() => 0));
+  const bodyText = (await page.locator(".lab-strip").textContent().catch(() => "")) ?? "";
+  const noMoney = !/600만|６００만/.test(bodyText);
+  check(`전략실 쇼케이스 — 카드 ${cards} · 챔피언 ${champ} · 픽 ${picks}개(API ${apiPicks}) · 실계좌 배지 ${liveBadge} · 곡선 ${sparks} · 금액 비공개 ${noMoney}`,
+    cards === 4 && champ === 1 && (apiPicks === 0 || picks >= 4) && liveBadge >= 1 && sparks === 4 && noMoney);
   await page.locator(".lab-card").first().click();
   await page.waitForTimeout(400);
   const detailOpen = await page.locator("#lab-detail:not([hidden])").count();

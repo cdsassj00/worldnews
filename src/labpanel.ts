@@ -1,13 +1,17 @@
 /**
  * 전략실 — 4개 전략(온톨로지·수급차트·차트거장·융합)이 같은 규칙으로 겨루는 리그 화면.
  *
- * 스탁이지 전략실을 참고한 구성: 전략마다 카드(수익률·곡선·보유수), 카드를 열면
- * 보유 종목 표(편입가·보유일·수익률)와 이탈 종목, 백테스트 성적이 나온다.
+ * 2026-08-16 사용자 지시로 "쇼케이스" 형태로 개편: 카드의 간판 숫자는 백테스트
+ * 1년 수익률이고, 성적순으로 정렬해 1등에 챔피언 배지를 붙인다. 각 전략이 지금
+ * 점수 상위로 고른 종목(TOP5)도 카드에 그대로 보여준다 — "이 전략이 뭘 골랐고
+ * 그 방식이 과거에 얼마를 벌었는지"가 화면의 전부다. 실계좌 금액은 여기 싣지
+ * 않는다(실계좌 운용 중이라는 사실만 배지로 남긴다).
  *
- * 프레이밍이 핵심이다 — 여기 숫자는 전부 **가상 원금 시뮬레이션**이고, 화면이 그걸
- * 숨기지 않는다. 게임처럼 보여주되 게임인 것을 명시해야 유사투자자문 시비가 없다.
+ * 프레이밍이 핵심이다 — 여기 숫자는 전부 **백테스트·가상 원금 시뮬레이션**이고,
+ * 화면이 그걸 숨기지 않는다. 게임처럼 보여주되 게임인 것을 명시해야 유사투자자문
+ * 시비가 없다.
  */
-import { api, type AutoPlan, type BacktestResults, type LabOverview, type LabStrategy } from "./api";
+import { api, type BacktestResults, type LabOverview, type LabStrategy } from "./api";
 import { dirClass, el, fmtKrw, fmtPct, timeAgo } from "./format";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -56,8 +60,6 @@ export class LabPanel {
   private readonly disclaimer: HTMLElement;
   private data: LabOverview | null = null;
   private bt: BacktestResults | null = null;
-  /** 실계좌 현황(공개 API) — 실계좌 운용 중인 전략 카드에 진짜 돈 숫자를 붙인다 */
-  private plan: AutoPlan | null = null;
   private openId: string | null = null;
 
   constructor(opts: { grid: HTMLElement; detail: HTMLElement; disclaimer: HTMLElement }) {
@@ -68,14 +70,12 @@ export class LabPanel {
 
   async load(): Promise<void> {
     try {
-      const [data, bt, plan] = await Promise.all([
+      const [data, bt] = await Promise.all([
         api.labOverview(),
         this.bt ? Promise.resolve(this.bt) : api.backtest().catch(() => null),
-        api.autoPlan().catch(() => null),
       ]);
       this.data = data;
       if (bt) this.bt = bt;
-      if (plan) this.plan = plan;
       this.render();
     } catch (err) {
       this.grid.replaceChildren(el("p", { class: "note err", text: `전략실을 불러오지 못했습니다 — ${(err as Error).message}` }));
@@ -90,13 +90,22 @@ export class LabPanel {
     return { returns: null, pending: row.pending };
   }
 
+  /** 백테스트 1년(KR) 수익률 — 쇼케이스 정렬·챔피언 판정 기준 */
+  private btYear(s: LabStrategy): number | null {
+    const r = this.btRow(s.engineId).returns;
+    return r && r.length >= 3 ? r[2] : null;
+  }
+
   private render(): void {
     const d = this.data;
     if (!d) return;
     this.disclaimer.textContent = d.disclaimer;
 
-    const cards = d.strategies.map((s) => this.card(s));
-    this.grid.replaceChildren(...cards);
+    // 백테스트 1년 성적순 정렬 — 자랑할 것을 맨 앞에 세운다(미측정은 뒤로)
+    const ranked = [...d.strategies].sort((a, b) => (this.btYear(b) ?? -Infinity) - (this.btYear(a) ?? -Infinity));
+    const championId = this.btYear(ranked[0]) !== null ? ranked[0].id : null;
+
+    this.grid.replaceChildren(...ranked.map((s) => this.card(s, s.id === championId)));
 
     if (this.openId) {
       const s = d.strategies.find((x) => x.id === this.openId);
@@ -110,34 +119,48 @@ export class LabPanel {
     }
   }
 
-  private card(s: LabStrategy): HTMLElement {
+  private card(s: LabStrategy, champion: boolean): HTMLElement {
     const bt = this.btRow(s.engineId);
-    const sign = s.pnlPct >= 0 ? "+" : "";
-    const card = el("button", { type: "button", class: `lab-card${this.openId === s.id ? " open" : ""}${s.liveNow ? " live" : ""}` }, [
+    const year = this.btYear(s);
+    const simSign = s.pnlPct >= 0 ? "+" : "";
+    const card = el("button", {
+      type: "button",
+      class: `lab-card${this.openId === s.id ? " open" : ""}${s.liveNow ? " live" : ""}${champion ? " champ" : ""}`,
+    }, [
       el("div", { class: "lab-card-top" }, [
         el("span", { class: "lab-no", text: `${s.no}호` }),
         el("span", { class: "lab-name", text: s.nameKo }),
+        ...(champion ? [el("span", { class: "lab-badge champ", text: "🏆 챔피언" })] : []),
         s.liveNow
           ? el("span", { class: "lab-badge live", text: "실계좌 운용 중" })
           : el("span", { class: "lab-badge", text: "시뮬레이션" }),
       ]),
       el("p", { class: "lab-desc", text: s.descKo }),
-      el("div", { class: `lab-return ${dirClass(s.pnlPct)}`, text: `${sign}${s.pnlPct.toFixed(2)}%` }),
-      el("p", { class: "lab-meta", text: `가상 원금 ${fmtKrw(s.capital)} → ${fmtKrw(s.equity)} · 보유 ${s.positions.length}종목${s.tradeStats.total ? ` · 승률 ${s.tradeStats.winRate}%` : ""}` }),
-      ...(s.positions.length === 0 && s.tradeStats.total === 0
-        ? [el("p", { class: "lab-meta lab-fresh", text: "이 원장은 방금 개설됐습니다 — 다음 거래일 09:00부터 매매를 시작합니다." })]
-        : []),
-      sparkline(s.equityCurve, s.capital) as unknown as HTMLElement,
-      ...this.realBlock(s),
+      // 간판 숫자 = 백테스트 1년 수익률. 이 전략 규칙으로 지난 1년을 돌렸다면 얼마였나.
+      year !== null
+        ? el("div", { class: "lab-headline" }, [
+            el("div", { class: `lab-return ${dirClass(year)}`, text: `${year >= 0 ? "+" : ""}${year.toFixed(1)}%` }),
+            el("span", { class: "lab-headline-label", text: "백테스트 최근 1년" }),
+          ])
+        : el("div", { class: "lab-headline" }, [
+            el("div", { class: "lab-return", text: "측정 중" }),
+            el("span", { class: "lab-headline-label", text: bt.pending ?? "백테스트 준비 중" }),
+          ]),
       el("div", { class: "lab-bt" },
         bt.returns
           ? [
-              el("span", { class: "lab-bt-label", text: "백테스트" }),
+              el("span", { class: "lab-bt-label", text: "구간별" }),
               ...bt.returns.map((v, i) =>
                 el("span", { class: `lab-bt-chip ${v >= 0 ? "up" : "down"}`, text: `${["3개월", "6개월", "1년"][i]} ${v >= 0 ? "+" : ""}${v.toFixed(1)}%` })),
             ]
-          : [el("span", { class: "lab-bt-label", text: bt.pending ? "백테스트 진행 중" : "백테스트 —" })],
+          : [el("span", { class: "lab-bt-label", text: "" })],
       ),
+      // 실전 리그(가상 원금 실시간 모의)는 보조 지표로 한 줄
+      el("p", { class: "lab-meta", text: s.positions.length === 0 && s.tradeStats.total === 0
+        ? "실시간 리그 — 다음 거래일 09:00 개막 (4개 전략이 같은 가상 원금으로 겨룹니다)"
+        : `실시간 리그 ${simSign}${s.pnlPct.toFixed(2)}% · 보유 ${s.positions.length}종목${s.tradeStats.total ? ` · 승률 ${s.tradeStats.winRate}%` : ""}` }),
+      sparkline(s.equityCurve, s.capital) as unknown as HTMLElement,
+      ...this.picksBlock(s),
       s.haltedPermanent ? el("p", { class: "lab-halt", text: `영구 정지 — ${s.haltReason}` }) : el("span", {}),
     ]);
     card.addEventListener("click", () => {
@@ -148,27 +171,17 @@ export class LabPanel {
     return card;
   }
 
-
-  /**
-   * 실계좌 블록 — 이 전략이 실제 돈을 움직이고 있으면 카드에 진짜 계좌 숫자를 붙인다.
-   * 모의(가상 400만)와 실계좌(봇 상한 400만)를 한 카드에서 구분해 보여주는 것이 핵심이다 —
-   * 섞어 버리면 "시뮬레이션 게임" 프레이밍도, 숫자의 정직함도 다 무너진다.
-   */
-  private realBlock(s: LabStrategy): HTMLElement[] {
-    const p = this.plan;
-    if (!s.liveNow || !p || !p.account.connected) return [];
-    const sign = p.botPnlKrw >= 0 ? "+" : "";
-    const started = p.real?.startedAt ? new Date(p.real.startedAt).toISOString().slice(0, 10) : "2026-07-27";
+  /** 이 전략이 지금 점수 상위로 고른 종목 — 쇼케이스의 "그래서 뭘 샀는데?" 답 */
+  private picksBlock(s: LabStrategy): HTMLElement[] {
+    if (!s.picks?.length) return [];
     return [
-      el("div", { class: "lab-real" }, [
-        el("div", { class: "lab-real-head" }, [
-          el("span", { class: "lab-real-tag", text: "실계좌 (진짜 돈)" }),
-          el("span", { class: `lab-real-pnl ${dirClass(p.botPnlKrw)}`, text: `봇 손익 ${sign}${fmtKrw(p.botPnlKrw)}` }),
-        ]),
-        el("p", { class: "lab-real-meta", text: `${started} 시작 · 봇 운용 상한 ${fmtKrw(p.config?.capitalKrw ?? 4000000)} · 보유 ${p.positions.length}종목 · 계좌 전체를 봇이 운용합니다` }),
-        (p.real?.botPnlCurve?.length ?? 0) >= 2
-          ? (sparkline(p.real.botPnlCurve.map((x) => ({ d: x.d, e: x.v })), 0, 220, 40) as unknown as HTMLElement)
-          : el("p", { class: "lab-real-meta", text: "실계좌 곡선은 오늘부터 기록을 시작했습니다(과거는 재구성하지 않습니다)." }),
+      el("div", { class: "lab-picks" }, [
+        el("span", { class: "lab-picks-label", text: "이 전략이 지금 고른 종목" }),
+        ...s.picks.slice(0, 5).map((p) =>
+          el("span", { class: "lab-pick" }, [
+            el("b", { text: p.name }),
+            el("span", { class: `lab-pick-chg ${dirClass(p.changePct)}`, text: fmtPct(p.changePct) }),
+          ])),
       ]),
     ];
   }
@@ -182,11 +195,30 @@ export class LabPanel {
       ]),
     );
 
+    // 지금 고른 종목 상세 — 점수까지 (카드에는 이름·등락만)
+    if (s.picks?.length) {
+      const table = el("div", { class: "lab-table" });
+      table.append(el("div", { class: "lab-tr lab-th" }, [
+        el("span", { text: "지금 고른 종목" }), el("span", { text: "섹터" }), el("span", { text: "현재가" }),
+        el("span", { text: "전략 점수" }), el("span", { text: "오늘 등락" }),
+      ]));
+      for (const p of s.picks.slice(0, 5)) {
+        table.append(el("div", { class: "lab-tr" }, [
+          el("span", { class: "lab-td-name", text: p.name }),
+          el("span", { text: p.sector || "—" }),
+          el("span", { text: fmtKrw(Math.round(p.price)) }),
+          el("span", { text: p.score.toFixed(2) }),
+          el("span", { class: dirClass(p.changePct), text: fmtPct(p.changePct) }),
+        ]));
+      }
+      box.append(table);
+    }
+
     // 보유 종목 표 — 스탁이지식: 종목·편입가·현재가·보유일·수익률
     if (s.positions.length) {
       const table = el("div", { class: "lab-table" });
       table.append(el("div", { class: "lab-tr lab-th" }, [
-        el("span", { text: "보유 종목" }), el("span", { text: "편입가" }), el("span", { text: "현재가" }),
+        el("span", { text: "리그 보유 종목" }), el("span", { text: "편입가" }), el("span", { text: "현재가" }),
         el("span", { text: "보유일" }), el("span", { text: "수익률" }),
       ]));
       for (const p of s.positions) {
@@ -200,7 +232,7 @@ export class LabPanel {
       }
       box.append(table);
     } else {
-      box.append(el("p", { class: "note", text: "현재 보유 종목이 없습니다." }));
+      box.append(el("p", { class: "note", text: "리그 보유 종목이 아직 없습니다 — 다음 거래일 09:00부터 매매를 시작합니다." }));
     }
 
     // 이탈 종목 — 판 것도 그대로 보여준다(좋은 것만 남기면 기록이 아니라 광고다)
@@ -217,24 +249,6 @@ export class LabPanel {
           el("span", { class: "lab-td-reason", text: t.reason }),
           el("span", { class: dirClass(t.pnl ?? 0), text: t.pnl !== undefined ? `${t.pnl >= 0 ? "+" : ""}${fmtKrw(t.pnl)}` : "—" }),
           el("span", { text: timeAgo(t.at) }),
-        ]));
-      }
-      box.append(table);
-    }
-
-    if (s.liveNow && this.plan?.account.connected && this.plan.positions.length) {
-      const table = el("div", { class: "lab-table" });
-      table.append(el("div", { class: "lab-tr lab-th" }, [
-        el("span", { text: "실계좌 보유 (진짜 돈)" }), el("span", { text: "평단" }), el("span", { text: "현재가" }),
-        el("span", { text: "수량" }), el("span", { text: "수익률" }),
-      ]));
-      for (const bp of this.plan.positions) {
-        table.append(el("div", { class: "lab-tr lab-real-tr" }, [
-          el("span", { class: "lab-td-name", text: bp.name ?? bp.code }),
-          el("span", { text: fmtKrw(Math.round(bp.avgPrice)) }),
-          el("span", { text: fmtKrw(Math.round(bp.price)) }),
-          el("span", { text: `${bp.qty}주` }),
-          el("span", { class: dirClass(bp.pnlPct), text: fmtPct(bp.pnlPct) }),
         ]));
       }
       box.append(table);

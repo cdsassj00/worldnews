@@ -1027,9 +1027,10 @@ function setupGlobe(liveCodes: Set<string>, orderCodes: Set<string>): void {
     });
 }
 
-/* ── 히어로 — 실계좌가 지금 어떻게 돌고 있는지 살아 있는 숫자로 ───────────
- * 신뢰는 문구가 아니라 숫자가 만든다. autoPlan(공개 API)에서 넣은 돈·평가·수익을
- * 받아 채우고, 실패하면 "—" 로 둔다(가짜 숫자를 지어내지 않는다). */
+/* ── 히어로 — 백테스트 챔피언과 실계좌 가동 상태를 간판으로 ───────────
+ * 2026-08-16 사용자 지시: 계좌 금액 대신 "가장 높은 수익률을 낸 조합"을 자랑한다.
+ * 백테스트(측정 고정값)에서 1년 성적 1위 엔진을 챔피언으로 뽑아 걸고, 실계좌에는
+ * 어떤 엔진이 가동 중인지(금액 없이)만 보여준다. 실패하면 "—" 로 둔다. */
 function setupHero(): void {
   $("hero-goto-lab").addEventListener("click", () => $("lab-strip").scrollIntoView({ behavior: "smooth" }));
   $("hero-open-ta").addEventListener("click", () => $("btn-ta").click());
@@ -1039,23 +1040,27 @@ function setupHero(): void {
 }
 
 async function fillHero(): Promise<void> {
+  const names: Record<string, string> = { onto: "1호 온톨로지", quant: "2호 수급·차트", ta: "3호 차트 거장", hybrid: "4호 융합" };
   try {
-    const p = await api.autoPlan();
-    $("hero-deposit").textContent = p.depositKrw ? fmtKrw(p.depositKrw) : "—";
-    $("hero-equity").textContent = p.account.connected ? fmtKrw(p.equity) : "계좌 조회 대기";
-    const pnlEl = $("hero-pnl");
-    if (p.account.connected && p.depositKrw) {
-      const sign = p.netProfitKrw >= 0 ? "+" : "";
-      pnlEl.textContent = `${sign}${fmtKrw(p.netProfitKrw)} (${fmtPct(p.netProfitPct)})`;
-      pnlEl.className = `hero-stat-value ${dirClass(p.netProfitKrw)}`;
-    } else {
-      pnlEl.textContent = "—";
+    const bt = await api.backtest();
+    // 챔피언 = 국내 백테스트 최근 1년 수익률 1위 엔진
+    let best: { name: string; year: number } | null = null;
+    for (const e of bt.engineComparison.engines) {
+      const year = e.KR?.returns?.[2];
+      if (year !== undefined && (!best || year > best.year)) best = { name: names[e.id] ?? e.nameKo, year };
     }
-    const names: Record<string, string> = { onto: "1호 온톨로지", quant: "2호 수급·차트", ta: "3호 차트 거장", hybrid: "4호 융합" };
-    $("hero-engine").textContent = names[p.engine] ?? p.engine;
-  } catch {
-    /* 히어로 숫자는 못 채우면 그대로 둔다 */
-  }
+    if (best) {
+      $("hero-champ").textContent = best.name;
+      const yEl = $("hero-btyear");
+      yEl.textContent = `${best.year >= 0 ? "+" : ""}${best.year.toFixed(1)}%`;
+      yEl.className = `hero-stat-value ${dirClass(best.year)}`;
+    }
+  } catch { /* 못 채우면 그대로 둔다 */ }
+  try {
+    const lab = await api.labOverview();
+    $("hero-engine").textContent = `${names[lab.liveEngine] ?? lab.liveEngine} 가동 중`;
+    if (lab.universe) $("hero-universe").textContent = `${lab.universe.toLocaleString("ko-KR")}종목`;
+  } catch { /* 못 채우면 그대로 둔다 */ }
 }
 
 /* ── 부트스트랩 ─────────────────────────────── */
