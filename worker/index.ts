@@ -27,6 +27,7 @@ import { runStrategy } from "./strategy";
 import { tickerNewsStatus } from "./tickernews";
 import { radarFind, radarOpps, radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
 import { quantCycle, quantRank, quantScanChunk, quantStatus, resetQuant, QUANT_PROFILE_LIST } from "./quant";
+import { taCached } from "./ta";
 import { briefIndex, briefPage, rssXml, sitemapXml } from "./rss";
 import { getVerdict } from "./verdict";
 import { liveSensitivity, promoteSensitivity, rollbackSensitivity } from "./senslive";
@@ -521,6 +522,17 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
     assertTradeAuth(env, request);
     return json({ ok: true, state: await resetLedger(env) });
+  }
+
+  if (path === "/api/ta") {
+    // 기술적 분석 — 창시자가 있는 차트 전략 13종 판정 + 차트용 지표 시계열.
+    // 요청 단위 계산이라 크론 예산을 쓰지 않는다.
+    const symbol = (url.searchParams.get("symbol") ?? "").trim();
+    if (!symbol) throw new ApiError(400, "symbol_required");
+    // num(null, 180) 은 Number(null)=0 이라 기본값이 안 먹는다 — 파라미터 유무를 먼저 본다
+    const daysRaw = url.searchParams.get("days");
+    const days = Math.min(400, Math.max(60, daysRaw ? Math.floor(num(daysRaw, 180)) : 180));
+    return json(await taCached(env, symbol, days));
   }
 
   /* ── 퀀트 트랙 (수급·차트 전용 · 모의매매) ───────────────── */

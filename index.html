@@ -102,6 +102,7 @@
       </div>
       <div id="google_translate_element" hidden></div>
       <button class="btn btn-ghost" id="btn-theme" type="button" title="화면 밝기 전환">☀️ 밝게</button>
+      <button class="btn btn-ghost" id="btn-ta" type="button">차트 분석</button>
       <button class="btn btn-ghost" id="btn-auto" type="button">자동매매</button>
       <button class="btn btn-ghost" id="btn-auth" type="button">거래 암호</button>
     </header>
@@ -372,6 +373,27 @@
           <button class="btn btn-ghost" id="auto-close" type="button">닫기</button>
         </div>
         <div class="auto-body" id="auto-body"></div>
+      </div>
+    </div>
+
+    <!-- 기술적 분석 — 차트를 넓게 봐야 하는 화면이라 자동매매와 같은 전폭 모달로 연다.
+         본문이 고정 높이 앱(body overflow:hidden)이라 인라인 섹션으로는 폭이 안 나온다. -->
+    <div class="modal modal-wide" id="ta-modal" hidden>
+      <div class="modal-card auto-card" role="dialog" aria-modal="true" aria-labelledby="ta-title">
+        <div class="auto-head">
+          <h2 id="ta-title">기술적 분석</h2>
+          <span class="badge badge-muted">차트 전략 13종</span>
+          <span class="spacer"></span>
+          <button class="btn btn-ghost" id="ta-close" type="button">닫기</button>
+        </div>
+        <div class="auto-body">
+          <p class="card-sub" id="ta-sub">종목을 고르면 창시자가 있는 차트 전략들이 각각 판정을 냅니다.</p>
+          <div class="ta-search">
+            <input id="ta-search" type="search" placeholder="종목명 또는 코드 (예: 현대백화점, 069960)" autocomplete="off" />
+            <ul id="ta-results" class="search-results" hidden></ul>
+          </div>
+          <div id="ta-body"><p class="note">종목을 검색하거나 목록에서 눌러 보세요.</p></div>
+        </div>
       </div>
     </div>
 

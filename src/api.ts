@@ -472,6 +472,44 @@ function humanize(code: string, detail: unknown): string {
 
 /* ── 퀀트 트랙 (수급·차트 전용 · 모의매매) ─────────────── */
 
+/* ── 기술적 분석 ─────────────────────────────── */
+
+export interface TaStrategy {
+  id: string;
+  nameKo: string;
+  author: string;
+  verdict: "strong_buy" | "buy" | "neutral" | "sell" | "strong_sell";
+  score: number;
+  text: string;
+  levels?: { label: string; value: number }[];
+}
+
+export interface TaResponse {
+  symbol: string;
+  name: string;
+  currency: string;
+  price: number;
+  changePct: number;
+  asOf: number;
+  strategies: TaStrategy[];
+  consensus: { score: number; verdict: TaStrategy["verdict"]; buy: number; neutral: number; sell: number; text: string };
+  patterns: { nameKo: string; bullish: boolean; text: string }[];
+  fib: { label: string; value: number }[];
+  levels: { support: number | null; resistance: number | null };
+  indicators: { rsi: number; macdHist: number; adx: number; atr: number; mfi: number; bbPercentB: number };
+  suggestedStop: number | null;
+  chart: {
+    t: number[];
+    open: number[]; high: number[]; low: number[]; close: number[]; volume: number[];
+    ma20: (number | null)[]; ma60: (number | null)[];
+    bbUpper: (number | null)[]; bbLower: (number | null)[];
+    rsi: (number | null)[];
+    macd: (number | null)[]; macdSignal: (number | null)[]; macdHist: (number | null)[];
+    adx: (number | null)[]; pdi: (number | null)[]; mdi: (number | null)[];
+    supertrend: (number | null)[]; stTrend: (number | null)[];
+  };
+}
+
 export interface OverseasReadiness {
   configAllowed: boolean;
   configReason: string;
@@ -599,6 +637,7 @@ export const api = {
   autoResume: () => request<{ ok: true }>("/api/auto/resume", { method: "POST", auth: true, body: "{}" }),
   autoReset: () => request<{ ok: true }>("/api/auto/reset", { method: "POST", auth: true, body: "{}" }),
 
+  ta: (symbol: string, days = 180) => request<TaResponse>(`/api/ta?symbol=${encodeURIComponent(symbol)}&days=${days}`),
   overseasCheck: () =>
     request<OverseasReadiness>("/api/kis/overseas-check", { method: "POST", auth: true, body: "{}" }),
   autoEngine: () => request<{ engine: string; engines: { id: string; nameKo: string; desc: string }[] }>("/api/auto/engine"),

@@ -286,6 +286,25 @@ await page.click("#auto-close");
 check("티커테이프", (await page.locator(".tape-item").count()) > 5);
 check("지금 움직이는 시장", (await page.locator("#hot-list button").count()) >= 3);
 
+// 기술적 분석 — 모달 열기 → 검색 → 차트 3단 + 전략 카드
+{
+  await page.click("#btn-ta");
+  await page.waitForSelector("#ta-modal:not([hidden])", { timeout: 10000 });
+  await page.fill("#ta-search", "삼성전자");
+  await page.waitForSelector("#ta-results button", { timeout: 30000 });
+  await page.locator("#ta-results button").first().click();
+  await page.waitForSelector(".ta-chart", { timeout: 40000 });
+  await page.waitForTimeout(800);
+  const charts = await page.locator(".ta-chart").count();
+  const box = await page.locator(".ta-chart").first().boundingBox();
+  await page.locator("#ta-body").locator("xpath=preceding-sibling::*").last().waitFor({ timeout: 5000 }).catch(() => {});
+  await page.locator("#ta-modal .radar-tab").nth(1).click();
+  await page.waitForTimeout(400);
+  const strats = await page.locator(".ta-strat").count();
+  check(`기술적 분석 — 차트 ${charts}단 · 폭 ${Math.round(box?.width ?? 0)}px · 전략 ${strats}개`, charts === 3 && strats >= 13 && (box?.width ?? 0) > 600);
+  await page.click("#ta-close");
+}
+
 // 퀀트 트랙 카드 — 모의매매 고지와 성적 블록이 떠야 한다
 {
   const warn = (await page.locator("#quant-body .quant-warn").count()) > 0;

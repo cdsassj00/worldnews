@@ -4,6 +4,7 @@ import { api, ApiFailure, getTradeToken, setTradeToken, type ConfigResponse, typ
 import { Panel, type OrderDraft } from "./panel";
 import { AutoPanel } from "./autopanel";
 import { QuantPanel } from "./quantpanel";
+import { TaPanel } from "./tapanel";
 import { Ontology3D } from "./ontology3d";
 import type { OntoState, OntoVerdict, RadarItem, RadarOpps, SectorVerdict, StockVerdict, TickerScore } from "./api";
 import { dirClass, el, fmtKrw, fmtKst, fmtNum, fmtPct, timeAgo } from "./format";
@@ -45,6 +46,7 @@ const panel = new Panel({
 
 let autoPanel: AutoPanel | null = null;
 let quantPanel: QuantPanel | null = null;
+let taPanel: TaPanel | null = null;
 let onto: Ontology3D | null = null;
 let miniGlobe: Globe | null = null;
 let ontoState: OntoState | null = null;
@@ -373,7 +375,7 @@ function setupOntology(): void {
     onSelect: (kind, id) => {
       if (kind !== "ticker") return;
       const sc = ontoState?.scores.find((s) => s.code === id);
-      if (sc) panel.openTicker(sc);
+      if (sc) { panel.openTicker(sc); void taPanel?.show(sc.symbol, sc.nameKo); }
     },
     onHover: (label, x, y) => {
       if (!label) {
@@ -479,6 +481,7 @@ function renderScoreList(s: OntoState): void {
       btn.addEventListener("click", () => {
         onto?.showTicker(t);
         panel.openTicker(t);
+        void taPanel?.show(t.symbol, t.nameKo);
       });
       return el("li", {}, [btn]);
     }),
@@ -540,7 +543,7 @@ async function loadVerdict(): Promise<void> {
         void (async () => {
           const found = await api.radarFind(st.code).catch(() => null);
           const r = found?.items.find((x) => x.code === st.code) ?? found?.items[0];
-          if (r) { const t = radarToTicker(r); onto?.showTicker(t); panel.openTicker(t); }
+          if (r) { const t = radarToTicker(r); onto?.showTicker(t); panel.openTicker(t); void taPanel?.show(t.symbol, t.nameKo); }
         })();
       });
       return el("li", {}, [btn]);
@@ -694,6 +697,7 @@ function renderRadarList(): void {
         const t = radarToTicker(r);
         onto?.showTicker(t);
         panel.openTicker(t);
+        void taPanel?.show(t.symbol, t.nameKo);
       });
       return el("li", {}, [btn]);
     }),
@@ -722,10 +726,23 @@ async function loadRadar(): Promise<void> {
 }
 
 /** 레이더 행을 종목 상세 화면이 이해하는 모양으로 변환 */
+/**
+ * 레이더 행 → 야후 심볼.
+ *
+ * 레이더 API 는 종목코드만 주고 심볼은 주지 않는다(DB 에는 있지만 응답에 없다).
+ * 유니버스 전체가 `코드 + .KS/.KQ` 규칙을 예외 없이 따르므로 여기서 만든다.
+ * 미국 종목은 코드가 곧 심볼이다.
+ */
+function yahooSymbol(code: string, market?: string): string {
+  if (!code) return "";
+  if (market === "US" || /^[A-Z.]+$/.test(code)) return code;
+  return `${code}.${market === "KOSDAQ" ? "KQ" : "KS"}`;
+}
+
 function radarToTicker(r: RadarItem): TickerScore {
   return {
     code: r.code,
-    symbol: "",
+    symbol: yahooSymbol(r.code, r.market),
     nameKo: r.name,
     price: r.price,
     changePct: r.changePct,
@@ -740,6 +757,66 @@ function radarToTicker(r: RadarItem): TickerScore {
     sector: r.sector,
     asOf: r.updatedAt,
   };
+}
+
+
+/** 기술적 분석 모달 열고 닫기 */
+function setupTaModal(): void {
+  const modal = $("ta-modal");
+  const open = () => {
+    modal.hidden = false;
+    // 아직 아무 종목도 안 골랐으면 지금 화면에서 보고 있던 종목으로 채운다
+    void taPanel?.load();
+  };
+  $("btn-ta").addEventListener("click", open);
+  $("ta-close").addEventListener("click", () => (modal.hidden = true));
+  modal.addEventListener("click", (e) => { if (e.target === modal) modal.hidden = true; });
+  const w = window as unknown as { __wfgOpenTa?: () => void };
+  w.__wfgOpenTa = open;
+}
+
+/* ── 기술적 분석 카드 전용 검색 ─────────────────────────
+ * 위쪽 종목 검색과 따로 둔 이유는 쓰임이 다르기 때문이다. 저쪽은 온톨로지 경로를
+ * 보러 가는 입구이고, 여기는 차트만 보러 오는 사람의 입구다. 하나로 묶으면
+ * 차트를 보려고 스크롤을 위로 올라갔다 다시 내려와야 한다. */
+function setupTaSearch(): void {
+  const input = $<HTMLInputElement>("ta-search");
+  const results = $<HTMLUListElement>("ta-results");
+  let timer = 0;
+  const close = () => { results.hidden = true; results.replaceChildren(); };
+  const run = async () => {
+    const q = input.value.trim();
+    if (!q) return close();
+    try {
+      const { items } = await api.radarFind(q);
+      if (!items.length) {
+        results.replaceChildren(el("li", { class: "note", text: "일치하는 종목이 없습니다 (KOSPI200·KOSDAQ150 안에서 검색)" }));
+        results.hidden = false;
+        return;
+      }
+      results.replaceChildren(
+        ...items.map((r) => {
+          const btn = el("button", { type: "button" }, [
+            el("span", {}, [el("span", { text: r.name }), el("span", { class: "cc", text: ` ${r.code} · ${r.sector ?? "미분류"}` })]),
+          ]);
+          btn.addEventListener("click", () => {
+            void taPanel?.show(yahooSymbol(r.code, r.market), r.name);
+            input.value = "";
+            close();
+          });
+          return el("li", {}, [btn]);
+        }),
+      );
+      results.hidden = false;
+    } catch {
+      close();
+    }
+  };
+  input.addEventListener("input", () => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => void run(), 250);
+  });
+  input.addEventListener("blur", () => window.setTimeout(close, 200));
 }
 
 /* ── 종목 검색 (조회용 사용자의 첫 진입점) ─────────────── */
@@ -772,6 +849,7 @@ function setupTickerSearch(): void {
             const t = radarToTicker(r);
             panel.openTicker(t);
             onto?.showTicker(t);
+            void taPanel?.show(t.symbol, t.nameKo);
             input.value = "";
             close();
           });
@@ -956,6 +1034,9 @@ async function boot(): Promise<void> {
   setupLang();
 
   quantPanel = new QuantPanel({ root: $("quant-body"), sub: $("quant-sub") });
+  taPanel = new TaPanel({ root: $("ta-body"), sub: $("ta-sub") });
+  setupTaSearch();
+  setupTaModal();
   await Promise.allSettled([loadOntology(), loadTape(), loadRadar(), loadVerdict(), quantPanel.load()]);
   // 시세는 주기적으로 갱신(90초 캐시와 맞춤), 온톨로지는 전략 캐시(5분)에 맞춘다
   setInterval(() => void loadTape(), 90_000);
