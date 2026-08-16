@@ -9,6 +9,9 @@
  */
 import { api, type TaResponse, type TaStrategy } from "./api";
 import { el, fmtKrw, fmtPct, svgEl, timeAgo } from "./format";
+// 구간 재분석은 서버와 **같은 코드**를 프런트에서 직접 돌린다 — 확대할 때마다
+// API 를 부르면 느리고, 다른 코드로 계산하면 서버 판정과 어긋난다.
+import { windowAnalysis } from "../shared/ta";
 
 const NS = "http://www.w3.org/2000/svg";
 
@@ -94,6 +97,8 @@ export class TaPanel {
   private nameHint = "";
   private tab: "plan" | "chart" | "strategy" = "plan";
   private loading = false;
+  /** 확대 구간 (chart 배열 절대 인덱스). null 이면 기본(최근 132봉) */
+  private zoom: { i0: number; i1: number } | null = null;
 
   constructor(opts: { root: HTMLElement; sub: HTMLElement }) {
     this.root = opts.root;
@@ -126,7 +131,9 @@ export class TaPanel {
     this.loading = true;
     this.root.replaceChildren(el("p", { class: "note", text: `${this.nameHint || this.symbol} 차트를 분석하는 중…` }));
     try {
-      this.data = await api.ta(this.symbol);
+      // 400봉을 받아 두고 화면은 기본 최근 132봉(6개월)만 — 확대·축소가 서버 왕복 없이 된다
+      this.data = await api.ta(this.symbol, 400);
+      this.zoom = null;
       this.render();
     } catch (err) {
       this.root.replaceChildren(el("p", { class: "note err", text: `기술적 분석 실패 — ${(err as Error).message}` }));
@@ -249,7 +256,14 @@ export class TaPanel {
     ));
 
     return [
-      el("div", { class: "ta-panel" }, [head, rows, el("p", { class: "note err-soft", text: p.invalidation })]),
+      el("div", { class: "ta-panel" }, [
+        head, rows,
+        el("p", { class: "note err-soft", text: p.invalidation }),
+        ...(d.pricePatterns?.length
+          ? [el("p", { class: "note", text: `패턴 — ${d.pricePatterns[0].nameKo}${d.pricePatterns[0].confirmed ? "(완성)" : "(형성 중)"}: ${d.pricePatterns[0].text}` })]
+          : []),
+        ...(d.profile ? [el("p", { class: "note", text: `매물대 — ${d.profile.text}` })] : []),
+      ]),
       el("div", { class: "ta-panel" }, [el("h4", { class: "ta-h4", text: "진입 조건 점검" }), check]),
       el("div", { class: "ta-panel" }, [size]),
       el("div", { class: "ta-panel" }, [
@@ -287,10 +301,44 @@ export class TaPanel {
   }
 
   /** ① 가격 + 이평 + 볼린저 + 지지/저항 + 거래량 */
+  /** 현재 확대 구간 [i0, i1] — 기본은 최근 132봉(약 6개월) */
+  private zoomRange(total: number): { i0: number; i1: number } {
+    if (this.zoom) {
+      return { i0: Math.max(0, this.zoom.i0), i1: Math.min(total - 1, this.zoom.i1) };
+    }
+    return { i0: Math.max(0, total - 132), i1: total - 1 };
+  }
+
+  private setZoom(i0: number | null, i1?: number): void {
+    this.zoom = i0 === null ? null : { i0, i1: i1! };
+    this.render();
+  }
+
   private chartBlocks(d: TaResponse): HTMLElement[] {
-    const c = d.chart;
+    const full = d.chart;
+    const total = full.close.length;
+    if (!total) return [el("p", { class: "note", text: "차트 데이터가 없습니다." })];
+    const z = this.zoomRange(total);
+    const cut = <T,>(a: T[]): T[] => a.slice(z.i0, z.i1 + 1);
+    // 확대 구간만 잘라 그린다 — 지표는 전체 데이터로 계산된 값이라 잘라도 왜곡이 없다
+    const c = {
+      ...full,
+      open: cut(full.open), high: cut(full.high), low: cut(full.low),
+      close: cut(full.close), volume: cut(full.volume),
+      ma20: cut(full.ma20), ma60: cut(full.ma60),
+      bbUpper: cut(full.bbUpper), bbLower: cut(full.bbLower),
+      rsi: cut(full.rsi), macd: cut(full.macd), macdSignal: cut(full.macdSignal), macdHist: cut(full.macdHist),
+      adx: cut(full.adx), pdi: cut(full.pdi), mdi: cut(full.mdi),
+      supertrend: cut(full.supertrend), stTrend: cut(full.stTrend),
+    };
     const n = c.close.length;
-    if (!n) return [el("p", { class: "note", text: "차트 데이터가 없습니다." })];
+
+    /* 구간 재분석 — 확대한 그 구간의 데이터만으로 패턴·추세선·매물대·지지저항을 다시 계산 */
+    const winHist = {
+      price: c.close[n - 1],
+      closes: c.close, highs: c.high, lows: c.low, volumes: c.volume,
+    };
+    const win = windowAnalysis(winHist);
 
     const W = 720, H = 260, PAD = 34, VOL_H = 46;
     const plotH = H - VOL_H - 18;
@@ -334,8 +382,65 @@ export class TaPanel {
     }
     // 이동평균
     s1.append(path(linePath(c.ma20, sc), C.ma20, 1.3), path(linePath(c.ma60, sc), C.ma60, 1.3));
-    // 지지·저항 사다리 — 강할수록 진하게. 화면 밖 가격은 건너뛴다
-    for (const lv of d.ladder) {
+
+    // 매물대 — 오른쪽에 수평 막대. 두꺼울수록 그 가격대에 산 사람이 많다
+    {
+      const maxPct = Math.max(...win.profile.bins.map((b) => b.pct), 1);
+      for (const b of win.profile.bins) {
+        if (b.mid > max + pad || b.mid < min - pad) continue;
+        const bar = document.createElementNS(NS, "rect");
+        const bwid = (b.pct / maxPct) * 60;
+        bar.setAttribute("x", String(W - 8 - bwid));
+        bar.setAttribute("y", String(sc.y(b.hi)));
+        bar.setAttribute("width", String(bwid));
+        bar.setAttribute("height", String(Math.max(1, Math.abs(sc.y(b.lo) - sc.y(b.hi)) - 0.6)));
+        bar.setAttribute("fill", Math.abs(b.mid - win.profile.poc) < 1e-6 ? "rgba(217,164,65,0.5)" : "rgba(148,163,184,0.16)");
+        s1.append(bar);
+      }
+      s1.append(label(W - 10, sc.y(win.profile.poc) + 3, `매물대 ${this.money(win.profile.poc)}`, "#d9a441", "end"));
+    }
+
+    // 추세선 — 스윙 고저 두 점을 잇고 오늘까지 연장
+    for (const tl of win.trendlines) {
+      const ln = document.createElementNS(NS, "line");
+      ln.setAttribute("x1", String(sc.x(tl.from.i))); ln.setAttribute("y1", String(sc.y(tl.from.price)));
+      ln.setAttribute("x2", String(sc.x(n - 1))); ln.setAttribute("y2", String(sc.y(tl.valueNow)));
+      ln.setAttribute("stroke", tl.kind === "support" ? "#22c55e" : "#ef4444");
+      ln.setAttribute("stroke-width", "1.4");
+      if (tl.broken) ln.setAttribute("stroke-dasharray", "3 3");
+      ln.setAttribute("opacity", "0.75");
+      s1.append(ln);
+    }
+
+    // 가격 패턴 — 스윙 점들을 금색 선으로 잇고 넥라인을 점선으로
+    for (const pat of win.patterns.slice(0, 2)) {
+      if (pat.markers.length >= 2) {
+        const pl = document.createElementNS(NS, "polyline");
+        pl.setAttribute("points", pat.markers.map((m) => `${sc.x(m.i).toFixed(1)},${sc.y(m.price).toFixed(1)}`).join(" "));
+        pl.setAttribute("fill", "none");
+        pl.setAttribute("stroke", pat.bullish ? "#d9a441" : "#f97316");
+        pl.setAttribute("stroke-width", "1.8");
+        pl.setAttribute("opacity", "0.9");
+        s1.append(pl);
+        for (const m of pat.markers) {
+          const dot = document.createElementNS(NS, "circle");
+          dot.setAttribute("cx", String(sc.x(m.i))); dot.setAttribute("cy", String(sc.y(m.price)));
+          dot.setAttribute("r", "2.6");
+          dot.setAttribute("fill", pat.bullish ? "#d9a441" : "#f97316");
+          s1.append(dot);
+        }
+        const lastM = pat.markers[pat.markers.length - 1];
+        s1.append(label(sc.x(lastM.i) + 4, sc.y(lastM.price) - 5, `${pat.nameKo}${pat.confirmed ? "" : "(형성중)"}`, pat.bullish ? "#d9a441" : "#f97316"));
+      }
+      if (pat.neckline) {
+        s1.append(hLine(sc.y(pat.neckline), PAD, W - 8, pat.bullish ? "#d9a441" : "#f97316", "5 4"));
+      }
+    }
+
+    // 확대 — 드래그로 구간 선택, 더블클릭으로 초기화
+    this.attachZoomDrag(s1, W, n, z);
+    // 지지·저항 사다리 — **확대 구간 기준**으로 다시 계산한 값. 강할수록 진하게.
+    for (const lv of win.ladder) {
       if (lv.price > max + pad || lv.price < min - pad) continue;
       const col = lv.kind === "support" ? C.sup : C.res;
       const ln = hLine(sc.y(lv.price), PAD, W - 8, col, lv.strength >= 0.5 ? "8 3" : "3 4");
@@ -402,9 +507,40 @@ export class TaPanel {
         el("i", { style: `background:${col}` }), t,
       ])));
 
+    /* 줌 컨트롤 */
+    const ranges: [string, number | null][] = [["1개월", 22], ["3개월", 66], ["6개월", 132], ["1년", 264], ["전체", null]];
+    const zoomBar = el("div", { class: "ta-zoom" }, [
+      ...ranges.map(([labelKo, days]) => {
+        const active = days === null ? (z.i1 - z.i0 + 1) >= total : (z.i1 - z.i0 + 1) === Math.min(days, total) && z.i1 === total - 1;
+        const b = el("button", { type: "button", class: `radar-tab${active ? " active" : ""}`, text: labelKo as string });
+        b.addEventListener("click", () => {
+          if (days === null) this.setZoom(0, total - 1);
+          else this.setZoom(Math.max(0, total - days), total - 1);
+        });
+        return b;
+      }),
+      el("span", { class: "ta-zoom-hint", text: `${z.i1 - z.i0 + 1}봉 표시 · 차트에서 드래그 = 구간 확대 · 더블클릭 = 초기화` }),
+    ]);
+
+    /* 구간 분석 요약 — 확대한 그 구간만으로 다시 판정한 결과 */
+    const winBox = el("div", { class: "ta-winbox" }, [
+      el("h4", { class: "ta-h4", text: `구간 분석 (${z.i1 - z.i0 + 1}거래일) — 확대하면 이 판정도 그 구간 기준으로 바뀝니다` }),
+      ...(win.patterns.length
+        ? win.patterns.slice(0, 3).map((pat) =>
+            el("p", { class: `ta-win-pat ${pat.bullish ? "up" : "down"}` }, [
+              el("strong", { text: `${pat.nameKo}${pat.confirmed ? " (완성)" : " (형성 중)"}` }),
+              ` — ${pat.text}`,
+            ]))
+        : [el("p", { class: "note", text: "이 구간에서는 교과서 패턴(쌍바닥·쌍봉·헤드앤숄더·V반등·박스권)이 잡히지 않습니다." })]),
+      ...win.trendlines.map((tl) => el("p", { class: "note", text: `${tl.nameKo} — ${tl.text}` })),
+      el("p", { class: "note", text: `매물대 — ${win.profile.text}` }),
+      el("p", { class: "note", text: `구간 추세 — ${win.trend.alignment}` }),
+    ]);
+
     return [
+      zoomBar,
       el("div", { class: "ta-panel" }, [
-        el("h4", { class: "ta-h4", text: "① 주가 · 지지/저항 · 거래량" }),
+        el("h4", { class: "ta-h4", text: "① 주가 · 지지/저항 · 매물대 · 패턴" }),
         legend([["20일선", C.ma20], ["60일선", C.ma60], ["볼린저", C.band], ["지지", C.sup], ["저항", C.res]]),
         s1 as unknown as HTMLElement,
       ]),
@@ -419,7 +555,56 @@ export class TaPanel {
         legend([["RSI", C.rsi], ["MACD", C.macd], ["시그널", C.sig]]),
         s3 as unknown as HTMLElement,
       ]),
+      winBox,
     ];
+  }
+
+  /**
+   * 드래그 확대 — SVG viewBox 좌표로 변환해 봉 인덱스 범위를 고른다.
+   * preserveAspectRatio=none 이라 화면 픽셀 ≠ viewBox 픽셀이므로 비율 변환이 필수다.
+   */
+  private attachZoomDrag(svgEl2: SVGSVGElement, W: number, n: number, z: { i0: number; i1: number }): void {
+    let startX: number | null = null;
+    const box = document.createElementNS(NS, "rect");
+    box.setAttribute("fill", "rgba(224,82,74,0.15)");
+    box.setAttribute("stroke", "rgba(224,82,74,0.6)");
+    box.setAttribute("y", "0");
+    box.setAttribute("height", "100%");
+    box.setAttribute("visibility", "hidden");
+    svgEl2.append(box);
+
+    const toView = (clientX: number) => {
+      const r = svgEl2.getBoundingClientRect();
+      return ((clientX - r.left) / r.width) * W;
+    };
+    const toIdx = (vx: number) => {
+      const PAD = 34;
+      const frac = Math.min(1, Math.max(0, (vx - PAD) / (W - PAD - 8)));
+      return Math.round(frac * (n - 1));
+    };
+
+    svgEl2.style.cursor = "crosshair";
+    svgEl2.addEventListener("mousedown", (e) => { startX = toView(e.clientX); });
+    svgEl2.addEventListener("mousemove", (e) => {
+      if (startX === null) return;
+      const cur = toView(e.clientX);
+      box.setAttribute("x", String(Math.min(startX, cur)));
+      box.setAttribute("width", String(Math.abs(cur - startX)));
+      box.setAttribute("visibility", "visible");
+    });
+    const finish = (e: MouseEvent) => {
+      if (startX === null) return;
+      const a = toIdx(startX);
+      const b = toIdx(toView(e.clientX));
+      startX = null;
+      box.setAttribute("visibility", "hidden");
+      const lo = Math.min(a, b), hi = Math.max(a, b);
+      // 15봉 미만 선택은 오조작으로 본다 — 패턴 인식이 성립하지 않는 폭이기도 하다
+      if (hi - lo >= 15) this.setZoom(z.i0 + lo, z.i0 + hi);
+    };
+    svgEl2.addEventListener("mouseup", finish);
+    svgEl2.addEventListener("mouseleave", (e) => { if (startX !== null) finish(e as MouseEvent); });
+    svgEl2.addEventListener("dblclick", () => this.setZoom(null));
   }
 
   private strategyBlock(d: TaResponse): HTMLElement {

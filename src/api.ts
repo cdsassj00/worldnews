@@ -523,6 +523,14 @@ export interface TaResponse {
   levels: { support: number | null; resistance: number | null };
   indicators: { rsi: number; macdHist: number; adx: number; atr: number; mfi: number; bbPercentB: number };
   suggestedStop: number | null;
+  pricePatterns: {
+    id: string; nameKo: string; bullish: boolean; confirmed: boolean; confidence: number;
+    text: string; markers: { i: number; price: number }[]; neckline?: number;
+  }[];
+  profile: {
+    bins: { lo: number; hi: number; mid: number; vol: number; pct: number }[];
+    poc: number; wallAbove: number | null; wallBelow: number | null; text: string;
+  };
   ladder: TaLevel[];
   trend: TaTrend;
   plan: TaPlan;

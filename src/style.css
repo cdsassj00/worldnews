@@ -2784,3 +2784,17 @@ body {
 .lab-real-meta { margin: 0; font-size: 10.5px; line-height: 1.5; color: var(--fg-dim, #94a3b8); }
 .lab-fresh { color: #d9a441; }
 .lab-real-tr { background: rgba(217, 164, 65, 0.06) !important; }
+
+/* ── 차트 확대·구간 분석 ─────────────────────────────── */
+.ta-zoom { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.ta-zoom-hint { font-size: 10.5px; color: var(--fg-faint, #64748b); }
+.ta-winbox {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(217, 164, 65, 0.35);
+  background: rgba(217, 164, 65, 0.05);
+}
+.ta-win-pat { margin: 4px 0; font-size: 12.5px; line-height: 1.55; }
+.ta-win-pat.up strong { color: #d9a441; }
+.ta-win-pat.down strong { color: #f97316; }

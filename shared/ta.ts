@@ -714,6 +714,356 @@ export function supportResistance(s: PriceHistory, look = 120): { support: numbe
   return { support: below[0] ?? null, resistance: above[0] ?? null };
 }
 
+
+/* ══ ⑥ 가격 패턴 · 매물대 · 추세선 ══════════════════════════
+ *
+ * 이 블록은 **주어진 구간만** 본다 — 화면에서 차트를 확대하면 그 구간의 PriceHistory 를
+ * 그대로 넣어 재분석할 수 있다. 프런트가 shared 코드를 직접 불러 같은 함수를 돌리므로
+ * 서버 판정과 화면 판정이 어긋날 수 없다.
+ */
+
+export interface Swing {
+  /** closes 배열 기준 인덱스 */
+  i: number;
+  price: number;
+  kind: "H" | "L";
+}
+
+/**
+ * 지그재그 스윙 추출 — 패턴 인식의 뼈대.
+ * 되돌림이 문턱(기본: 3% 또는 1.5×ATR 중 큰 쪽)을 넘어야 스윙으로 인정한다.
+ * 문턱이 없으면 잔파도가 전부 "바닥"이 되어 아무 데서나 쌍바닥이 보인다.
+ */
+export function zigzag(s: PriceHistory, thresholdPct?: number): Swing[] {
+  const c = s.closes;
+  const n = c.length;
+  if (n < 10) return [];
+  const atr = last(atrSeries(s.highs, s.lows, c, 14)) || s.price * 0.02;
+  const th = thresholdPct ?? Math.max(3, (atr / s.price) * 150);
+
+  const swings: Swing[] = [];
+  let dir: 1 | -1 = c[1] >= c[0] ? 1 : -1;
+  let extI = 0;
+  let extP = c[0];
+  for (let i = 1; i < n; i++) {
+    const hi = s.highs[i] ?? c[i];
+    const lo = s.lows[i] ?? c[i];
+    if (dir === 1) {
+      if (hi > extP) { extP = hi; extI = i; }
+      else if (((extP - lo) / extP) * 100 >= th) {
+        swings.push({ i: extI, price: round(extP, 2), kind: "H" });
+        dir = -1; extP = lo; extI = i;
+      }
+    } else {
+      if (lo < extP) { extP = lo; extI = i; }
+      else if (((hi - extP) / extP) * 100 >= th) {
+        swings.push({ i: extI, price: round(extP, 2), kind: "L" });
+        dir = 1; extP = hi; extI = i;
+      }
+    }
+  }
+  swings.push({ i: extI, price: round(extP, 2), kind: dir === 1 ? "H" : "L" });
+  return swings;
+}
+
+export interface PricePattern {
+  id: string;
+  nameKo: string;
+  bullish: boolean;
+  /** 완성(넥라인 돌파) 여부 — 미완성 패턴은 "형성 중"으로만 말한다 */
+  confirmed: boolean;
+  confidence: number;
+  text: string;
+  /** 차트에 이어 그릴 점들 (closes 인덱스, 가격) */
+  markers: { i: number; price: number }[];
+  /** 넥라인(돌파 기준선) 가격 */
+  neckline?: number;
+}
+
+const near = (a: number, b: number, tolPct: number) => Math.abs(a - b) / Math.max(a, b) * 100 <= tolPct;
+
+/**
+ * 고전 가격 패턴 인식 — 쌍바닥·삼바닥·쌍봉·삼봉·헤드앤숄더·역헤드앤숄더·V자 반등·박스권.
+ *
+ * 원칙: **완성 조건(넥라인 돌파)을 확인하기 전에는 "형성 중"이라고만 말한다.**
+ * 패턴 인식이 사기가 되는 지점은 미완성 모양을 완성된 신호처럼 파는 순간이다.
+ */
+export function detectPatterns(s: PriceHistory): PricePattern[] {
+  const out: PricePattern[] = [];
+  const c = s.closes;
+  const n = c.length;
+  if (n < 30) return out;
+  const px = s.price;
+  const sw = zigzag(s);
+  const lows = sw.filter((x) => x.kind === "L");
+  const highs = sw.filter((x) => x.kind === "H");
+
+  /* 쌍바닥 / 삼바닥 — 비슷한 저점 2~3개 + 사이 반등 고점(넥라인) */
+  if (lows.length >= 2) {
+    const [l2, l1] = [lows[lows.length - 2], lows[lows.length - 1]];
+    const mid = highs.find((h) => h.i > l2.i && h.i < l1.i);
+    if (mid && near(l1.price, l2.price, 3) && mid.price > Math.max(l1.price, l2.price) * 1.025) {
+      const confirmed = px > mid.price;
+      const l3 = lows.length >= 3 ? lows[lows.length - 3] : null;
+      const triple = l3 && near(l3.price, l1.price, 3.5);
+      const mid2 = triple ? highs.find((h) => h.i > l3!.i && h.i < l2.i) : null;
+      out.push({
+        id: triple ? "triple_bottom" : "double_bottom",
+        nameKo: triple ? "삼중 바닥" : "쌍바닥",
+        bullish: true,
+        confirmed,
+        confidence: round((triple ? 0.75 : 0.65) + (confirmed ? 0.15 : 0), 2),
+        neckline: round(mid.price, 0),
+        text: confirmed
+          ? `${triple ? "저점 3개" : "저점 2개"}가 ${round(Math.abs(l1.price - l2.price) / l2.price * 100, 1)}% 이내로 겹치고 넥라인 ${Math.round(mid.price).toLocaleString("ko-KR")}을 돌파 — 완성된 ${triple ? "삼중 바닥" : "쌍바닥"}입니다. 교과서적 목표가는 넥라인 + 바닥 깊이(${Math.round(mid.price + (mid.price - Math.min(l1.price, l2.price))).toLocaleString("ko-KR")}).`
+          : `${triple ? "삼중 바닥" : "쌍바닥"} 형성 중 — 넥라인 ${Math.round(mid.price).toLocaleString("ko-KR")}을 종가로 넘어야 완성입니다. 그 전에 사는 것은 패턴 매매가 아니라 추측입니다.`,
+        markers: triple && mid2
+          ? [l3!, mid2, l2, mid, l1].map((x) => ({ i: x.i, price: x.price }))
+          : [l2, mid, l1].map((x) => ({ i: x.i, price: x.price })),
+      });
+    }
+  }
+
+  /* 쌍봉 / 삼봉 — 거울상 */
+  if (highs.length >= 2) {
+    const [h2, h1] = [highs[highs.length - 2], highs[highs.length - 1]];
+    const mid = lows.find((l) => l.i > h2.i && l.i < h1.i);
+    if (mid && near(h1.price, h2.price, 3) && mid.price < Math.min(h1.price, h2.price) * 0.975) {
+      const confirmed = px < mid.price;
+      const h3 = highs.length >= 3 ? highs[highs.length - 3] : null;
+      const triple = h3 && near(h3.price, h1.price, 3.5);
+      out.push({
+        id: triple ? "triple_top" : "double_top",
+        nameKo: triple ? "삼중 천장" : "쌍봉(이중 천장)",
+        bullish: false,
+        confirmed,
+        confidence: round((triple ? 0.75 : 0.65) + (confirmed ? 0.15 : 0), 2),
+        neckline: round(mid.price, 0),
+        text: confirmed
+          ? `고점 ${triple ? "3개" : "2개"}가 겹치고 넥라인 ${Math.round(mid.price).toLocaleString("ko-KR")}을 깨고 내려옴 — 완성된 하락 반전 패턴입니다.`
+          : `${triple ? "삼중 천장" : "쌍봉"} 형성 중 — 넥라인 ${Math.round(mid.price).toLocaleString("ko-KR")}이 깨지면 하락 반전이 완성됩니다. 보유 중이라면 그 선이 경계선입니다.`,
+        markers: [h2, mid, h1].map((x) => ({ i: x.i, price: x.price })),
+      });
+    }
+  }
+
+  /* 헤드앤숄더 / 역헤드앤숄더 — 가운데가 가장 높은(낮은) 봉우리 3개 */
+  if (highs.length >= 3 && lows.length >= 2) {
+    const [p1, p2, p3] = highs.slice(-3);
+    const t1 = lows.find((l) => l.i > p1.i && l.i < p2.i);
+    const t2 = lows.find((l) => l.i > p2.i && l.i < p3.i);
+    if (t1 && t2 && p2.price > p1.price * 1.02 && p2.price > p3.price * 1.02 && near(p1.price, p3.price, 5)) {
+      const neck = (t1.price + t2.price) / 2;
+      const confirmed = px < neck;
+      out.push({
+        id: "head_shoulders",
+        nameKo: "헤드앤숄더",
+        bullish: false,
+        confirmed,
+        confidence: round(0.6 + (confirmed ? 0.2 : 0), 2),
+        neckline: round(neck, 0),
+        text: confirmed
+          ? `머리(${Math.round(p2.price).toLocaleString("ko-KR")})보다 낮은 어깨 두 개, 넥라인 ${Math.round(neck).toLocaleString("ko-KR")} 이탈 — 완성된 천장 패턴입니다.`
+          : `헤드앤숄더 형성 중 — 넥라인 ${Math.round(neck).toLocaleString("ko-KR")}을 지키면 무효, 깨면 완성입니다.`,
+        markers: [p1, t1, p2, t2, p3].map((x) => ({ i: x.i, price: x.price })),
+      });
+    }
+  }
+  if (lows.length >= 3 && highs.length >= 2) {
+    const [b1, b2, b3] = lows.slice(-3);
+    const r1 = highs.find((h) => h.i > b1.i && h.i < b2.i);
+    const r2 = highs.find((h) => h.i > b2.i && h.i < b3.i);
+    if (r1 && r2 && b2.price < b1.price * 0.98 && b2.price < b3.price * 0.98 && near(b1.price, b3.price, 5)) {
+      const neck = (r1.price + r2.price) / 2;
+      const confirmed = px > neck;
+      out.push({
+        id: "inv_head_shoulders",
+        nameKo: "역헤드앤숄더",
+        bullish: true,
+        confirmed,
+        confidence: round(0.6 + (confirmed ? 0.2 : 0), 2),
+        neckline: round(neck, 0),
+        text: confirmed
+          ? `가장 깊은 머리(${Math.round(b2.price).toLocaleString("ko-KR")})와 얕은 어깨 두 개, 넥라인 ${Math.round(neck).toLocaleString("ko-KR")} 돌파 — 완성된 바닥 반전 패턴입니다.`
+          : `역헤드앤숄더 형성 중 — 넥라인 ${Math.round(neck).toLocaleString("ko-KR")} 돌파가 완성 조건입니다.`,
+        markers: [b1, r1, b2, r2, b3].map((x) => ({ i: x.i, price: x.price })),
+      });
+    }
+  }
+
+  /* V자 반등 — 급락 후 급회복. 되돌림 60% 이상이어야 V 라 부른다 */
+  {
+    const look = Math.min(45, n - 1);
+    const win = c.slice(-look);
+    let hiI = 0;
+    for (let i = 1; i < win.length; i++) if (win[i] > win[hiI]) { if (i < win.length - 5) hiI = i; }
+    let loI = hiI;
+    for (let i = hiI + 1; i < win.length; i++) if (win[i] < win[loI]) loI = i;
+    const drop = ((win[hiI] - win[loI]) / win[hiI]) * 100;
+    const barsDown = loI - hiI;
+    const recover = win[loI] ? ((px - win[loI]) / (win[hiI] - win[loI])) * 100 : 0;
+    const barsUp = win.length - 1 - loI;
+    if (drop >= 10 && barsDown <= 20 && barsUp <= 20 && recover >= 60 && loI > hiI) {
+      const base = n - look;
+      out.push({
+        id: "v_reversal",
+        nameKo: "V자 반등",
+        bullish: true,
+        confirmed: recover >= 80,
+        confidence: round(0.55 + Math.min(0.25, (recover - 60) / 100), 2),
+        text: `${barsDown}거래일에 -${round(drop, 1)}% 급락 후 ${barsUp}거래일 만에 낙폭의 ${round(recover, 0)}%를 회복 — V자 반등${recover >= 80 ? "이 사실상 완성됐습니다" : " 진행 중입니다"}. V자는 되돌림 없이 가는 경우가 많아 눌림 기다리기가 안 통하는 패턴입니다.`,
+        markers: [
+          { i: base + hiI, price: round(win[hiI], 2) },
+          { i: base + loI, price: round(win[loI], 2) },
+          { i: n - 1, price: round(px, 2) },
+        ],
+      });
+    }
+  }
+
+  /* 박스권 — 최근 30봉 등락폭이 8% 미만이면 횡보 박스 */
+  {
+    const look = Math.min(30, n);
+    const hi = Math.max(...s.highs.slice(-look));
+    const lo = Math.min(...s.lows.slice(-look));
+    const widthPct = ((hi - lo) / lo) * 100;
+    if (widthPct <= 8 && out.length === 0) {
+      out.push({
+        id: "box",
+        nameKo: "박스권 횡보",
+        bullish: px > (hi + lo) / 2,
+        confirmed: false,
+        confidence: 0.5,
+        neckline: round(hi, 0),
+        text: `최근 ${look}거래일 등락폭이 ${round(widthPct, 1)}%뿐인 박스(${Math.round(lo).toLocaleString("ko-KR")}~${Math.round(hi).toLocaleString("ko-KR")}) — 상단 돌파 전에는 방향이 없습니다.`,
+        markers: [
+          { i: n - look, price: round(hi, 2) },
+          { i: n - 1, price: round(hi, 2) },
+        ],
+      });
+    }
+  }
+
+  return out.sort((a, b) => b.confidence - a.confidence);
+}
+
+export interface TrendLine {
+  kind: "support" | "resistance";
+  nameKo: string;
+  /** 선의 양 끝 (closes 인덱스, 가격) — 차트에 그대로 긋는다 */
+  from: { i: number; price: number };
+  to: { i: number; price: number };
+  /** 오늘 위치에서의 선 값 */
+  valueNow: number;
+  broken: boolean;
+  text: string;
+}
+
+/** 추세선 — 최근 스윙 저점 2개(상승 지지선) / 스윙 고점 2개(하락 저항선)를 잇는다 */
+export function trendlines(s: PriceHistory): TrendLine[] {
+  const out: TrendLine[] = [];
+  const n = s.closes.length;
+  const sw = zigzag(s);
+  const lows = sw.filter((x) => x.kind === "L").slice(-3);
+  const highs = sw.filter((x) => x.kind === "H").slice(-3);
+
+  const mk = (a: Swing, b: Swing, kind: TrendLine["kind"]): TrendLine | null => {
+    if (b.i <= a.i) return null;
+    const slope = (b.price - a.price) / (b.i - a.i);
+    const valueNow = b.price + slope * (n - 1 - b.i);
+    if (valueNow <= 0) return null;
+    const broken = kind === "support" ? s.price < valueNow * 0.99 : s.price > valueNow * 1.01;
+    const rising = slope > 0;
+    return {
+      kind,
+      nameKo: kind === "support" ? (rising ? "상승 추세선(지지)" : "하락 지지선") : (rising ? "상승 저항선" : "하락 추세선(저항)"),
+      from: { i: a.i, price: a.price },
+      to: { i: b.i, price: b.price },
+      valueNow: round(valueNow, 0),
+      broken,
+      text: kind === "support"
+        ? broken
+          ? `저점을 이은 추세선(현재 ${Math.round(valueNow).toLocaleString("ko-KR")})을 깨고 내려왔습니다 — 추세 이탈.`
+          : `저점 두 개를 이은 추세선이 ${Math.round(valueNow).toLocaleString("ko-KR")}에서 받치고 있습니다.`
+        : broken
+          ? `고점을 이은 추세선(현재 ${Math.round(valueNow).toLocaleString("ko-KR")})을 위로 뚫었습니다 — 하락 추세 탈출 신호.`
+          : `고점 두 개를 이은 추세선이 ${Math.round(valueNow).toLocaleString("ko-KR")}에서 누르고 있습니다.`,
+    };
+  };
+
+  if (lows.length >= 2) {
+    const line = mk(lows[lows.length - 2], lows[lows.length - 1], "support");
+    if (line) out.push(line);
+  }
+  if (highs.length >= 2) {
+    const line = mk(highs[highs.length - 2], highs[highs.length - 1], "resistance");
+    if (line) out.push(line);
+  }
+  return out;
+}
+
+export interface VolumeProfile {
+  bins: { lo: number; hi: number; mid: number; vol: number; pct: number }[];
+  /** 최대 매물대 (Point of Control) */
+  poc: number;
+  /** 현재가 위에서 가장 두꺼운 매물대 — 뚫어야 할 벽 */
+  wallAbove: number | null;
+  /** 현재가 아래에서 가장 두꺼운 매물대 — 받쳐 줄 층 */
+  wallBelow: number | null;
+  text: string;
+}
+
+/**
+ * 매물대 — 가격대별 거래량 분포.
+ * "그 가격에 산 사람이 얼마나 많은가"의 근사다. 현재가 위의 두꺼운 매물대는
+ * 본전 매도 물량이 쏟아지는 저항, 아래의 매물대는 지지로 작동하는 경향이 있다.
+ */
+export function volumeProfile(s: PriceHistory, binCount = 20): VolumeProfile {
+  const n = s.closes.length;
+  const lo = Math.min(...s.lows.filter((v) => v > 0));
+  const hi = Math.max(...s.highs);
+  const step = (hi - lo) / binCount || 1;
+  const bins = Array.from({ length: binCount }, (_, k) => ({
+    lo: round(lo + k * step, 2), hi: round(lo + (k + 1) * step, 2),
+    mid: round(lo + (k + 0.5) * step, 2), vol: 0, pct: 0,
+  }));
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    const tp = ((s.highs[i] ?? s.closes[i]) + (s.lows[i] ?? s.closes[i]) + s.closes[i]) / 3;
+    const v = s.volumes[i] ?? 0;
+    const k = Math.min(binCount - 1, Math.max(0, Math.floor((tp - lo) / step)));
+    bins[k].vol += v;
+    total += v;
+  }
+  for (const b of bins) b.pct = total ? round((b.vol / total) * 100, 1) : 0;
+  const poc = bins.reduce((a, b) => (b.vol > a.vol ? b : a));
+  const above = bins.filter((b) => b.mid > s.price);
+  const below = bins.filter((b) => b.mid < s.price);
+  const wallAbove = above.length ? above.reduce((a, b) => (b.vol > a.vol ? b : a)) : null;
+  const wallBelow = below.length ? below.reduce((a, b) => (b.vol > a.vol ? b : a)) : null;
+  return {
+    bins,
+    poc: poc.mid,
+    wallAbove: wallAbove ? wallAbove.mid : null,
+    wallBelow: wallBelow ? wallBelow.mid : null,
+    text:
+      `최대 매물대 ${Math.round(poc.mid).toLocaleString("ko-KR")}(전체 거래의 ${poc.pct}%)` +
+      (wallAbove ? ` · 위쪽 벽 ${Math.round(wallAbove.mid).toLocaleString("ko-KR")}(${wallAbove.pct}%)` : "") +
+      (wallBelow ? ` · 아래 받침 ${Math.round(wallBelow.mid).toLocaleString("ko-KR")}(${wallBelow.pct}%)` : ""),
+  };
+}
+
+/** 구간 재분석 묶음 — 화면에서 차트를 확대했을 때 그 구간만으로 다시 판정한다 */
+export function windowAnalysis(s: PriceHistory) {
+  return {
+    patterns: detectPatterns(s),
+    trendlines: trendlines(s),
+    profile: volumeProfile(s),
+    trend: trendState(s),
+    ladder: levelLadder(s, 3),
+  };
+}
+
 /* ══ ④ 종합 ══════════════════════════════════════ */
 
 export interface TaReport {
@@ -737,6 +1087,10 @@ export interface TaReport {
   plan: TradePlan;
   /** 컨센서스를 성격별로 나눈 집계 — 무엇이 엇갈리는지 보이게 */
   groups: { nameKo: string; score: number; buy: number; sell: number; ids: string[] }[];
+  /** 고전 가격 패턴 (쌍바닥·헤드앤숄더 등) — 전체 구간 기준 */
+  pricePatterns: PricePattern[];
+  /** 매물대 요약 */
+  profile: VolumeProfile;
 }
 
 /**
@@ -1064,6 +1418,8 @@ export function analyze(s: PriceHistory): TaReport {
     trend: tr,
     plan: tradePlan(s, cons, tr, ladder),
     groups: groupStrategies(strategies),
+    pricePatterns: detectPatterns(s),
+    profile: volumeProfile(s),
   };
 }
 
