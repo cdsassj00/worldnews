@@ -138,6 +138,12 @@ export interface QuantState {
   startedAt: number;
   lastCycleAt: number;
   lastNote: string;
+  /**
+   * 일별 평가금액 기록 — 수익률 곡선용.
+   * 하루 한 점만 남긴다(같은 날 다시 돌면 덮어쓴다). 사이클마다 쌓으면 장중 노이즈가
+   * 곡선을 뒤덮고 KV 값도 금방 커진다.
+   */
+  equityCurve?: { d: string; e: number }[];
 }
 
 const RANK_KEY = "quant:rank";
@@ -173,6 +179,7 @@ export async function loadQuantState(env: Env): Promise<QuantState> {
 async function saveQuantState(env: Env, s: QuantState): Promise<void> {
   // 체결 기록은 최근 200건만 남긴다 — KV 값 크기(25MB)보다 읽기 비용이 문제다
   s.trades = s.trades.slice(-200);
+  if (s.equityCurve) s.equityCurve = s.equityCurve.slice(-400);
   await env.CACHE.put(STATE_KEY, JSON.stringify(s));
 }
 
@@ -418,6 +425,15 @@ export async function quantCycle(env: Env): Promise<QuantCycleResult> {
     }
   }
 
+  /* 수익률 곡선 — 하루 한 점 */
+  let finalHold = 0;
+  for (const p of Object.values(state.positions)) finalHold += p.qty * (p.lastPrice || p.avgPrice);
+  const eqNow = Math.round(state.cash + finalHold);
+  const curve = state.equityCurve ?? [];
+  if (curve.length && curve[curve.length - 1].d === today) curve[curve.length - 1].e = eqNow;
+  else curve.push({ d: today, e: eqNow });
+  state.equityCurve = curve;
+
   state.lastCycleAt = now;
   state.lastNote = note;
   await saveQuantState(env, state);
@@ -453,6 +469,10 @@ export interface QuantStatus {
   universe: number;
   scanned: number;
   scanUpdatedAt: number;
+  /** 일별 평가금액 — 수익률 곡선 */
+  equityCurve: { d: string; e: number }[];
+  /** 시작 이후 최대 낙폭(%) */
+  maxDrawdownPct: number;
 }
 
 export async function quantStatus(env: Env): Promise<QuantStatus> {
@@ -501,6 +521,15 @@ export async function quantStatus(env: Env): Promise<QuantStatus> {
     universe: UNIVERSE.length,
     scanned: Object.keys(store.rows).length,
     scanUpdatedAt: store.updatedAt,
+    equityCurve: state.equityCurve ?? [],
+    maxDrawdownPct: (() => {
+      let peak = c.capital, dd = 0;
+      for (const pt of state.equityCurve ?? []) {
+        if (pt.e > peak) peak = pt.e;
+        dd = Math.max(dd, ((peak - pt.e) / peak) * 100);
+      }
+      return round(dd, 2);
+    })(),
   };
 }
 

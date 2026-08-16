@@ -28,6 +28,7 @@ import { tickerNewsStatus } from "./tickernews";
 import { radarFind, radarOpps, radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
 import { quantCycle, quantRank, quantScanChunk, quantStatus, resetQuant, QUANT_PROFILE_LIST } from "./quant";
 import { taCached } from "./ta";
+import { backtestResults } from "./backtest";
 import { briefIndex, briefPage, rssXml, sitemapXml } from "./rss";
 import { getVerdict } from "./verdict";
 import { liveSensitivity, promoteSensitivity, rollbackSensitivity } from "./senslive";
@@ -522,6 +523,11 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
     assertTradeAuth(env, request);
     return json({ ok: true, state: await resetLedger(env) });
+  }
+
+  if (path === "/api/backtest") {
+    // 엔진별·규칙별 백테스트 성적표 (개발 환경에서 실측한 값을 고정해 둔 것)
+    return json(backtestResults());
   }
 
   if (path === "/api/ta") {

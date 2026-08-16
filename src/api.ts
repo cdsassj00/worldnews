@@ -596,6 +596,31 @@ export interface QuantStatus {
   haltedPermanent: boolean; haltReason: string;
   lastCycleAt: number; lastNote: string; startedAt: number;
   universe: number; scanned: number; scanUpdatedAt: number;
+  equityCurve: { d: string; e: number }[];
+  maxDrawdownPct: number;
+}
+
+export interface BacktestEngineRow {
+  id: string; nameKo: string; scenario: string | null; pending?: string;
+  KR: { returns: number[]; maxDd: number[]; trades: number[]; winRate: number[] } | null;
+  US: { returns: number[]; maxDd: number[]; trades: number[]; winRate: number[] } | null;
+}
+
+export interface BacktestResults {
+  measuredAt: string;
+  disclaimer: string;
+  engineComparison: {
+    title: string; command: string; rules: string; windows: string[];
+    universe: Record<string, string>; cost: Record<string, string>;
+    benchmark: Record<string, { nameKo: string; returns: number[] }>;
+    engines: BacktestEngineRow[];
+  };
+  liveRuleComparison: {
+    title: string; command: string; universe: string; windows: string[];
+    benchmark: { nameKo: string; returns: number[] };
+    variants: { id: string; nameKo: string; returns: number[]; maxDd: number[]; trades: number[]; winRate: number[]; live?: boolean; note?: string }[];
+    verdict: string;
+  };
 }
 
 async function request<T>(path: string, init?: RequestInit & { auth?: boolean }): Promise<T> {
@@ -665,6 +690,7 @@ export const api = {
   autoResume: () => request<{ ok: true }>("/api/auto/resume", { method: "POST", auth: true, body: "{}" }),
   autoReset: () => request<{ ok: true }>("/api/auto/reset", { method: "POST", auth: true, body: "{}" }),
 
+  backtest: () => request<BacktestResults>("/api/backtest"),
   ta: (symbol: string, days = 180) => request<TaResponse>(`/api/ta?symbol=${encodeURIComponent(symbol)}&days=${days}`),
   overseasCheck: () =>
     request<OverseasReadiness>("/api/kis/overseas-check", { method: "POST", auth: true, body: "{}" }),

@@ -24,6 +24,7 @@ import { MACRO, UNIVERSE as FULL_UNIVERSE, roundToTick, type MacroFactor, type U
 // 백테스트는 자동매매와 같은 대상(코어)만 돈다 — 확장층은 분석 전용이라 시뮬레이션 대상이 아니다.
 const UNIVERSE = FULL_UNIVERSE.filter((t) => t.core);
 import { composite, macroSignal, priceSignal, propagate, riskOffFrom, type MacroSignal, type PriceHistory } from "../shared/scoring";
+import { levelLadder, tradePlan, trendState } from "../shared/ta";
 
 /* ── 설정 ─────────────────────────── */
 
@@ -77,7 +78,14 @@ function evalStartDate(lastDate: string): string {
 export interface Scenario {
   name: string;
   /** 손절: 고정 %(fixed) 또는 변동성 배수(atr) */
-  stopMode: "fixed" | "atr";
+  /**
+   * 손절 기준.
+   *  fixed — 고정 %(모든 종목에 같은 자)
+   *  atr   — 변동성 배수
+   *  chart — **차트가 정한 자리**: 가장 가까운 지지선 아래 0.5×ATR (0.6~3×ATR 로 제한)
+   *          익절도 위쪽 저항으로 잡는다. shared/ta.ts 의 levelLadder 를 그대로 쓴다.
+   */
+  stopMode: "fixed" | "atr" | "chart";
   stopPct: number;
   atrMult: number;
   /** 익절: 고정 % / 고점대비 추적 / 없음 */
@@ -99,6 +107,8 @@ export interface Scenario {
    * 판정은 그날까지의 데이터만 쓴다(미래 참조 없음).
    */
   adaptive?: { fast: Partial<Scenario>; slow: Partial<Scenario> };
+  /** chart 모드에서 **손절만** 차트로 잡고 익절은 기존 규칙을 쓴다 */
+  chartTargetOff?: boolean;
 }
 
 /**
@@ -135,6 +145,14 @@ const SCENARIOS: Scenario[] = [
   /* N — 사용자 선택 2번: 현재 설정에서 손절만 -5% 로 (매도가 아예 안 나가는 문제 해소) */
   { name: "N 현재 + 손절 -5%",      stopMode: "fixed", stopPct: 5,  atrMult: 2,   exitMode: "fixed", takePct: 15, trailPct: 8,  signalExit: true,  riskOffExit: 0.8 },
   { name: "N2 현재 + 손절 -6%",     stopMode: "fixed", stopPct: 6,  atrMult: 2,   exitMode: "fixed", takePct: 15, trailPct: 8,  signalExit: true,  riskOffExit: 0.8 },
+  /* P — 사용자 승인 A안: 손절·익절을 차트(지지·저항)가 정한다. 종목마다 다른 손절이 된다. */
+  { name: "P 차트 손절·익절",        stopMode: "chart", stopPct: 5,  atrMult: 2,   exitMode: "fixed", takePct: 15, trailPct: 8,  signalExit: true,  riskOffExit: 0.8 },
+  { name: "P2 차트 + 이탈매도 제거",  stopMode: "chart", stopPct: 5,  atrMult: 2,   exitMode: "fixed", takePct: 15, trailPct: 8,  signalExit: false, riskOffExit: 0.8 },
+  /* P3 — 손절만 차트, 익절은 기존 +15% 유지.
+   * P/P2 가 진 원인이 "변동성 맞춤 손절"인지 "가까운 저항으로 익절을 당긴 것"인지
+   * 분리해야 한다. 둘을 같이 바꾸면 어느 쪽이 범인인지 영영 알 수 없다. */
+  { name: "P3 차트 손절 + 익절 15%", stopMode: "chart", stopPct: 5,  atrMult: 2,   exitMode: "fixed", takePct: 15, trailPct: 8,  signalExit: true,  riskOffExit: 0.8, chartTargetOff: true },
+  { name: "P4 차트 손절 + 추적손절",  stopMode: "chart", stopPct: 5,  atrMult: 2,   exitMode: "trail", takePct: 15, trailPct: 10, signalExit: true,  riskOffExit: 0.8, chartTargetOff: true },
   /* M — 국면 적응형(사용자 선택 1번): 하락 국면엔 L 규칙, 상승 국면엔 G 규칙 */
   {
     name: "M 국면적응 (하락=단타/상승=보유)",
@@ -227,6 +245,9 @@ interface Position {
   peakPrice: number;
   /** 진입 시점 ATR (변동성 기반 손절용) */
   atrAtEntry: number;
+  /** chart 모드에서 진입 시 계산해 고정하는 손절·익절 가격 */
+  chartStop?: number;
+  chartTarget?: number;
 }
 
 interface Trade {
@@ -416,17 +437,22 @@ function simulate(ds: Dataset, baseCfg: Scenario): SimResult {
       if (bi < 0 || !b) continue;
       if (b.high[bi] > p.peakPrice) p.peakPrice = b.high[bi];
 
-      const stopPrice = cfg.stopMode === "atr"
-        ? p.avgPrice - cfg.atrMult * p.atrAtEntry
-        : p.avgPrice * (1 - cfg.stopPct / 100);
+      const stopPrice = cfg.stopMode === "chart" && p.chartStop
+        ? p.chartStop
+        : cfg.stopMode === "atr"
+          ? p.avgPrice - cfg.atrMult * p.atrAtEntry
+          : p.avgPrice * (1 - cfg.stopPct / 100);
+      const takePrice = cfg.stopMode === "chart" && p.chartTarget && !cfg.chartTargetOff
+        ? p.chartTarget
+        : p.avgPrice * (1 + cfg.takePct / 100);
       let exit = 0, why = "";
       // 같은 날 둘 다 닿으면 손절이 먼저 닿았다고 보수적으로 가정
       if (b.low[bi] <= stopPrice) {
         exit = stopPrice;
-        why = cfg.stopMode === "atr" ? `손절 ${cfg.atrMult}×ATR` : `손절 -${cfg.stopPct}%`;
-      } else if (cfg.exitMode === "fixed" && b.high[bi] >= p.avgPrice * (1 + cfg.takePct / 100)) {
-        exit = p.avgPrice * (1 + cfg.takePct / 100);
-        why = `익절 +${cfg.takePct}%`;
+        why = cfg.stopMode === "chart" ? "손절 (지지선 이탈)" : cfg.stopMode === "atr" ? `손절 ${cfg.atrMult}×ATR` : `손절 -${cfg.stopPct}%`;
+      } else if (cfg.exitMode === "fixed" && b.high[bi] >= takePrice) {
+        exit = takePrice;
+        why = cfg.stopMode === "chart" && !cfg.chartTargetOff ? "익절 (저항 도달)" : `익절 +${cfg.takePct}%`;
       } else if (cfg.exitMode === "trail") {
         const trailStop = p.peakPrice * (1 - cfg.trailPct / 100);
         // 진입가 위로 올라간 뒤에만 추적손절이 의미를 갖는다
@@ -502,10 +528,27 @@ function simulate(ds: Dataset, baseCfg: Scenario): SimResult {
         existing.qty = total;
         existing.atrAtEntry = r.atr;
       } else {
+        /* 차트 기반 손절·익절 — 진입한 그 날의 데이터만으로 계산한다(미래 참조 없음).
+         * 종목마다 다른 손절이 나온다. 이게 이 시나리오의 요점이다 —
+         * 삼성전자(ATR 2.5%)와 현대백화점(ATR 10.8%)에 같은 -5% 자를 대지 않는다. */
+        let chartStop: number | undefined;
+        let chartTarget: number | undefined;
+        if (cfg.stopMode === "chart") {
+          const bi = idxAsOf(r.symbol, today);
+          if (bi >= 60) {
+            const hist = sliceHistory(b, bi);
+            const ladder = levelLadder(hist);
+            const plan = tradePlan(hist, { score: 0, verdict: "neutral", buy: 0, sell: 0, neutral: 0, text: "" }, trendState(hist), ladder);
+            // 계획은 진입가 기준으로 옮긴다(계획은 전날 종가 기준이라 체결가와 다르다)
+            const shift = fill / hist.price;
+            chartStop = plan.stop.price * shift;
+            chartTarget = plan.targets[0].price * shift;
+          }
+        }
         positions.set(r.code, {
           code: r.code, nameKo: r.nameKo, symbol: r.symbol,
           qty, avgPrice: fill, openedOn: tomorrow,
-          peakPrice: fill, atrAtEntry: r.atr,
+          peakPrice: fill, atrAtEntry: r.atr, chartStop, chartTarget,
         });
       }
       buys++;

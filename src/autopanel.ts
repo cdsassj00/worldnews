@@ -13,6 +13,8 @@ import {
   type OntologyGraph,
   type PlannedOrder,
   type TickerScore,
+  setTradeToken,
+  type BacktestResults,
 } from "./api";
 import { dirClass, el, fmtKrw, fmtNum, fmtPct, svgEl, timeAgo } from "./format";
 
@@ -33,6 +35,20 @@ export class AutoPanel {
   private busy = false;
   /** 엔진 전환 상태 문구 — 다시 그려도 살아남게 인스턴스로 들고 있는다 */
   private readonly engineStatus = el("p", { class: "modal-status" });
+  /**
+   * 인라인 거래 암호 입력.
+   *
+   * 예전에는 암호가 없으면 "우측 상단 거래 암호를 누르세요" 모달로 튕겼다.
+   * 누르려던 자리에서 손이 끊기는 흐름이라, 하려던 동작(엔진 전환)이 무엇이었는지
+   * 사용자가 다시 기억해서 되돌아와야 했다. 그 자리에서 바로 입력하고 이어지게 한다.
+   */
+  private readonly inlineAuth = el("div", { class: "inline-auth", hidden: "hidden" });
+  /** 백테스트 성적표 — 서버가 고정해 둔 실측값 */
+  private bt: BacktestResults | null = null;
+  private btMarket: "KR" | "US" = "KR";
+  private readonly btBody = el("div", { class: "bt-body" }, [el("p", { class: "note", text: "성적표 불러오는 중…" })]);
+  /** 암호 입력 뒤 이어서 실행할 동작 */
+  private pendingAction: (() => Promise<void>) | null = null;
 
   constructor(deps: AutoPanelDeps) {
     this.deps = deps;
@@ -114,39 +130,93 @@ export class AutoPanel {
    * 불리한 결과라서 더더욱 숨기면 안 된다 — 이 화면을 보고 실매매를 켜기 때문이다.
    */
   private backtestBlock(): HTMLElement {
-    const row = (period: string, mine: string, bench: string, dd: string, verdict: string) =>
-      el("div", { class: "bt-row" }, [
-        el("span", { class: "bt-period", text: period }),
-        el("span", { class: "bt-num down", text: mine }),
-        el("span", { class: "bt-num", text: bench }),
-        el("span", { class: "bt-num", text: dd }),
-        el("span", { class: "bt-verdict", text: verdict }),
-      ]);
-    return el("section", { class: "auto-block bt-block" }, [
+    const box = el("section", { class: "auto-block bt-block" }, [
       el("h3", {}, [
         el("span", { text: "과거 검증 결과 (반드시 읽을 것)" }),
-        el("span", { class: "gate-pill off", text: "실매매 비권장" }),
+        el("span", { class: "gate-pill off", text: "모의 실험" }),
       ]),
-      el("div", { class: "bt-table" }, [
-        el("div", { class: "bt-row bt-head" }, [
-          el("span", { text: "기간" }),
-          el("span", { text: "이 전략" }),
-          el("span", { text: "코스피 보유" }),
-          el("span", { text: "최대낙폭" }),
-          el("span", { text: "결과" }),
-        ]),
-        row("최근 2년", "+50.2%", "+156.3%", "-18.9%", "크게 뒤짐"),
-        row("최근 5년", "-23.3%", "+119.9%", "-24.0%", "원금 손실 · 2022-03 영구정지"),
-      ]),
-      el("p", {
-        class: "note err",
-        text: "5년 구간에서는 2022년 하락장에 영구정지선(-20%)이 걸려 그 뒤로 4년간 매매가 멈췄습니다. 손절 완화·추적손절 등 8가지 변형을 모두 시험했지만 어느 것도 지수 보유를 이기지 못했습니다.",
-      }),
-      el("p", {
-        class: "note",
-        text: "즉 이 시스템은 '설명 가능한 판단 근거를 만드는 도구'로는 작동하지만, 지금 규칙 그대로 돈을 맡길 근거는 없습니다. npm run backtest 로 언제든 직접 재현할 수 있습니다.",
-      }),
+      this.btBody,
     ]);
+    if (!this.bt) void this.loadBacktest();
+    else this.renderBacktest();
+    return box;
+  }
+
+  private async loadBacktest(): Promise<void> {
+    try {
+      this.bt = await api.backtest();
+      this.renderBacktest();
+    } catch {
+      this.btBody.replaceChildren(el("p", { class: "note", text: "성적표를 불러오지 못했습니다." }));
+    }
+  }
+
+  /**
+   * 엔진별·규칙별 성적표.
+   * 예전에는 2년·5년 두 줄만 있었는데, 사용자는 단타를 하므로 3·6·12개월이 필요하고
+   * 엔진이 넷으로 늘어난 이상 엔진별로 나눠야 고를 수가 있다.
+   */
+  private renderBacktest(): void {
+    const b = this.bt;
+    if (!b) return;
+    const pct = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
+    const cls = (v: number) => (v >= 0 ? "up" : "down");
+
+    const table = (windows: string[], benchName: string, benchReturns: number[], rows: { name: string; returns: number[] | null; dd?: number[]; note?: string; live?: boolean; pending?: string }[]) => {
+      const head = el("div", { class: "bt-row bt-head" }, [
+        el("span", { text: "" }),
+        ...windows.map((w) => el("span", { text: w === "3mo" ? "3개월" : w === "6mo" ? "6개월" : "1년" })),
+      ]);
+      const bench = el("div", { class: "bt-row" }, [
+        el("span", { class: "bt-period", text: benchName }),
+        ...benchReturns.map((v) => el("span", { class: `bt-num ${cls(v)}`, text: pct(v) })),
+      ]);
+      const body = rows.map((r) =>
+        el("div", { class: `bt-row${r.live ? " bt-live" : ""}` }, [
+          el("span", { class: "bt-period", text: r.live ? `${r.name} ← 지금` : r.name }),
+          ...(r.returns
+            ? r.returns.map((v, i) =>
+                el("span", { class: `bt-num ${cls(v)}`, title: r.dd ? `최대낙폭 -${r.dd[i]}%` : "", text: pct(v) }))
+            : [el("span", { class: "bt-num", style: "grid-column: span 3; opacity:.7", text: r.pending ?? "미측정" })]),
+        ]),
+      );
+      const notes = rows.filter((r) => r.note).map((r) => el("p", { class: "note", text: `· ${r.name} — ${r.note}` }));
+      return el("div", { class: "bt-table" }, [head, bench, ...body, ...notes]);
+    };
+
+    const ec = b.engineComparison;
+    const lr = b.liveRuleComparison;
+    const market = this.btMarket;
+
+    const marketTabs = el("div", { class: "radar-tabs" });
+    for (const m of ["KR", "US"] as const) {
+      const btn = el("button", { type: "button", class: `radar-tab${market === m ? " active" : ""}`, text: m === "KR" ? "국내" : "미국" });
+      btn.addEventListener("click", () => { this.btMarket = m; this.renderBacktest(); });
+      marketTabs.append(btn);
+    }
+
+    this.btBody.replaceChildren(
+      el("p", { class: "note err", text: b.disclaimer + ` (측정 ${b.measuredAt})` }),
+      el("h4", { class: "bt-h4", text: `① ${ec.title}` }),
+      marketTabs,
+      table(
+        ec.windows,
+        ec.benchmark[market].nameKo,
+        ec.benchmark[market].returns,
+        ec.engines.map((e) => {
+          const m = market === "KR" ? e.KR : e.US;
+          return { name: e.nameKo, returns: m ? m.returns : null, dd: m?.maxDd, pending: e.pending };
+        }),
+      ),
+      el("p", { class: "note", text: `규칙: ${ec.rules}` }),
+      el("p", { class: "note", text: `유니버스 ${ec.universe[market]} · 비용 ${ec.cost[market]}` }),
+
+      el("h4", { class: "bt-h4", text: `② ${lr.title}` }),
+      table(lr.windows, lr.benchmark.nameKo, lr.benchmark.returns,
+        lr.variants.map((v) => ({ name: v.nameKo, returns: v.returns, dd: v.maxDd, note: v.note, live: v.live }))),
+      el("p", { class: "note err-soft", text: lr.verdict }),
+      el("p", { class: "note", text: `재현: ${lr.command}` }),
+    );
   }
 
   /**
@@ -190,12 +260,48 @@ export class AutoPanel {
       el("h3", {}, [el("span", { text: "매매 엔진" }), el("span", { class: "gate-pill", text: label[p.engine] ?? p.engine })]),
       buttons,
       this.engineStatus,
+      this.inlineAuth,
       el("p", { class: "note", text: p.engineNote }),
       el("p", {
         class: "note",
         text: "성적은 코스피200+코스닥150 350종목 / S&P100 104종목, 저회전+시장국면 필터 규칙 기준입니다. 국내 1년 구간은 코스피 자체가 +106% 라 세 엔진 모두 지수 보유에는 못 미칩니다. 주문·손절·한도 같은 안전장치는 엔진과 무관하게 동일하게 작동합니다.",
       }),
     ]);
+  }
+
+  /**
+   * 암호를 그 자리에서 받는다. 입력하면 원래 하려던 동작을 이어서 실행한다.
+   * 실패해도 창을 닫지 않는다 — 오타 한 번에 처음부터 다시 하게 만들면 안 된다.
+   */
+  private askAuthInline(reason: string, retry: () => Promise<void>): void {
+    this.pendingAction = retry;
+    const input = el("input", { type: "password", placeholder: "거래 암호", autocomplete: "current-password" }) as HTMLInputElement;
+    const ok = el("button", { class: "btn btn-primary", type: "button", text: "확인하고 계속" });
+    const cancel = el("button", { class: "btn btn-ghost", type: "button", text: "취소" });
+    const submit = async () => {
+      const v = input.value.trim();
+      if (!v) return;
+      setTradeToken(v);
+      const go = this.pendingAction;
+      this.pendingAction = null;
+      this.inlineAuth.hidden = true;
+      this.inlineAuth.replaceChildren();
+      if (go) await go();
+    };
+    ok.addEventListener("click", () => void submit());
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") void submit(); });
+    cancel.addEventListener("click", () => {
+      this.pendingAction = null;
+      this.inlineAuth.hidden = true;
+      this.inlineAuth.replaceChildren();
+      this.engineStatus.textContent = "";
+    });
+    this.inlineAuth.replaceChildren(
+      el("span", { class: "inline-auth-label", text: reason }),
+      input, ok, cancel,
+    );
+    this.inlineAuth.hidden = false;
+    input.focus();
   }
 
   private async switchEngine(engine: string): Promise<void> {
@@ -207,10 +313,13 @@ export class AutoPanel {
       this.engineStatus.className = "modal-status ok";
     } catch (err) {
       const failed = err instanceof ApiFailure;
-      this.engineStatus.textContent = failed ? `엔진 변경 실패 — ${err.message}` : String(err);
+      const needsAuth = failed && (err.code === "no_local_token" || err.status === 401);
+      this.engineStatus.textContent = needsAuth
+        ? "엔진을 바꾸려면 거래 암호가 필요합니다."
+        : failed ? `엔진 변경 실패 — ${err.message}` : String(err);
       this.engineStatus.className = "modal-status err";
-      if (failed && (err.code === "no_local_token" || err.status === 401)) this.deps.onNeedAuth();
       await this.load(); // 낙관적으로 바꿔 둔 표시를 서버 상태로 되돌린다
+      if (needsAuth) this.askAuthInline(`${engine} 엔진으로 바꿉니다`, () => this.switchEngine(engine));
     }
   }
 
