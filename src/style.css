@@ -706,6 +706,12 @@ details.acc.card:not([open]) > summary { margin: 0; }
 .onto-mkt .radar-tab { padding: 6px 16px; font-size: 12.5px; border-radius: 999px; }
 [data-theme="light"] .radar-tabs.onto-mkt { background: rgba(255, 255, 255, 0.92); border-color: #cbd5e1; }
 
+/* 지구본 모달 안 나라 상세 — 온톨로지 3분할을 건드리지 않고 모달에서 본다 */
+#world-country { min-height: 200px; }
+#world-country[hidden] { display: none; }
+#world-country-back { display: block; width: 100%; margin: 0 0 8px; text-align: left; }
+#world-side-main[hidden] { display: none; }
+
 /* 종목 상세 상단의 "시장 전체 보기" — 맨 위 고정 배치 */
 .panel-back {
   display: block;

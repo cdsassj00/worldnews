@@ -155,17 +155,18 @@ function onCountryPicked(c: CountryRef): void {
     lastPick: c,
   };
   if (!c.iso2) {
-    void panel.open("ZZ", c.ko);
+    showCountryInModal("ZZ", c.ko);
     return;
   }
-  void panel.open(c.iso2, c.ko);
-  // 온톨로지 유니버스가 있는 나라(한국·미국)는 시장 전환, 그 외 나라는 나라 모드 —
-  // 그래프·왼쪽 카드·오른쪽 패널이 항상 같은 나라를 본다
-  if (c.iso2 === "US" || c.iso2 === "KR") setVerdictMarket(c.iso2);
-  else void showCountryMode(c.iso2, c.ko);
-  history.replaceState(null, "", `#${c.iso2}`);
-  // 나라를 골랐으면 모달의 목적은 끝났다. 오른쪽 상세로 시선을 넘긴다.
-  $("world-modal").hidden = true;
+  // 온톨로지 유니버스가 있는 나라(한국·미국)는 3분할 전체를 그 시장으로 전환하고
+  // 모달을 닫는다. 그 외 나라는 모달 안에서 상세를 보여준다 — 무대는 건드리지 않는다.
+  if (c.iso2 === "US" || c.iso2 === "KR") {
+    setVerdictMarket(c.iso2);
+    history.replaceState(null, "", `#${c.iso2}`);
+    $("world-modal").hidden = true;
+  } else {
+    showCountryInModal(c.iso2, c.ko);
+  }
 }
 
 /* ── 검색 ─────────────────────────────── */
@@ -622,34 +623,30 @@ let lastVerdict: OntoVerdict | null = null;
 /** 나라 모드 — 온톨로지 유니버스(한국·미국) 밖 나라를 보는 중이면 그 iso2 */
 let countryMode: string | null = null;
 
-/** 지구본에서 다른 나라를 고르면: 그래프 + 왼쪽 카드들도 그 나라의 추천으로 채운다 */
-async function showCountryMode(cc: string, nameKo: string): Promise<void> {
-  countryMode = cc;
-  try {
-    const reco = await api.recommend(cc);
-    if (countryMode !== cc) return; // 기다리는 사이 다른 선택으로 넘어감
-    const items = reco.items.slice(0, 8).map((r) => ({ symbol: r.symbol, name: r.name, score: r.score }));
-    onto?.showCountry(nameKo, items);
-    $("verdict-body").replaceChildren(
-      el("p", { class: "verdict-line", text: `${nameKo} — 지수·뉴스 흐름 기반 추천입니다. 거시→섹터→종목 온톨로지 인과 분석은 한국·미국 유니버스에서 제공됩니다.` }),
-      el("div", { class: "vd-chips" },
-        reco.items.slice(0, 6).map((r) =>
-          el("span", { class: `vd-chip ${r.score >= 0 ? "up" : "down"}`, title: r.actionKo, text: `${r.name} ${r.score >= 0 ? "+" : ""}${r.score.toFixed(2)}` }))),
-    );
-    $("score-list").replaceChildren(
-      ...reco.items.slice(0, 8).map((r) => {
-        const btn = el("button", { type: "button" }, [
-          el("span", { class: "hot-name" }, [
-            el("span", { text: r.name }),
-            el("span", { class: "hot-index", text: `${fmtNum(r.price, 2)} ${r.currency} · ${r.actionKo}` }),
-          ]),
-          el("span", { class: dirClass(r.score), text: r.score.toFixed(2) }),
-        ]);
-        btn.addEventListener("click", () => void taPanel?.show(r.symbol, r.name));
-        return el("li", {}, [btn]);
-      }),
-    );
-  } catch { /* 오른쪽 나라 패널은 이미 열려 있다 — 왼쪽만 다음 선택까지 유지 */ }
+/* 2026-08-17 구조 정리: 온톨로지 3분할(그래프+양쪽 패널)은 한국·미국 전용이고,
+ * 다른 나라 구경은 지구본 모달 안에서 끝낸다(showCountryInModal) — 무대와 오른쪽
+ * 패널이 서로 다른 나라를 보여주는 혼란을 없앤다. */
+let modalPanel: Panel | null = null;
+
+function showCountryInModal(cc: string, nameKo: string): void {
+  if (!modalPanel) {
+    modalPanel = new Panel({
+      root: $("world-country-body"),
+      empty: $("world-country-empty"),
+      kis: () => kisStatus,
+      ai: () => config?.ai ?? null,
+      onto: () => ontoState,
+      requestOrder: (order, ctx) => openOrderModal(order, ctx.fxToKrw),
+      onNeedAuth: () => openAuthModal(),
+    });
+    $("world-country-back").addEventListener("click", () => {
+      $("world-country").hidden = true;
+      $("world-side-main").hidden = false;
+    });
+  }
+  $("world-side-main").hidden = true;
+  $("world-country").hidden = false;
+  void modalPanel.open(cc, nameKo);
 }
 
 /** 그래프는 결론의 시각화 — 온톨로지 상태와 결론이 갱신될 때마다 함께 민다 */
@@ -671,8 +668,10 @@ function pushOntoState(): void {
 /** 시장 전환의 단일 진입점 — 결론 카드·무대 토글·지구본이 전부 이 함수를 부른다.
  *  그래프(결론 층)·결론 카드·종목 점수 상위·기회 탐색이 한 몸으로 바뀐다. */
 function setVerdictMarket(mkt: "KR" | "US"): void {
-  countryMode = null; // 나라 모드 해제 — 온톨로지 유니버스로 복귀
+  countryMode = null;
   verdictMarket = mkt;
+  // 오른쪽 패널도 같은 시장의 나라 화면으로 — 무대와 패널이 다른 나라를 보는 혼란 방지
+  void panel.open(mkt === "US" ? "US" : "KR", mkt === "US" ? "미국" : "대한민국");
   for (const group of ["verdict-mkt", "onto-mkt"]) {
     const elGroup = document.getElementById(group);
     if (!elGroup) continue;
@@ -699,8 +698,6 @@ function setupVerdict(): void {
   };
   wire("verdict-mkt");
   wire("onto-mkt"); // 3D 무대 위 토글 — 같은 스위치의 다른 손잡이
-  // 🌍 — 무대에서 바로 세계 지도를 연다 (아래로 스크롤할 필요 없이)
-  document.getElementById("btn-onto-world")?.addEventListener("click", () => $("btn-world").click());
   // 오른쪽 패널의 "대한민국으로 돌아가기" — 무대·왼쪽 카드도 함께 한국으로
   document.addEventListener("wfg:market-kr", () => setVerdictMarket("KR"));
 }

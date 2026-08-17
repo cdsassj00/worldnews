@@ -263,10 +263,10 @@
           <!-- 범례는 네온 원형 버튼으로 껐다 켰다 — 큰 카드가 거시요인 층을 가린다는 피드백(2026-08-17) -->
           <button class="onto-fab" id="btn-legend" type="button" title="온톨로지 분석 설명 열기/닫기" aria-expanded="false">i</button>
           <!-- 무대 위 시장 토글 — 그래프·결론·점수 상위·기회 탐색이 함께 전환된다 -->
+          <!-- 무대 토글은 온톨로지 유니버스(한국·미국)만 — 다른 나라는 아래 지구본 모달에서 (2026-08-17) -->
           <div class="radar-tabs onto-mkt" id="onto-mkt" role="tablist" aria-label="온톨로지 시장 선택" data-no-translate>
             <button type="button" class="radar-tab active" data-mkt="KR" role="tab">🇰🇷 한국</button>
             <button type="button" class="radar-tab" data-mkt="US" role="tab">🇺🇸 미국</button>
-            <button type="button" class="radar-tab" id="btn-onto-world" title="세계 지도에서 나라 선택 — 지수·뉴스·추천이 오른쪽에 열립니다">🌍</button>
           </div>
           <div class="onto-legend" id="onto-legend" hidden>
             <div class="onto-title">
@@ -433,10 +433,18 @@
             </label>
           </div>
           <div class="world-side">
-            <h3 class="card-title">주요 지수 · 환율 · 원자재</h3>
-            <div class="world-grid" id="world-grid"></div>
-            <h3 class="card-title">글로벌 헤드라인</h3>
-            <ul class="news-list compact" id="world-news"></ul>
+            <div id="world-side-main">
+              <h3 class="card-title">주요 지수 · 환율 · 원자재</h3>
+              <div class="world-grid" id="world-grid"></div>
+              <h3 class="card-title">글로벌 헤드라인</h3>
+              <ul class="news-list compact" id="world-news"></ul>
+            </div>
+            <!-- 나라를 고르면 이 모달 안에서 상세를 보여준다 — 온톨로지 3분할은 한국·미국 전용 -->
+            <div id="world-country" hidden>
+              <button class="btn btn-ghost panel-back" id="world-country-back" type="button">← 세계 지표로</button>
+              <div id="world-country-body"></div>
+              <div id="world-country-empty" hidden></div>
+            </div>
           </div>
         </div>
       </div>

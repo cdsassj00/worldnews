@@ -406,8 +406,16 @@ await page.waitForTimeout(400);
 await page.fill("#country-search", "일본");
 await page.waitForSelector("#search-results button");
 await page.locator("#search-results button").first().click();
-await page.waitForFunction(() => document.querySelector(".panel-head h2")?.textContent?.includes("일본"), { timeout: 20000 });
-check("국가 검색", true);
+// 2026-08-17 구조 변경: 한국·미국 외 나라 상세는 지구본 모달 안(#world-country)에 뜬다
+await page.waitForFunction(
+  () => [...document.querySelectorAll(".panel-head h2")].some((h) => h.textContent?.includes("일본")),
+  { timeout: 20000 },
+);
+check("국가 검색(모달 내 상세)", await page.locator("#world-country").isVisible());
+await page.click("#world-country-back");
+await page.waitForTimeout(300);
+check("모달 지표로 복귀", await page.locator("#world-side-main").isVisible());
+await page.click("#world-close");
 
 // 전체 화면 스크린샷 (지구본 정면 = 일본)
 await page.waitForTimeout(1500);
