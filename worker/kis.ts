@@ -41,9 +41,9 @@ const TRID: Record<string, { prod: string; vts: string }> = {
   "overseas.price": { prod: "HHDFS00000300", vts: "HHDFS00000300" },
   "overseas.balance": { prod: "TTTS3012R", vts: "VTTS3012R" },
   "overseas.psamount": { prod: "TTTS3007R", vts: "VTTS3007R" },
-  // 미국(나스닥/뉴욕/아멕스)
-  "overseas.NAS.buy": { prod: "JTTT1002U", vts: "VTTT1002U" },
-  "overseas.NAS.sell": { prod: "JTTT1006U", vts: "VTTT1001U" },
+  // 미국(나스닥/뉴욕/아멕스) — 정규장 TR. JTTT1002U/JTTT1006U 는 주간거래(KST 낮) 전용이다.
+  "overseas.NAS.buy": { prod: "TTTT1002U", vts: "VTTT1002U" },
+  "overseas.NAS.sell": { prod: "TTTT1006U", vts: "VTTT1001U" },
   // 일본
   "overseas.TSE.buy": { prod: "TTTS0308U", vts: "VTTS0308U" },
   "overseas.TSE.sell": { prod: "TTTS0307U", vts: "VTTS0307U" },
