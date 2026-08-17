@@ -641,6 +641,43 @@ details.acc.card:not([open]) > summary { margin: 0; }
 /* 패널 안(카드 아님)의 아코디언 — 제목이 h3 자리를 대신한다 */
 .panel-body details.acc { margin: var(--space-2) 0 0; }
 .panel-body details.acc > summary.card-title { margin-bottom: var(--space-1); }
+/* 무대 범례 — 접힌 한 줄이 기본. 펼쳐야 계층 설명·도움말이 나온다 */
+/* 무대 범례 토글 — 네온 원형 플로팅 버튼 (2026-08-17 요청) */
+.onto-fab {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: 7;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: italic 700 20px Georgia, "Times New Roman", serif;
+  color: #ffd982;
+  background: rgba(7, 12, 26, 0.88);
+  border: 1.5px solid #d9a441;
+  cursor: pointer;
+  box-shadow:
+    0 0 6px rgba(242, 193, 78, 0.85),
+    0 0 20px rgba(217, 164, 65, 0.5),
+    inset 0 0 10px rgba(217, 164, 65, 0.3);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  animation: fab-neon 2.6s ease-in-out infinite;
+}
+.onto-fab:hover { transform: scale(1.1); }
+.onto-fab[aria-expanded="true"] {
+  color: #0f172a;
+  background: #f2c14e;
+  animation: none;
+}
+@keyframes fab-neon {
+  0%, 100% { box-shadow: 0 0 6px rgba(242, 193, 78, 0.85), 0 0 20px rgba(217, 164, 65, 0.5), inset 0 0 10px rgba(217, 164, 65, 0.3); }
+  50% { box-shadow: 0 0 10px rgba(242, 193, 78, 1), 0 0 32px rgba(217, 164, 65, 0.75), inset 0 0 14px rgba(217, 164, 65, 0.45); }
+}
+@media (prefers-reduced-motion: reduce) { .onto-fab { animation: none; } }
+[data-theme="light"] .onto-fab { background: rgba(255, 255, 255, 0.95); color: #a86f0e; }
+[data-theme="light"] .onto-fab[aria-expanded="true"] { background: #f2c14e; color: #0f172a; }
 
 /* 언어 전환 국기 버튼 + 구글 번역 위젯 UI 숨김 */
 /* 언어 전환 — 국기 이모지는 작아서 안 보인다는 피드백(2026-08-17)에 따라
@@ -1840,7 +1877,7 @@ details.acc.card:not([open]) > summary { margin: 0; }
  * 밝은 테마 변수를 타면 오히려 안 읽힌다(2026-08-17 피드백). 색을 고정한다. */
 .onto-legend {
   position: absolute;
-  top: var(--space-3);
+  top: calc(var(--space-3) + 50px); /* 네온 토글 버튼 아래로 */
   left: var(--space-3);
   max-width: 300px;
   padding: var(--space-3);

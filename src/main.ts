@@ -987,6 +987,18 @@ function setupTickerSearch(): void {
 }
 
 function setupOntoHelp(): void {
+  // 네온 원형 버튼 — 범례(온톨로지 분석 설명) 카드를 껐다 켰다 한다
+  const fab = $("btn-legend");
+  const legend = $("onto-legend");
+  const openLegend = localStorage.getItem("wfg-legend-open") === "1";
+  legend.hidden = !openLegend;
+  fab.setAttribute("aria-expanded", String(openLegend));
+  fab.addEventListener("click", () => {
+    legend.hidden = !legend.hidden;
+    fab.setAttribute("aria-expanded", String(!legend.hidden));
+    try { localStorage.setItem("wfg-legend-open", legend.hidden ? "0" : "1"); } catch { /* 무시 */ }
+  });
+
   const modal = $("onto-help-modal");
   $("btn-onto-help").addEventListener("click", () => (modal.hidden = false));
   $("onto-help-close").addEventListener("click", () => (modal.hidden = true));

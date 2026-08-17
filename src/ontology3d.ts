@@ -262,6 +262,7 @@ export class Ontology3D {
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
     this.camera.position.set(0, 0, this.targetZoom);
     this.scene.add(this.world);
+    this.world.position.y = -0.4; // 3단 밴드(위 +4.5 ~ 아래 -3.7)의 무게중심을 화면 가운데로
     this.scene.add(new THREE.AmbientLight(0xdbeafe, 1.2));
     this.buildBands();
     this.bindEvents();

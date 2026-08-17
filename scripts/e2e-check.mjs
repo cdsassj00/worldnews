@@ -117,7 +117,10 @@ check(
 );
 await page.click('#radar-tabs .radar-tab[data-tab="tailwind"]');
 
-// 온톨로지 설명 모달
+// 온톨로지 설명 모달 — 네온 토글 버튼으로 범례를 먼저 연다 (2026-08-17)
+check("범례 기본 접힘", await page.locator("#onto-legend").isHidden());
+await page.click("#btn-legend");
+check("네온 버튼으로 범례 열림", await page.locator("#onto-legend").isVisible());
 await page.click("#btn-onto-help");
 await page.waitForSelector("#onto-help-modal .oh-table", { timeout: 5000 });
 check("온톨로지 설명 모달", (await page.locator("#onto-help-modal .oh-table tr").count()) >= 4);
