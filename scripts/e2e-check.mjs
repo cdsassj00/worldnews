@@ -311,9 +311,17 @@ await page.click("#auto-close");
   if (apiRows > 0) await page.waitForSelector("#flow-body .flow-row", { timeout: 60000 });
   else await page.waitForTimeout(600);
   const rows = await page.locator("#flow-body .flow-row").count();
+  // 탭 5개 = 시장 칩 2(한국·미국) + 프로파일 3 (2026-08-17 미국 확장)
   const profiles = await page.locator("#flow-profiles .radar-tab").count();
-  check(`수급분석 — 순위 ${Math.max(0, rows - 1)}종목(API ${apiRows}) · 프로파일 ${profiles}`,
-    profiles === 3 && (apiRows === 0 || rows >= 11));
+  check(`수급분석 — 순위 ${Math.max(0, rows - 1)}종목(API ${apiRows}) · 탭 ${profiles}(시장2+프로파일3)`,
+    profiles === 5 && (apiRows === 0 || rows >= 11));
+  // 미국 전환 — 클릭하면 미국 순위가 그려진다 (스캔이 아직이면 빈 표라도 오류 없이)
+  await page.locator("#flow-profiles .radar-tab", { hasText: "미국" }).first().click();
+  await page.waitForTimeout(1500);
+  const usRows = await page.locator("#flow-body .flow-row").count();
+  check(`수급분석 미국 탭 — ${Math.max(0, usRows - 1)}종목`, usRows >= 0);
+  await page.locator("#flow-profiles .radar-tab", { hasText: "한국" }).first().click();
+  await page.waitForTimeout(800);
 }
 
 // 조합 전략 — 터미널 탭 (7개 프리셋 + 슬라이더 3개 + 조합 순위표)

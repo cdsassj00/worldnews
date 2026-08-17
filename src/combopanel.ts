@@ -64,6 +64,7 @@ export class ComboPanel {
   private readonly body: HTMLElement;
   private readonly onPick: (symbol: string, name: string) => void;
   private w: EngineWeights = { ...PRESETS[6].w }; // 기본 = 삼합 (조합 탭이니 조합부터)
+  private market: "KR" | "US" = "KR";
   private bt: BacktestResults | null = null;
   private loadedKey = "";
   private timer = 0;
@@ -78,11 +79,11 @@ export class ComboPanel {
   }
 
   async load(): Promise<void> {
-    const key = `${this.w.onto}-${this.w.flow}-${this.w.chart}`;
+    const key = `${this.market}:${this.w.onto}-${this.w.flow}-${this.w.chart}`;
     if (this.loadedKey === key) return;
     if (!this.bt) this.bt = await api.backtest().catch(() => null);
     try {
-      const data = await api.comboRank(this.w, 20);
+      const data = await api.comboRank(this.w, 20, this.market);
       this.loadedKey = key;
       this.renderTable(data);
     } catch (err) {
@@ -99,7 +100,20 @@ export class ComboPanel {
   }
 
   private renderPresets(): void {
-    this.presetsEl.replaceChildren(...PRESETS.map((p) => {
+    // 시장 전환 — 같은 조합 가중치를 미국(S&P 주요 104종목)에도 적용해 본다 (2026-08-17)
+    const mktBtn = (mkt: "KR" | "US", label: string) => {
+      const b = el("button", { type: "button", class: `radar-tab${this.market === mkt ? " active" : ""}`, role: "tab", text: label });
+      b.addEventListener("click", () => {
+        this.market = mkt;
+        this.renderPresets();
+        window.clearTimeout(this.timer);
+        this.timer = window.setTimeout(() => void this.load(), 100);
+      });
+      return b;
+    };
+    this.presetsEl.replaceChildren(
+      el("span", { class: "radar-tabs", role: "tablist", style: "margin-right:8px" }, [mktBtn("KR", "한국"), mktBtn("US", "미국")]),
+      ...PRESETS.map((p) => {
       const active = sameW(p.w, this.w);
       const year = this.btYear(p.id);
       const b = el("button", { type: "button", class: `combo-preset${active ? " active" : ""}`, role: "tab", title: p.descKo }, [
@@ -111,10 +125,10 @@ export class ComboPanel {
     }));
   }
 
-  /** 이 조합의 백테스트 최근 1년(KR) — 측정된 프리셋만 숫자가 있다 */
+  /** 이 조합의 백테스트 최근 1년 — 현재 시장 기준. 측정된 프리셋만 숫자가 있다 */
   private btYear(id: string): number | null {
     const row = this.bt?.engineComparison.engines.find((e) => e.id === id);
-    const r = row?.KR?.returns;
+    const r = (this.market === "US" ? row?.US : row?.KR)?.returns;
     return r && r.length >= 3 ? r[2] : null;
   }
 
@@ -167,7 +181,7 @@ export class ComboPanel {
       const row = el("button", { type: "button", class: "flow-row combo-row" }, [
         el("span", { class: "flow-rank", text: String(i + 1) }),
         el("span", { class: "flow-name" }, [el("b", { text: r.name }), el("i", { text: r.sector || "" })]),
-        el("span", { text: `${fmtNum(r.price, 0)}원` }),
+        el("span", { text: this.market === "US" ? `$${fmtNum(r.price, 2)}` : `${fmtNum(r.price, 0)}원` }),
         el("span", { class: dirClass(r.changePct), text: fmtPct(r.changePct) }),
         cell(r.onto),
         cell(r.flow),

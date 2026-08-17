@@ -679,6 +679,17 @@ details.acc.card:not([open]) > summary { margin: 0; }
 [data-theme="light"] .onto-fab { background: rgba(255, 255, 255, 0.95); color: #a86f0e; }
 [data-theme="light"] .onto-fab[aria-expanded="true"] { background: #f2c14e; color: #0f172a; }
 
+/* 시장(한국/미국) 전환 칩 — 전략실 리그 · 수급 · 조합 */
+.lab-mkt { margin: 0 0 10px; }
+.flow-tab-sep {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  margin: 0 6px;
+  background: rgba(148, 163, 184, 0.4);
+  align-self: center;
+}
+
 /* 미국 배분(예약 현금) 슬라이더 — 자동매매 '자금과 목표' 안 */
 .reserve-row {
   display: flex;

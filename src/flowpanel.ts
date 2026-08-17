@@ -38,6 +38,7 @@ export class FlowPanel {
   private readonly root: HTMLElement;
   private readonly profileTabs: HTMLElement;
   private profile = "flow";
+  private market: "KR" | "US" = "KR";
   private loadedProfile: string | null = null;
   private readonly onPick: (symbol: string, name: string) => void;
 
@@ -49,7 +50,26 @@ export class FlowPanel {
   }
 
   private renderTabs(): void {
+    // 시장 전환 — 미국(S&P 주요 104종목)도 같은 수급·차트 점수로 훑는다 (2026-08-17)
+    const mktBtn = (mkt: "KR" | "US", label: string) => {
+      const b = el("button", {
+        type: "button",
+        class: `radar-tab${this.market === mkt ? " active" : ""}`,
+        text: label,
+        role: "tab",
+      });
+      b.addEventListener("click", () => {
+        this.market = mkt;
+        this.loadedProfile = null;
+        this.renderTabs();
+        void this.load();
+      });
+      return b;
+    };
     this.profileTabs.replaceChildren(
+      mktBtn("KR", "한국"),
+      mktBtn("US", "미국"),
+      el("span", { class: "flow-tab-sep", "aria-hidden": "true" }),
       ...PROFILES.map((p) => {
         const b = el("button", {
           type: "button",
@@ -69,12 +89,13 @@ export class FlowPanel {
     );
   }
 
-  /** 탭이 열릴 때 호출 — 같은 프로파일이면 다시 안 불러온다 */
+  /** 탭이 열릴 때 호출 — 같은 프로파일·시장이면 다시 안 불러온다 */
   async load(): Promise<void> {
-    if (this.loadedProfile === this.profile) return;
+    const key = `${this.market}:${this.profile}`;
+    if (this.loadedProfile === key) return;
     try {
-      const data = await api.quantRank(this.profile, 20);
-      this.loadedProfile = this.profile;
+      const data = await api.quantRank(this.profile, 20, this.market);
+      this.loadedProfile = key;
       this.render(data);
     } catch (err) {
       this.root.replaceChildren(el("p", { class: "note err", text: `수급 순위를 불러오지 못했습니다 — ${(err as Error).message}` }));
@@ -113,7 +134,7 @@ export class FlowPanel {
           el("b", { text: r.name }),
           el("i", { text: r.sector || "" }),
         ]),
-        el("span", { text: `${fmtNum(r.price, 0)}원` }),
+        el("span", { text: this.market === "US" ? `$${fmtNum(r.price, 2)}` : `${fmtNum(r.price, 0)}원` }),
         el("span", { class: dirClass(r.changePct), text: fmtPct(r.changePct) }),
         el("span", { class: `flow-score ${r.score >= 0 ? "up" : "down"}`, text: r.score.toFixed(2) }),
         el("span", { class: "flow-axes" }, [

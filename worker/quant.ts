@@ -18,8 +18,9 @@
  * 0.83% 라, 하루짜리 매매를 반복하면 신호가 맞아도 비용으로 죽는다.
  */
 import type { Env } from "./env";
-import { isKrxHoliday } from "./holidays";
+import { isKrxHoliday, isUsHoliday } from "./holidays";
 import seedData from "../shared/radar-universe.json";
+import usSeedData from "../shared/us-universe.json";
 import { QUANT_PROFILES, profileById, quantSignal, scoreFromParts, type QuantParts, type QuantSignal } from "../shared/quant";
 import { consensus, runStrategies } from "../shared/ta";
 import { sma } from "../shared/scoring";
@@ -38,6 +39,19 @@ interface Seed { code: string; symbol: string; name: string; market: string; sec
  * 예산이 50이라 조각으로 나눠 돈다.
  */
 const UNIVERSE: Seed[] = (seedData as Seed[]).filter((s) => (s.src ?? "").startsWith("k200"));
+
+/** 미국 유니버스 — S&P 주요 104종목 (2026-08-17 사용자 지시 "다 해놓자"로 수급·차트·리그 확장) */
+const UNIVERSE_US: Seed[] = usSeedData as Seed[];
+
+/** 스캔은 한국+미국을 한 바퀴로 돈다 — 점수 함수는 시장과 무관하게 동일하다 */
+const SCAN_UNIVERSE: Seed[] = [...UNIVERSE, ...UNIVERSE_US];
+
+export type QuantMarket = "KR" | "US";
+/** 저장된 행의 시장 — 미국 확장 전에 저장된 행에는 market 이 없다(=한국) */
+const rowMarket = (r: { market?: string }): QuantMarket => (r.market === "US" ? "US" : "KR");
+/** 거래대금 하한 — 한국은 원, 미국은 달러 단위라 문턱이 다르다 */
+const turnoverOk = (r: { market?: string; turnover: number }, minKrw: number) =>
+  rowMarket(r) === "US" ? r.turnover >= 3_000_000 : r.turnover >= minKrw;
 
 /** 한 크론에서 훑는 종목 수 — 자동매매·레이더와 예산(50)을 나눠 쓴다 */
 const CHUNK = 12;
@@ -85,6 +99,8 @@ export interface QuantRow {
   symbol: string;
   name: string;
   sector: string;
+  /** "KR" | "US" — 미국 확장 전 행에는 없다(한국으로 취급) */
+  market?: QuantMarket;
   price: number;
   changePct: number;
   /** 프로파일별 점수 */
@@ -201,15 +217,21 @@ const kstDay = (t = Date.now()) => new Date(t + 9 * 3600_000).toISOString().slic
  */
 export async function quantScanChunk(env: Env): Promise<{ scanned: number; cursor: number; skipped: number }> {
   const store = await loadRank(env);
-  const start = store.cursor % Math.max(1, UNIVERSE.length);
+  const start = store.cursor % Math.max(1, SCAN_UNIVERSE.length);
   const slice: Seed[] = [];
-  for (let i = 0; i < CHUNK && i < UNIVERSE.length; i++) slice.push(UNIVERSE[(start + i) % UNIVERSE.length]);
+  for (let i = 0; i < CHUNK && i < SCAN_UNIVERSE.length; i++) slice.push(SCAN_UNIVERSE[(start + i) % SCAN_UNIVERSE.length]);
 
-  // 시장 지수 — 상대강도 계산용
+  // 시장 지수 — 상대강도 계산용. 이 조각에 미국 종목이 있으면 S&P500 도 받는다.
   let marketCloses: number[] = [];
+  let usMarketCloses: number[] = [];
+  const needUs = slice.some((s) => s.market === "US");
   try {
-    const [ks] = await getSparkMany(env, ["^KS11"], "6mo");
-    if (ks) marketCloses = ks.closes;
+    const symbols = needUs ? ["^KS11", "^GSPC"] : ["^KS11"];
+    const got = await getSparkMany(env, symbols, "6mo");
+    for (const g of got) {
+      if (g.symbol.toUpperCase() === "^KS11") marketCloses = g.closes;
+      if (g.symbol.toUpperCase() === "^GSPC") usMarketCloses = g.closes;
+    }
   } catch { /* 상대강도만 0 이 된다 */ }
 
   let scanned = 0;
@@ -224,7 +246,7 @@ export async function quantScanChunk(env: Env): Promise<{ scanned: number; curso
       const s = res.value;
       if (s.closes.length < 70 || !s.volumes.length) { skipped++; return; }
       const hist = { price: s.price, closes: s.closes, highs: s.highs, lows: s.lows, volumes: s.volumes };
-      const sig = quantSignal({ hist, market: marketCloses }, QUANT_PROFILES[0]);
+      const sig = quantSignal({ hist, market: seed.market === "US" ? usMarketCloses : marketCloses }, QUANT_PROFILES[0]);
       const scores: Record<string, number> = {};
       for (const p of QUANT_PROFILES) scores[p.id] = scoreFromParts(sig.parts, p);
       // 차트 거장 13종 합의 — 사다리·플랜 계산은 빼고 전략 판정만(속도).
@@ -235,6 +257,7 @@ export async function quantScanChunk(env: Env): Promise<{ scanned: number; curso
         symbol: seed.symbol,
         name: seed.name,
         sector: seed.sector,
+        market: seed.market === "US" ? "US" : "KR",
         price: s.price,
         changePct: s.changePct,
         scores,
@@ -250,7 +273,7 @@ export async function quantScanChunk(env: Env): Promise<{ scanned: number; curso
     });
   }
 
-  store.cursor = (start + slice.length) % UNIVERSE.length;
+  store.cursor = (start + slice.length) % SCAN_UNIVERSE.length;
   store.updatedAt = now;
   await env.CACHE.put(RANK_KEY, JSON.stringify(store));
   return { scanned, cursor: store.cursor, skipped };
@@ -264,18 +287,18 @@ export interface QuantRankResult {
   rows: (QuantRow & { score: number })[];
 }
 
-export async function quantRank(env: Env, profileId?: string, limit = 20): Promise<QuantRankResult> {
+export async function quantRank(env: Env, profileId?: string, limit = 20, market: QuantMarket = "KR"): Promise<QuantRankResult> {
   const c = cfg(env);
   const profile = profileId ? profileById(profileId) : c.profile;
   const store = await loadRank(env);
   const rows = Object.values(store.rows)
-    .filter((r) => r.turnover >= c.minTurnover)
+    .filter((r) => rowMarket(r) === market && turnoverOk(r, c.minTurnover))
     .map((r) => ({ ...r, score: r.scores[profile.id] ?? 0 }))
     .sort((a, b) => b.score - a.score);
   return {
     profile: { id: profile.id, nameKo: profile.nameKo },
-    universe: UNIVERSE.length,
-    scanned: Object.keys(store.rows).length,
+    universe: market === "US" ? UNIVERSE_US.length : UNIVERSE.length,
+    scanned: Object.values(store.rows).filter((r) => rowMarket(r) === market).length,
     updatedAt: store.updatedAt,
     rows: rows.slice(0, limit),
   };
@@ -283,21 +306,38 @@ export async function quantRank(env: Env, profileId?: string, limit = 20): Promi
 
 /* ── 모의매매 ─────────────────────────────── */
 
-/** 코스피가 이동평균 위인가 — 신규 매수 게이트 */
-async function marketOk(env: Env, c: QuantConfig): Promise<{ ok: boolean; note: string }> {
+/** 시장 지수가 이동평균 위인가 — 신규 매수 게이트 (KR=코스피, US=S&P500) */
+async function marketOk(env: Env, c: QuantConfig, market: QuantMarket = "KR"): Promise<{ ok: boolean; note: string }> {
   if (!c.marketMaDays) return { ok: true, note: "시장 필터 꺼짐" };
+  const sym = market === "US" ? "^GSPC" : "^KS11";
+  const label = market === "US" ? "S&P500" : "코스피";
   try {
-    const [ks] = await getSparkMany(env, ["^KS11"], "6mo");
+    const [ks] = await getSparkMany(env, [sym], "6mo");
     if (!ks || ks.closes.length < c.marketMaDays + 1) return { ok: true, note: "지수 데이터 부족 — 필터 통과" };
     const ma = sma(ks.closes, c.marketMaDays);
     const last = ks.closes.at(-1)!;
     return {
       ok: last >= ma,
-      note: `코스피 ${Math.round(last)} vs ${c.marketMaDays}일선 ${Math.round(ma)} — ${last >= ma ? "위(매수 허용)" : "아래(신규 매수 정지)"}`,
+      note: `${label} ${Math.round(last)} vs ${c.marketMaDays}일선 ${Math.round(ma)} — ${last >= ma ? "위(매수 허용)" : "아래(신규 매수 정지)"}`,
     };
   } catch {
     return { ok: true, note: "지수 조회 실패 — 필터 통과" };
   }
+}
+
+/** 미국 정규장(현지 09:30~16:00, 주말·휴장일 제외)인가 — DST 는 타임존 API가 처리한다 */
+function usMarketOpen(now = new Date()): boolean {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/New_York",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", weekday: "short", hour12: false,
+  }).formatToParts(now);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const wd = get("weekday");
+  if (wd === "Sat" || wd === "Sun") return false;
+  if (isUsHoliday(`${get("year")}-${get("month")}-${get("day")}`)) return false;
+  const mins = Number(get("hour")) * 60 + Number(get("minute"));
+  return mins >= 9 * 60 + 30 && mins <= 16 * 60;
 }
 
 export interface QuantCycleResult {
@@ -357,26 +397,29 @@ export const LAB_STRATEGIES: {
  * v3 — 2026-08-17 개장시간 가드를 넣으며 한 번 더 재시작. v2 는 주말 크론에서
  * 금요일 종가(멈춘 시세)로 2호만 매수가 나가, "같은 조건으로 겨룬다"는 전제가
  * 깨졌다. 네 원장 모두 8/18(화) 09:00 같은 출발선에서 시작한다. */
-function labStateKey(id: LabId): string {
-  return `lab:state:v3:${id}`;
+/** 미국 리그 가상 원금(달러) — 실계좌의 미국 배분(약 400만원 ≈ $2,900)과 같은 규모감 */
+const US_LAB_CAPITAL = 3_000;
+
+function labStateKey(id: LabId, market: QuantMarket = "KR"): string {
+  return market === "US" ? `lab:state:us1:${id}` : `lab:state:v3:${id}`;
 }
 
-async function loadLabState(env: Env, id: LabId): Promise<QuantState> {
-  const raw = await env.CACHE.get(labStateKey(id), "json");
+async function loadLabState(env: Env, id: LabId, market: QuantMarket = "KR"): Promise<QuantState> {
+  const raw = await env.CACHE.get(labStateKey(id, market), "json");
   if (raw && typeof raw === "object") return raw as QuantState;
-  const c = cfg(env);
+  const capital = market === "US" ? US_LAB_CAPITAL : cfg(env).capital;
   return {
-    capital: c.capital,
-    cash: c.capital, positions: {}, realizedPnl: 0, trades: [], day: "", buysToday: 0,
-    peakEquity: c.capital, haltedPermanent: false, haltReason: "", startedAt: Date.now(),
+    capital,
+    cash: capital, positions: {}, realizedPnl: 0, trades: [], day: "", buysToday: 0,
+    peakEquity: capital, haltedPermanent: false, haltReason: "", startedAt: Date.now(),
     lastCycleAt: 0, lastNote: "",
   };
 }
 
-async function saveLabState(env: Env, id: LabId, s: QuantState): Promise<void> {
+async function saveLabState(env: Env, id: LabId, s: QuantState, market: QuantMarket = "KR"): Promise<void> {
   s.trades = s.trades.slice(-200);
   if (s.equityCurve) s.equityCurve = s.equityCurve.slice(-400);
-  await env.CACHE.put(labStateKey(id), JSON.stringify(s));
+  await env.CACHE.put(labStateKey(id, market), JSON.stringify(s));
 }
 
 /** 전략별 점수 — 다른 것은 이 함수 하나뿐이다 */
@@ -462,7 +505,7 @@ function runLedger(
     if (market.ok) {
       const fresh = now - 6 * 3600_000;
       const cands = Object.values(byCode)
-        .filter((r) => r.scannedAt >= fresh && r.turnover >= c.minTurnover)
+        .filter((r) => r.scannedAt >= fresh && turnoverOk(r, c.minTurnover))
         .map((r) => ({ r, score: scoreOf(r) }))
         .filter((x): x is { r: QuantRow; score: number } => x.score !== undefined)
         .sort((a, b) => b.score - a.score);
@@ -528,35 +571,49 @@ export async function labCycle(env: Env): Promise<{ ran: boolean; results: Recor
   if (!c.enabled) return { ran: false, results: {} };
 
   /* 개장시간 가드 — 시세가 멈춘 시간(밤·주말·공휴일)에 장부를 돌리면
-   * 금요일 종가로 사는 왜곡이 생긴다(v2 리그에서 실측). 정규장에만 돌린다. */
-  {
-    const k = new Date(Date.now() + 9 * 3600_000);
-    const wd = k.getUTCDay();
-    const mins = k.getUTCHours() * 60 + k.getUTCMinutes();
-    const open = wd >= 1 && wd <= 5 && !isKrxHoliday(kstDay()) && mins >= 9 * 60 && mins <= 15 * 60 + 20;
-    if (!open) return { ran: false, results: {} };
-  }
+   * 금요일 종가로 사는 왜곡이 생긴다(v2 리그에서 실측). 각 리그는 자기 정규장에만 돈다. */
+  const k = new Date(Date.now() + 9 * 3600_000);
+  const wd = k.getUTCDay();
+  const mins = k.getUTCHours() * 60 + k.getUTCMinutes();
+  const krOpen = wd >= 1 && wd <= 5 && !isKrxHoliday(kstDay()) && mins >= 9 * 60 && mins <= 15 * 60 + 20;
+  const usOpen = usMarketOpen();
+  if (!krOpen && !usOpen) return { ran: false, results: {} };
 
+  const results: Record<string, QuantCycleResult> = {};
+  if (krOpen) Object.assign(results, await runLeague(env, c, "KR"));
+  if (usOpen) {
+    /* 미국 원장 설정 — 규칙(문턱·손절·익절·%한도)은 한국과 동일, 금액 단위만 달러 */
+    const cUS: QuantConfig = { ...c, capital: US_LAB_CAPITAL, maxOrderKrw: 900, minOrderKrw: 120, minPool: 50 };
+    const usResults = await runLeague(env, cUS, "US");
+    for (const [id, r] of Object.entries(usResults)) results[`us:${id}`] = r;
+  }
+  return { ran: true, results };
+}
+
+/** 한 시장의 4개 원장을 한 사이클 진행한다 — 공유 데이터는 시장별로 한 번만 받는다 */
+async function runLeague(env: Env, c: QuantConfig, market: QuantMarket): Promise<Record<string, QuantCycleResult>> {
   const today = kstDay();
   const now = Date.now();
   const store = await loadRank(env);
-  const byCode = store.rows;
+  const byCode: Record<string, QuantRow> = {};
+  for (const r of Object.values(store.rows)) if (rowMarket(r) === market) byCode[r.code] = r;
 
-  // 온톨로지 점수 — 레이더 DB에서 한 번에 (KR 전 종목)
+  // 온톨로지 점수 — 레이더 DB에서 한 번에.
+  // 레이더의 market 값은 "KOSPI"/"KOSDAQ"/"US" 다 — "KR" 로 필터하면 0건이 나온다(실측).
   const ontoByCode = new Map<string, number>();
   try {
     const { radarTop } = await import("./radarscan");
-    // 레이더의 market 값은 "KOSPI"/"KOSDAQ"/"US" 다 — "KR" 로 필터하면 0건이 나온다(실측).
-    // 필터 없이 받아서 미국만 걸러낸다.
     const top = await radarTop(env, 500, "desc") as { items?: { code: string; score: number; market: string }[] };
-    for (const it of top.items ?? []) if (it.market !== "US") ontoByCode.set(it.code, it.score);
+    for (const it of top.items ?? []) {
+      if ((market === "US") === (it.market === "US")) ontoByCode.set(it.code, it.score);
+    }
   } catch { /* onto·fusion 원장만 이번 사이클을 쉰다 */ }
 
-  const market = await marketOk(env, c);
+  const gate = await marketOk(env, c, market);
 
   // 네 원장 상태를 모두 읽고, 보유 종목 현재가를 **한 번에** 받는다
   const states = new Map<LabId, QuantState>();
-  for (const st of LAB_STRATEGIES) states.set(st.id, await loadLabState(env, st.id));
+  for (const st of LAB_STRATEGIES) states.set(st.id, await loadLabState(env, st.id, market));
   const heldSymbols = [...new Set([...states.values()].flatMap((s) => Object.values(s.positions).map((p) => p.symbol)))];
   if (heldSymbols.length) {
     try {
@@ -581,11 +638,11 @@ export async function labCycle(env: Env): Promise<{ ran: boolean; results: Recor
       c, state, byCode,
       (row) => labScore(strat.id, row, ontoByCode),
       // onto 점수를 못 받았으면 onto·fusion 은 후보가 0이 되어 자연히 매수가 없다
-      market, strat.nameKo, now, today,
+      gate, strat.nameKo, now, today,
     );
-    await saveLabState(env, strat.id, state);
+    await saveLabState(env, strat.id, state, market);
   }
-  return { ran: true, results };
+  return results;
 }
 
 /* ── 전략실 조회 ─────────────────────────────── */
@@ -619,12 +676,15 @@ export interface LabStrategyView {
   startedAt: number;
 }
 
-export async function labOverview(env: Env): Promise<{
+export async function labOverview(env: Env, market: QuantMarket = "KR"): Promise<{
   disclaimer: string;
   universe: number;
   scanned: number;
   scanUpdatedAt: number;
   liveEngine: string;
+  market: QuantMarket;
+  /** 표기 통화 — 한국 리그 KRW, 미국 리그 USD */
+  currency: "KRW" | "USD";
   strategies: LabStrategyView[];
 }> {
   const c = cfg(env);
@@ -637,9 +697,11 @@ export async function labOverview(env: Env): Promise<{
   try {
     const { radarTop } = await import("./radarscan");
     const top = await radarTop(env, 500, "desc") as { items?: { code: string; score: number; market: string }[] };
-    for (const it of top.items ?? []) if (it.market !== "US") ontoByCode.set(it.code, it.score);
+    for (const it of top.items ?? []) {
+      if ((market === "US") === (it.market === "US")) ontoByCode.set(it.code, it.score);
+    }
   } catch { /* 추천만 빈다 */ }
-  const rowsAll = Object.values(store.rows).filter((r) => r.turnover >= c.minTurnover);
+  const rowsAll = Object.values(store.rows).filter((r) => rowMarket(r) === market && turnoverOk(r, c.minTurnover));
   const picksFor = (id: LabId) =>
     rowsAll
       .map((r) => ({ r, score: labScore(id, r, ontoByCode) }))
@@ -650,8 +712,8 @@ export async function labOverview(env: Env): Promise<{
 
   const strategies: LabStrategyView[] = [];
   for (const st of LAB_STRATEGIES) {
-    const state = await loadLabState(env, st.id);
-    const capital = state.capital ?? c.capital;
+    const state = await loadLabState(env, st.id, market);
+    const capital = state.capital ?? (market === "US" ? US_LAB_CAPITAL : c.capital);
     const positions = Object.values(state.positions).map((p) => {
       const px = p.lastPrice || p.avgPrice;
       return {
@@ -673,7 +735,8 @@ export async function labOverview(env: Env): Promise<{
     strategies.push({
       id: st.id, no: st.no, nameKo: st.nameKo, tagKo: st.tagKo, descKo: st.descKo,
       engineId: st.engineId,
-      liveNow: st.engineId !== null && st.engineId === liveEngine,
+      // 실계좌 배지는 한국 리그에만 — 미국은 아직 페이퍼 검증 단계다
+      liveNow: market === "KR" && st.engineId !== null && st.engineId === liveEngine,
       capital,
       equity,
       cash: Math.round(state.cash),
@@ -698,10 +761,12 @@ export async function labOverview(env: Env): Promise<{
       "전략실의 수익률은 계좌 수익률이 아니라, 4개 전략을 같은 가상 원금·같은 규칙으로 돌리는 백테스트·시뮬레이션(모의매매) 기록입니다. " +
       "'실계좌 운용 중' 배지는 그 전략이 현재 운영자 계좌의 매매 엔진이라는 표시일 뿐, 금액은 공개하지 않습니다. " +
       "특정 종목의 매수·매도를 권유하지 않으며, 투자 판단과 책임은 이용자 본인에게 있습니다.",
-    universe: UNIVERSE.length,
-    scanned: Object.keys(store.rows).length,
+    universe: market === "US" ? UNIVERSE_US.length : UNIVERSE.length,
+    scanned: Object.values(store.rows).filter((r) => rowMarket(r) === market).length,
     scanUpdatedAt: store.updatedAt,
     liveEngine,
+    market,
+    currency: market === "US" ? "USD" : "KRW",
     strategies,
   };
 }
@@ -720,7 +785,7 @@ export interface ComboRow {
   total: number;
 }
 
-export async function comboRank(env: Env, wRaw: Partial<ComboWeights>, limit = 20): Promise<{
+export async function comboRank(env: Env, wRaw: Partial<ComboWeights>, limit = 20, market: QuantMarket = "KR"): Promise<{
   weights: ComboWeights;
   universe: number; scanned: number; updatedAt: number;
   rows: ComboRow[];
@@ -735,13 +800,15 @@ export async function comboRank(env: Env, wRaw: Partial<ComboWeights>, limit = 2
   try {
     const { radarTop } = await import("./radarscan");
     const top = await radarTop(env, 500, "desc") as { items?: { code: string; score: number; market: string }[] };
-    for (const it of top.items ?? []) if (it.market !== "US") ontoByCode.set(it.code, it.score);
+    for (const it of top.items ?? []) {
+      if ((market === "US") === (it.market === "US")) ontoByCode.set(it.code, it.score);
+    }
   } catch { /* 온톨로지 축만 빈다 */ }
 
   const totalW = w.onto + w.flow + w.chart;
   const rows: ComboRow[] = [];
   for (const r of Object.values(store.rows)) {
-    if (r.turnover < c.minTurnover) continue;
+    if (rowMarket(r) !== market || !turnoverOk(r, c.minTurnover)) continue;
     const onto = ontoByCode.get(r.code);
     const flow = r.scores["breakout"];
     const chart = r.taScore;
@@ -764,8 +831,8 @@ export async function comboRank(env: Env, wRaw: Partial<ComboWeights>, limit = 2
   rows.sort((a, b) => b.total - a.total);
   return {
     weights: w,
-    universe: UNIVERSE.length,
-    scanned: Object.keys(store.rows).length,
+    universe: market === "US" ? UNIVERSE_US.length : UNIVERSE.length,
+    scanned: Object.values(store.rows).filter((r) => rowMarket(r) === market).length,
     updatedAt: store.updatedAt,
     rows: rows.slice(0, Math.min(50, Math.max(1, limit))),
   };

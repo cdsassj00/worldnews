@@ -13,7 +13,7 @@
  */
 import { api, type BacktestResults, type LabOverview, type LabStrategy } from "./api";
 import { methodologyBox } from "./combopanel";
-import { dirClass, el, fmtKrw, fmtPct, timeAgo } from "./format";
+import { dirClass, el, fmtKrw, fmtNum, fmtPct, timeAgo } from "./format";
 
 const NS = "http://www.w3.org/2000/svg";
 
@@ -62,20 +62,42 @@ export class LabPanel {
   private data: LabOverview | null = null;
   private bt: BacktestResults | null = null;
   private openId: string | null = null;
+  private market: "KR" | "US" = "KR";
 
   constructor(opts: { grid: HTMLElement; detail: HTMLElement; disclaimer: HTMLElement }) {
     this.grid = opts.grid;
     this.detail = opts.detail;
     this.disclaimer = opts.disclaimer;
+    // 리그 시장 전환 — 미국 리그(가상 $3,000, 미국장 시간 가동)도 같은 규칙으로 겨룬다 (2026-08-17)
+    const tabs = el("div", { class: "radar-tabs lab-mkt", role: "tablist" });
+    const mk = (mkt: "KR" | "US", label: string) => {
+      const b = el("button", { type: "button", class: `radar-tab${this.market === mkt ? " active" : ""}`, role: "tab", text: label });
+      b.addEventListener("click", () => {
+        if (this.market === mkt) return;
+        this.market = mkt;
+        this.openId = null;
+        for (const x of tabs.querySelectorAll(".radar-tab")) x.classList.toggle("active", x === b);
+        void this.load(true);
+      });
+      return b;
+    };
+    tabs.append(mk("KR", "한국 리그"), mk("US", "미국 리그"));
+    this.grid.insertAdjacentElement("beforebegin", tabs);
     // 백테스트 숫자를 자랑하는 화면이므로, 어떻게 잰 숫자이고 어떤 한계가 있는지를
     // 같은 화면에서 읽을 수 있게 한다 (2026-08-16 사용자 지시: 정확한 시뮬레이션 근거)
     this.disclaimer.insertAdjacentElement("afterend", methodologyBox());
   }
 
-  async load(): Promise<void> {
+  /** 통화 표기 — 한국 리그 원, 미국 리그 달러 */
+  private money(v: number): string {
+    return this.market === "US" ? `$${fmtNum(v, 2)}` : fmtKrw(v);
+  }
+
+  async load(force = false): Promise<void> {
+    if (force) this.data = null;
     try {
       const [data, bt] = await Promise.all([
-        api.labOverview(),
+        api.labOverview(this.market),
         this.bt ? Promise.resolve(this.bt) : api.backtest().catch(() => null),
       ]);
       this.data = data;
@@ -90,7 +112,8 @@ export class LabPanel {
     if (!this.bt || !engineId) return { returns: null };
     const row = this.bt.engineComparison.engines.find((e) => e.id === engineId);
     if (!row) return { returns: null };
-    if (row.KR) return { returns: row.KR.returns };
+    const rec = this.market === "US" ? row.US : row.KR;
+    if (rec) return { returns: rec.returns };
     return { returns: null, pending: row.pending };
   }
 
@@ -210,7 +233,7 @@ export class LabPanel {
         table.append(el("div", { class: "lab-tr" }, [
           el("span", { class: "lab-td-name", text: p.name }),
           el("span", { text: p.sector || "—" }),
-          el("span", { text: fmtKrw(Math.round(p.price)) }),
+          el("span", { text: this.money(Math.round(p.price)) }),
           el("span", { text: p.score.toFixed(2) }),
           el("span", { class: dirClass(p.changePct), text: fmtPct(p.changePct) }),
         ]));
@@ -228,8 +251,8 @@ export class LabPanel {
       for (const p of s.positions) {
         table.append(el("div", { class: "lab-tr" }, [
           el("span", { class: "lab-td-name", text: `${p.name} ×${p.qty}` }),
-          el("span", { text: fmtKrw(Math.round(p.avgPrice)) }),
-          el("span", { text: fmtKrw(Math.round(p.lastPrice || p.avgPrice)) }),
+          el("span", { text: this.money(Math.round(p.avgPrice)) }),
+          el("span", { text: this.money(Math.round(p.lastPrice || p.avgPrice)) }),
           el("span", { text: `${p.holdDays}일` }),
           el("span", { class: dirClass(p.pnlPct), text: fmtPct(p.pnlPct) }),
         ]));
@@ -249,9 +272,9 @@ export class LabPanel {
       for (const t of s.exits) {
         table.append(el("div", { class: "lab-tr" }, [
           el("span", { class: "lab-td-name", text: t.name }),
-          el("span", { text: fmtKrw(t.price) }),
+          el("span", { text: this.money(t.price) }),
           el("span", { class: "lab-td-reason", text: t.reason }),
-          el("span", { class: dirClass(t.pnl ?? 0), text: t.pnl !== undefined ? `${t.pnl >= 0 ? "+" : ""}${fmtKrw(t.pnl)}` : "—" }),
+          el("span", { class: dirClass(t.pnl ?? 0), text: t.pnl !== undefined ? `${t.pnl >= 0 ? "+" : ""}${this.money(t.pnl)}` : "—" }),
           el("span", { text: timeAgo(t.at) }),
         ]));
       }

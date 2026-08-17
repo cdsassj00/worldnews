@@ -655,6 +655,8 @@ export interface LabOverview {
   disclaimer: string;
   universe: number; scanned: number; scanUpdatedAt: number;
   liveEngine: string;
+  market?: "KR" | "US";
+  currency?: "KRW" | "USD";
   strategies: LabStrategy[];
 }
 
@@ -756,7 +758,7 @@ export const api = {
   autoReset: () => request<{ ok: true }>("/api/auto/reset", { method: "POST", auth: true, body: "{}" }),
 
   backtest: () => request<BacktestResults>("/api/backtest"),
-  labOverview: () => request<LabOverview>("/api/lab/overview"),
+  labOverview: (market: "KR" | "US" = "KR") => request<LabOverview>(`/api/lab/overview?market=${market}`),
   ta: (symbol: string, days = 180) => request<TaResponse>(`/api/ta?symbol=${encodeURIComponent(symbol)}&days=${days}`),
   overseasCheck: () =>
     request<OverseasReadiness>("/api/kis/overseas-check", { method: "POST", auth: true, body: "{}" }),
@@ -764,10 +766,10 @@ export const api = {
   autoSetEngine: (payload: { engine?: string; weights?: EngineWeights }) =>
     request<{ ok: true; engine: string; engineName: string; weights: EngineWeights }>(
       "/api/auto/engine", { method: "POST", auth: true, body: JSON.stringify(payload) }),
-  comboRank: (w: EngineWeights, limit = 20) =>
-    request<ComboRank>(`/api/combo/rank?onto=${w.onto}&flow=${w.flow}&chart=${w.chart}&limit=${limit}`),
+  comboRank: (w: EngineWeights, limit = 20, market: "KR" | "US" = "KR") =>
+    request<ComboRank>(`/api/combo/rank?onto=${w.onto}&flow=${w.flow}&chart=${w.chart}&limit=${limit}&market=${market}`),
 
   quantStatus: () => request<QuantStatus>("/api/quant/status"),
-  quantRank: (profile?: string, limit = 12) =>
-    request<QuantRank>(`/api/quant/rank?limit=${limit}${profile ? `&profile=${encodeURIComponent(profile)}` : ""}`),
+  quantRank: (profile?: string, limit = 12, market: "KR" | "US" = "KR") =>
+    request<QuantRank>(`/api/quant/rank?limit=${limit}&market=${market}${profile ? `&profile=${encodeURIComponent(profile)}` : ""}`),
 };

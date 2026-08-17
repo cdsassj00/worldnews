@@ -447,8 +447,9 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
       chart: num(url.searchParams.get("chart"), 33),
     };
     const limit = Math.min(50, Math.max(1, Math.floor(num(url.searchParams.get("limit"), 20))));
-    const key = `combo:rank:${w.onto}-${w.flow}-${w.chart}:${limit}`;
-    const { data } = await cached(env, key, 120, () => comboRank(env, w, limit));
+    const market = url.searchParams.get("market") === "US" ? "US" as const : "KR" as const;
+    const key = `combo:rank:${market}:${w.onto}-${w.flow}-${w.chart}:${limit}`;
+    const { data } = await cached(env, key, 120, () => comboRank(env, w, limit, market));
     return json(data);
   }
 
@@ -612,7 +613,8 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
 
   if (path === "/api/lab/overview") {
     // 전략실 — 4개 전략의 모의 원장 성적. 조회는 공개(어떤 근거로 판단하는지 보이게).
-    const { data } = await cached(env, "lab:overview", 60, () => labOverview(env));
+    const market = url.searchParams.get("market") === "US" ? "US" as const : "KR" as const;
+    const { data } = await cached(env, `lab:overview:${market}`, 60, () => labOverview(env, market));
     return json(data);
   }
 
@@ -623,7 +625,8 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
   if (path === "/api/quant/rank") {
     const profile = url.searchParams.get("profile") ?? undefined;
     const limit = Math.min(50, Math.max(1, Math.floor(num(url.searchParams.get("limit"), 20))));
-    return json({ ...(await quantRank(env, profile, limit)), profiles: QUANT_PROFILE_LIST });
+    const market = url.searchParams.get("market") === "US" ? "US" as const : "KR" as const;
+    return json({ ...(await quantRank(env, profile, limit, market)), profiles: QUANT_PROFILE_LIST });
   }
 
   if (path === "/api/quant/scan") {
@@ -710,7 +713,10 @@ export default {
     // runCycle 이 두 번 돌았다 — 같은 매도가 두 번 나가 "주문 가능 수량 초과"의
     // 원인이 된다. 장중 시간대에는 15분 크론만 매매를 돌린다.
     const now = new Date();
-    const marketWindow = now.getUTCDay() >= 1 && now.getUTCDay() <= 5 && now.getUTCHours() <= 6;
+    // 15분 크론이 커버하는 창: 한국장(UTC 0~6) + 미국장(UTC 13~21). 이 창에서 정각에
+    // 매시간 크론이 겹치면 매매(runCycle·labCycle)가 두 번 돌아 중복 주문이 난다.
+    const h = now.getUTCHours();
+    const marketWindow = now.getUTCDay() >= 1 && now.getUTCDay() <= 5 && (h <= 6 || (h >= 13 && h <= 21));
     const skipTrade = event.cron === "0 * * * *" && marketWindow;
 
     // 반드시 순차로: 두 작업이 같은 인보케이션의 서브리퀘스트 한도(50)를 나눠 쓴다.

@@ -18,3 +18,14 @@ export const KRX_HOLIDAYS = new Set<string>([
 export function isKrxHoliday(dateKst: string): boolean {
   return KRX_HOLIDAYS.has(dateKst);
 }
+
+/** 미국 증시(NYSE·NASDAQ) 휴장일 — 날짜는 미 동부시간 "YYYY-MM-DD". 2026 잔여분만. */
+export const US_HOLIDAYS = new Set<string>([
+  "2026-09-07", // Labor Day
+  "2026-11-26", // Thanksgiving
+  "2026-12-25", // Christmas
+]);
+
+export function isUsHoliday(dateEt: string): boolean {
+  return US_HOLIDAYS.has(dateEt);
+}
