@@ -71,6 +71,8 @@ export interface Onto3DOptions {
   onHover: (label: string | null, x: number, y: number) => void;
   /** Ctrl 없이 휠을 굴렸을 때 — "확대는 Ctrl+스크롤" 힌트를 잠깐 띄우는 용도 */
   onScrollHint?: () => void;
+  /** 노드 포커스 변경 — 좌상단 정보 카드용. null = 포커스 해제 */
+  onFocus?: (info: { id: string; kind: "macro" | "sector" | "ticker"; label: string; sub: string; degree: number } | null) => void;
 }
 
 type NodeKind = "macro" | "sector" | "ticker";
@@ -134,24 +136,40 @@ function labelSprite(title: string, sub: string, color: THREE.Color, kind: NodeK
   const ctx = cv.getContext("2d")!;
   const hex = `#${color.getHexString()}`;
 
-  ctx.fillStyle = "rgba(9,15,28,0.88)";
+  // 유리판 칩 — 진한 남색 유리 + 색상 테두리, 신호가 강한 노드는 은은한 글로우
+  const strong = kind !== "sector";
+  if (strong) {
+    ctx.shadowColor = hex;
+    ctx.shadowBlur = 26;
+  }
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, "rgba(17,27,50,0.94)");
+  grad.addColorStop(1, "rgba(7,12,26,0.9)");
+  ctx.fillStyle = grad;
   ctx.strokeStyle = hex;
-  ctx.lineWidth = 4;
-  const r = 22;
+  ctx.lineWidth = 3;
+  const r = 28;
   ctx.beginPath();
   ctx.roundRect(4, 4, W - 8, H - 8, r);
   ctx.fill();
   ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // 왼쪽 색상 바 — 계층(요인·섹터·종목)이 한눈에 읽히게
+  ctx.fillStyle = hex;
+  ctx.beginPath();
+  ctx.roundRect(14, 26, 8, H - 52, 4);
+  ctx.fill();
 
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = "#f8fafc";
-  ctx.font = "600 52px Pretendard, system-ui, sans-serif";
-  ctx.fillText(title, W / 2, sub ? H / 2 - 18 : H / 2, W - 40);
+  ctx.font = "800 50px Pretendard, system-ui, sans-serif";
+  ctx.fillText(title, W / 2 + 8, sub ? H / 2 - 20 : H / 2, W - 72);
   if (sub) {
     ctx.fillStyle = hex;
-    ctx.font = "500 38px 'Fira Code', ui-monospace, monospace";
-    ctx.fillText(sub, W / 2, H / 2 + 32, W - 40);
+    ctx.font = "600 37px 'Fira Code', ui-monospace, monospace";
+    ctx.fillText(sub, W / 2 + 8, H / 2 + 32, W - 72);
   }
 
   const tex = new THREE.CanvasTexture(cv);
@@ -160,6 +178,28 @@ function labelSprite(title: string, sub: string, color: THREE.Color, kind: NodeK
     new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false, sizeAttenuation: false }),
   );
   sprite.scale.set(LABEL[kind].x, LABEL[kind].y, 1);
+  return sprite;
+}
+
+/** 포커스 글로우 — 고른 노드 뒤에서 맥동하는 금색 후광 (가산 블렌딩이라 글자를 가리지 않는다) */
+function makeHalo(): THREE.Sprite {
+  const S = 256;
+  const cv = document.createElement("canvas");
+  cv.width = S;
+  cv.height = S;
+  const ctx = cv.getContext("2d")!;
+  const g = ctx.createRadialGradient(S / 2, S / 2, 10, S / 2, S / 2, S / 2);
+  g.addColorStop(0, "rgba(232,192,106,0.85)");
+  g.addColorStop(0.4, "rgba(217,164,65,0.35)");
+  g.addColorStop(1, "rgba(217,164,65,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, S, S);
+  const tex = new THREE.CanvasTexture(cv);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: tex, transparent: true, depthWrite: false, depthTest: false,
+    sizeAttenuation: false, blending: THREE.AdditiveBlending, opacity: 0.9,
+  }));
+  sprite.visible = false;
   return sprite;
 }
 
@@ -181,6 +221,9 @@ export class Ontology3D {
 
   /** 그래프 상시 노드가 아닌 종목을 골랐을 때 임시로 꽂아 넣은 노드·간선 */
   private spotlight: { ticker: TickerNode; nodes: NodeObj[]; edges: EdgeObj[] } | null = null;
+  /** 포커스 노드 뒤의 금색 후광 */
+  private halo = makeHalo();
+  private haloT = 0;
   private lastMacro = new Map<string, MacroNode>();
 
   private autoRotate = true;
@@ -521,6 +564,24 @@ export class Ontology3D {
       (e.line.material as THREE.LineBasicMaterial).opacity = on ? base : 0.03;
       (e.pulse.material as THREE.MeshBasicMaterial).opacity = on ? (e.dim ? 0 : 0.9) : 0.05;
     }
+
+    // 후광 + 좌상단 정보 카드
+    const node = this.focus ? this.nodes.find((n) => n.id === this.focus) : undefined;
+    if (node) {
+      if (!this.halo.parent) this.world.add(this.halo);
+      this.halo.position.copy(node.pos);
+      this.halo.visible = true;
+      this.opts.onFocus?.({
+        id: node.id,
+        kind: node.kind,
+        label: node.label,
+        sub: node.sub,
+        degree: keep ? keep.size - 1 : 0,
+      });
+    } else {
+      this.halo.visible = false;
+      this.opts.onFocus?.(null);
+    }
   }
 
   private bindEvents(): void {
@@ -647,6 +708,14 @@ export class Ontology3D {
       const k = n.id === this.hoverId ? 1.18 : 1;
       n.sprite.scale.x += (LABEL[n.kind].x * k - n.sprite.scale.x) * 0.2;
       n.sprite.scale.y += (LABEL[n.kind].y * k - n.sprite.scale.y) * 0.2;
+    }
+
+    // 포커스 후광 맥동
+    if (this.halo.visible) {
+      this.haloT += dt;
+      const pulse = this.reducedMotion ? 1 : 1 + Math.sin(this.haloT * 2.4) * 0.1;
+      const base = 0.16 * pulse;
+      this.halo.scale.set(base, base, 1);
     }
 
     this.renderer.render(this.scene, this.camera);

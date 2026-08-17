@@ -439,6 +439,30 @@ function setupOntology(): void {
         timer = window.setTimeout(() => hint.classList.remove("show"), 1200);
       };
     })(),
+    // 좌상단 포커스 카드 — 노드를 고르면 범례가 물러나고 그 노드의 정보가 뜬다
+    onFocus: (() => {
+      const host = $("onto-host");
+      const legend = host.querySelector(".onto-legend");
+      const card = el("div", { class: "onto-focus", hidden: "hidden" });
+      host.append(card);
+      const kindKo: Record<string, string> = { macro: "거시 요인", sector: "섹터", ticker: "종목" };
+      return (info: { id: string; kind: string; label: string; sub: string; degree: number } | null) => {
+        legend?.classList.toggle("faded", Boolean(info));
+        if (!info) { card.hidden = true; return; }
+        const close = el("button", { class: "onto-focus-x", type: "button", text: "✕", title: "포커스 해제" });
+        close.addEventListener("click", () => onto?.setFocus(null));
+        card.replaceChildren(
+          el("div", { class: "onto-focus-head" }, [
+            el("span", { class: `onto-focus-dot ${info.kind}` }),
+            el("b", { text: info.label }),
+            ...(info.sub ? [el("span", { class: "onto-focus-sub", text: info.sub })] : []),
+            close,
+          ]),
+          el("p", { class: "onto-focus-meta", text: `${kindKo[info.kind] ?? info.kind} · 연결 경로 ${info.degree}개 표시 중${info.kind === "ticker" ? " — 상세 분석은 오른쪽 패널에" : ""}` }),
+        );
+        card.hidden = false;
+      };
+    })(),
   });
   onto.init();
 

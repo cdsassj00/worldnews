@@ -412,29 +412,31 @@ body {
   cursor: not-allowed;
 }
 
+/* 어두운 캔버스 위 컨트롤 — 테마와 무관하게 어두운 유리 + 금색 호버 */
 .icon-btn {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
-  border-radius: var(--radius);
-  border: 1px solid var(--border-strong);
-  background: rgba(10, 16, 30, 0.8);
-  color: var(--fg-dim);
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: linear-gradient(165deg, rgba(18, 28, 52, 0.9), rgba(8, 13, 28, 0.85));
+  color: #c7d2e4;
   cursor: pointer;
-  backdrop-filter: blur(6px);
-  transition: color 160ms ease, border-color 160ms ease;
+  backdrop-filter: blur(8px);
+  transition: color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 .icon-btn svg {
   width: 18px;
   height: 18px;
 }
 .icon-btn:hover {
-  color: var(--fg);
-  border-color: var(--accent);
+  color: #f8fafc;
+  border-color: #d9a441;
+  box-shadow: 0 0 12px rgba(217, 164, 65, 0.35);
 }
 .icon-btn[aria-pressed="false"] {
-  color: var(--fg-faint);
+  color: #75839b;
 }
 
 /* ── 레이아웃 ─────────────────────────────── */
@@ -467,7 +469,11 @@ body {
 }
 
 .stage {
-  background: radial-gradient(circle at 50% 45%, #0a1426 0%, #020617 70%);
+  /* 두 테마 공통의 어두운 무대 — 중앙 남색 심도 + 우상단 금색 기운 */
+  background:
+    radial-gradient(ellipse 60% 45% at 78% 6%, rgba(217, 164, 65, 0.06), transparent 60%),
+    radial-gradient(ellipse 75% 60% at 50% 42%, #0d1b33 0%, rgba(13, 27, 51, 0) 70%),
+    radial-gradient(circle at 50% 45%, #0a1426 0%, #020617 74%);
   position: relative;
   min-height: 0;
 }
@@ -493,9 +499,9 @@ body {
   bottom: var(--space-4);
   transform: translateX(-50%);
   font-size: 12px;
-  color: var(--fg-faint);
-  background: rgba(2, 6, 23, 0.72);
-  border: 1px solid var(--border);
+  color: #a7b3c8; /* 어두운 캔버스 위 — 테마 무관 고정 */
+  background: rgba(2, 6, 23, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.35);
   border-radius: 999px;
   padding: 4px 12px;
   pointer-events: none;
@@ -1801,18 +1807,65 @@ body {
 #onto3d.dragging {
   cursor: grabbing;
 }
+/* 스테이지 위 오버레이는 항상 어두운 유리판이다 — 캔버스가 두 테마 모두 어두우므로
+ * 밝은 테마 변수를 타면 오히려 안 읽힌다(2026-08-17 피드백). 색을 고정한다. */
 .onto-legend {
   position: absolute;
   top: var(--space-3);
   left: var(--space-3);
   max-width: 300px;
   padding: var(--space-3);
-  background: rgba(9, 15, 28, 0.72);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  backdrop-filter: blur(6px);
+  background: linear-gradient(165deg, rgba(16, 26, 48, 0.92), rgba(6, 11, 24, 0.85));
+  border: 1px solid rgba(217, 164, 65, 0.28);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
   pointer-events: none;
+  transition: opacity 220ms ease;
 }
+.onto-legend.faded { opacity: 0; }
+.onto-legend .onto-title b { color: #f8fafc; }
+.onto-legend .onto-title span,
+.onto-legend .onto-layers,
+.onto-legend .onto-help { color: #a7b3c8; }
+.onto-legend .onto-what {
+  pointer-events: auto;
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.65);
+}
+
+/* 포커스 정보 카드 — 노드를 고르면 범례 자리에 뜬다 (참고 디자인의 인물 카드 방식) */
+.onto-focus {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  max-width: 320px;
+  padding: 12px 14px;
+  background: linear-gradient(165deg, rgba(20, 31, 58, 0.94), rgba(8, 13, 28, 0.88));
+  border: 1px solid rgba(217, 164, 65, 0.55);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 22px rgba(217, 164, 65, 0.18);
+  z-index: 5;
+}
+.onto-focus-head { display: flex; align-items: center; gap: 8px; }
+.onto-focus-head b { color: #f8fafc; font-size: 15px; font-weight: 800; }
+.onto-focus-sub { color: #e8c06a; font-size: 12px; font-family: var(--font-mono); }
+.onto-focus-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.onto-focus-dot.macro { background: #f87171; box-shadow: 0 0 8px rgba(248, 113, 113, 0.8); }
+.onto-focus-dot.sector { background: #94a3b8; box-shadow: 0 0 8px rgba(148, 163, 184, 0.7); }
+.onto-focus-dot.ticker { background: #34d399; box-shadow: 0 0 8px rgba(52, 211, 153, 0.8); }
+.onto-focus-x {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: #a7b3c8;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.onto-focus-x:hover { color: #f8fafc; }
+.onto-focus-meta { margin: 6px 0 0; font-size: 11.5px; line-height: 1.5; color: #a7b3c8; }
 .onto-title {
   display: grid;
   gap: 2px;
