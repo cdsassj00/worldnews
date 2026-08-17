@@ -27,7 +27,8 @@ export interface Env {
 
   // 자동매매 (autotrade.ts)
   AUTOTRADE_ENABLED?: string; // "true" 여야 실제 주문이 나간다. 기본 false = 계획만 세움
-  AUTO_CAPITAL_KRW?: string; // 운용 원금 상한
+  AUTO_CAPITAL_KRW?: string; // 운용 원금 상한. "0" = 넣은 돈 전액 자동 추종
+  AUTO_RESERVE_KRW?: string; // 국내 매수 예산에서 빼 두는 예약 현금(미국주식 대기 자금 등)
   AUTO_MAX_POSITION_PCT?: string; // 한 종목 최대 비중(%)
   AUTO_STOP_LOSS_PCT?: string; // 종목별 손절(%)
   AUTO_TAKE_PROFIT_PCT?: string; // 종목별 익절(%)

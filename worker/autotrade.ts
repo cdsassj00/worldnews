@@ -165,6 +165,8 @@ export interface AutoState {
   depositAdjustments?: Record<string, number>;
   /** 직전 사이클의 주문가능 현금 — 입출금 자동 감지에 쓴다 */
   lastCash?: number;
+  /** 직전 사이클의 종목별 보유 수량 — 수량 그대로 + 현금만 변화 = 입출금으로 판정 */
+  qtySnapshot?: Record<string, number>;
   /** 봇이 매도로 확정한 누적 손익(원). 평가손익과 합쳐 진짜 손익을 만든다. */
   realizedPnl?: number;
   /** 손익 기준 고점·당일 시작값 — 정지선 판정에 쓴다(평가액 대신) */
@@ -218,11 +220,26 @@ export async function loadState(env: Env): Promise<AutoState> {
   }
 
   /* 입금 총액 초기화 — 사용자 신고 기준: 처음 200만 + 08-03 추가 400만 = 600만.
-   * 수익은 "지금 계좌 평가금액 − 이 값"으로 계산한다. 추가 입출금은
-   * /api/auto/deposit 으로 갱신한다. */
+   * 수익은 "지금 계좌 평가금액 − 이 값"으로 계산한다. 이후 입출금은
+   * runCycle 이 자동 감지하고, 수동 보정은 /api/auto/deposit. */
   if (state.totalDepositKrw === undefined) {
     state.totalDepositKrw = 6_000_000;
     await saveState(env, state);
+  }
+
+  /* 1회성 보정(2026-08-17): 08-16 미국주식용 입금 +400만은 자동 감지 코드 배포 전에
+   * 들어와 소급 감지가 안 된다 — 사용자 신고값으로 반영한다.
+   * 검산: 계좌 10,102,433 = 주식 5,906,260 + 현금 4,196,173 ≒ 입금 1,000만 + 수익 10.2만. */
+  const ADJ3 = "deposit-2026-08-16-us4m";
+  if (!state.depositAdjustments?.[ADJ3]) {
+    state.depositAdjustments = { ...(state.depositAdjustments ?? {}), [ADJ3]: 4_000_000 };
+    state.totalDepositKrw = (state.totalDepositKrw ?? 6_000_000) + 4_000_000;
+    state.baselineEquity += 4_000_000;
+    if (state.dayStartEquity > 0) state.dayStartEquity += 4_000_000;
+    await saveState(env, state);
+    await appendJournal(env, [
+      entry("cycle", "입금 반영 — 08-16 미국주식용 원화 +4,000,000원. 넣은 돈 10,000,000원, 이 중 4,000,000원은 미국 매수 대기 자금으로 국내 예산에서 제외합니다."),
+    ]);
   }
 
   const ADJ_KEY = "deposit-2026-08-03";
@@ -572,10 +589,16 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   const acctPrice = new Map(account.holdings.map((h) => [h.symbol, h.price]));
   const priceOf = (code: string) => scoreByCode.get(code)?.price ?? acctPrice.get(code) ?? 0;
 
+  /* 운용 한도: AUTO_CAPITAL_KRW=0 이면 "넣은 돈 전액"을 자동 추종한다.
+   * 2026-08-17 사용자 지시: "계좌에 있는 모든 돈은 다 봇이 컨트롤한다." */
+  if (cfg.capitalKrw <= 0) cfg.capitalKrw = Math.max(2_000_000, Math.round(state.totalDepositKrw ?? 0));
+  /* 예약 현금 — 국내 매수 예산에서 빼 두는 몫 (미국주식 대기 자금 등) */
+  const reserveKrw = Math.max(0, num(env.AUTO_RESERVE_KRW, 0));
+
   const deployed = deployedValue(state, priceOf);
   const equity = account.connected ? account.totalEval : state.lastEquity || cfg.capitalKrw;
   const baseline = state.baselineEquity || equity;
-  const budget = Math.max(0, cfg.capitalKrw - deployed);
+  const budget = Math.max(0, cfg.capitalKrw - reserveKrw - deployed);
 
   /* 손익은 "평가액 − 기준선"이 아니라 **보유 종목 평가손익 + 실현손익**으로 잰다.
    * 평가액 기반은 입출금·D+2 정산으로 총평가가 출렁일 때마다 가짜 손익을 만들었다
@@ -701,6 +724,7 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   if (!orders.length) notes.push("이번 사이클에 조건을 만족하는 매매가 없습니다. 대기합니다.");
   if (skipped.length) notes.push(`자금 한도로 제외: ${skipped.join(" · ")}`);
   if (deployed > 0) notes.push(`운용 투입 ${Math.round(deployed).toLocaleString("ko-KR")}원 / 한도 ${cfg.capitalKrw.toLocaleString("ko-KR")}원`);
+  if (reserveKrw > 0) notes.push(`예약 현금 ${reserveKrw.toLocaleString("ko-KR")}원(미국주식 대기 자금)은 국내 매수 예산에서 제외합니다.`);
   if (isDryRun(env)) notes.push("ORDER_DRY_RUN=true — 주문은 검증만 하고 전송되지 않습니다.");
 
   /* 봇 성과와 기존 보유분을 분리한다. 계좌 전체 손익만 보면 봇이 잘하고 있어도
@@ -781,6 +805,31 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
   const now = plan.kst;
   const journal: JournalEntry[] = [];
 
+  /* 입출금 자동 감지 — 보유 수량은 그대로인데 현금만 크게 변했다면 매매로 설명이
+   * 안 되는 돈이 들어오거나 나간 것이다(입금·출금). 넣은 돈(수익 계산 기준)에 자동
+   * 반영한다. 2026-08-17 사용자 지시: "계좌의 모든 돈은 봇이 컨트롤한다 — 수동 신고는 이상하다."
+   * 배당·수수료 수준의 잔변동은 오탐을 피하려고 30만원 미만은 무시한다. 수동 보정은
+   * /api/auto/deposit(입출금 반영 버튼)이 그대로 남아 있다. */
+  if (plan.account.connected && state.lastCash !== undefined && state.qtySnapshot) {
+    const qtyNow = Object.fromEntries(plan.account.holdings.map((h) => [h.symbol, h.qty]));
+    const sameQty =
+      Object.keys(qtyNow).length === Object.keys(state.qtySnapshot).length &&
+      Object.entries(qtyNow).every(([k, v]) => state.qtySnapshot![k] === v);
+    const delta = plan.account.cash - state.lastCash;
+    if (sameQty && Math.abs(delta) >= 300_000) {
+      state.totalDepositKrw = Math.max(0, (state.totalDepositKrw ?? 0) + delta);
+      state.baselineEquity += delta;
+      if (state.dayStartEquity > 0) state.dayStartEquity += delta;
+      if (delta > 0 && state.targetReachedAt) state.targetReachedAt = 0;
+      journal.push(
+        entry(
+          "cycle",
+          `${delta > 0 ? "입금" : "출금"} 자동 감지 ${delta > 0 ? "+" : ""}${Math.round(delta).toLocaleString("ko-KR")}원 — 넣은 돈 ${Math.round(state.totalDepositKrw).toLocaleString("ko-KR")}원으로 갱신했습니다.`,
+        ),
+      );
+    }
+  }
+
   /* 상태 갱신: 일자 롤오버 · 고점 · 정지 판정 */
   if (state.day !== now.date) {
     state.day = now.date;
@@ -789,7 +838,10 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
     state.tradesToday = 0;
   }
   if (!state.baselineEquity && plan.equity > 0) state.baselineEquity = plan.equity;
-  if (plan.account.connected) state.lastCash = plan.account.cash;
+  if (plan.account.connected) {
+    state.lastCash = plan.account.cash;
+    state.qtySnapshot = Object.fromEntries(plan.account.holdings.map((h) => [h.symbol, h.qty]));
+  }
 
   if (!state.dayStartEquity && plan.equity > 0) state.dayStartEquity = plan.equity;
   if (plan.equity > state.peakEquity) state.peakEquity = plan.equity;
