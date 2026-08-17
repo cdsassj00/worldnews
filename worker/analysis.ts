@@ -55,38 +55,48 @@ const DEFAULT_WORKERS_AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const DISCLAIMER =
   "AI가 정리한 참고 브리핑입니다. 투자 자문이 아니며 수익을 보장하지 않습니다. 원문 뉴스와 지표를 직접 확인하세요.";
 
+/** 제공자 시도 순서 — 기본은 비용 순. AI_PROVIDER 로 1순위를 고정할 수 있고,
+ *  고정 제공자가 실패하면 나머지 순서로 폴백한다(사용자 지시 2026-08-17: Claude Sonnet 주력). */
+export function providerOrder(env: Env): AiProvider[] {
+  const base: AiProvider[] = ["openrouter", "gemini", "anthropic", "workers-ai"];
+  const pin = (env.AI_PROVIDER || "").trim() as AiProvider;
+  return base.includes(pin) ? [pin, ...base.filter((p) => p !== pin)] : base;
+}
+
 export function aiStatus(env: Env): AiStatus {
-  if (env.OPENROUTER_API_KEY) {
-    return {
-      enabled: true,
-      provider: "openrouter",
-      model: env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL,
-      reason: "OpenRouter API 키로 분석합니다 (모델은 OPENROUTER_MODEL 로 교체 가능).",
-    };
-  }
-  if (env.GEMINI_API_KEY) {
-    return {
-      enabled: true,
-      provider: "gemini",
-      model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
-      reason: "Gemini API 키로 Gemini Flash 분석을 사용합니다(저비용).",
-    };
-  }
-  if (env.ANTHROPIC_API_KEY) {
-    return {
-      enabled: true,
-      provider: "anthropic",
-      model: env.AI_MODEL || DEFAULT_CLAUDE_MODEL,
-      reason: "Anthropic API 키로 Claude 분석을 사용합니다.",
-    };
-  }
-  if (env.AI) {
-    return {
-      enabled: true,
-      provider: "workers-ai",
-      model: env.WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL,
-      reason: "Anthropic 키가 없어 Cloudflare Workers AI로 분석합니다(키 불필요).",
-    };
+  for (const p of providerOrder(env)) {
+    if (p === "openrouter" && env.OPENROUTER_API_KEY) {
+      return {
+        enabled: true,
+        provider: "openrouter",
+        model: env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL,
+        reason: "OpenRouter API 키로 분석합니다 (모델은 OPENROUTER_MODEL 로 교체 가능).",
+      };
+    }
+    if (p === "gemini" && env.GEMINI_API_KEY) {
+      return {
+        enabled: true,
+        provider: "gemini",
+        model: env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
+        reason: "Gemini API 키로 Gemini Flash 분석을 사용합니다(저비용).",
+      };
+    }
+    if (p === "anthropic" && env.ANTHROPIC_API_KEY) {
+      return {
+        enabled: true,
+        provider: "anthropic",
+        model: env.AI_MODEL || DEFAULT_CLAUDE_MODEL,
+        reason: "Anthropic API 키로 Claude 분석을 사용합니다.",
+      };
+    }
+    if (p === "workers-ai" && env.AI) {
+      return {
+        enabled: true,
+        provider: "workers-ai",
+        model: env.WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL,
+        reason: "다른 AI 키가 없어 Cloudflare Workers AI로 분석합니다(키 불필요).",
+      };
+    }
   }
   return {
     enabled: false,
@@ -380,12 +390,14 @@ export async function analyze(
 ): Promise<AnalysisResult> {
   const prompt = buildUserPrompt(market, indices, news, reco);
 
-  // 비용 순으로 시도하고, 실패하면 다음 제공자로 폴백한다.
+  // providerOrder 순서(기본 비용순, AI_PROVIDER 로 1순위 고정)로 시도하고, 실패하면 다음으로 폴백한다.
   const attempts: { provider: AiProvider; run: () => Promise<{ data: AnalysisPayload; model: string }> }[] = [];
-  if (env.OPENROUTER_API_KEY) attempts.push({ provider: "openrouter", run: () => runOpenRouter(env, prompt) });
-  if (env.GEMINI_API_KEY) attempts.push({ provider: "gemini", run: () => runGemini(env, prompt) });
-  if (env.ANTHROPIC_API_KEY) attempts.push({ provider: "anthropic", run: () => runAnthropic(env, prompt) });
-  if (env.AI) attempts.push({ provider: "workers-ai", run: () => runWorkersAi(env, prompt) });
+  for (const p of providerOrder(env)) {
+    if (p === "openrouter" && env.OPENROUTER_API_KEY) attempts.push({ provider: "openrouter", run: () => runOpenRouter(env, prompt) });
+    if (p === "gemini" && env.GEMINI_API_KEY) attempts.push({ provider: "gemini", run: () => runGemini(env, prompt) });
+    if (p === "anthropic" && env.ANTHROPIC_API_KEY) attempts.push({ provider: "anthropic", run: () => runAnthropic(env, prompt) });
+    if (p === "workers-ai" && env.AI) attempts.push({ provider: "workers-ai", run: () => runWorkersAi(env, prompt) });
+  }
   if (!attempts.length) throw new ApiError(503, "ai_disabled", { hint: aiStatus(env).reason });
 
   let lastErr: unknown = null;

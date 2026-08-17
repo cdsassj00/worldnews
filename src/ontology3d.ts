@@ -138,12 +138,9 @@ function labelSprite(title: string, sub: string, color: THREE.Color, kind: NodeK
   const ctx = cv.getContext("2d")!;
   const hex = `#${color.getHexString()}`;
 
-  // 유리판 칩 — 진한 남색 유리 + 색상 테두리, 신호가 강한 노드는 은은한 글로우
-  const strong = kind !== "sector";
-  if (strong) {
-    ctx.shadowColor = hex;
-    ctx.shadowBlur = 26;
-  }
+  /* 유리판 칩 — 진한 남색 유리 + 색상 테두리.
+   * 칩마다 넣던 색 글로우(shadowBlur)는 제거: 수십 개가 겹치면 밝은 배경에서
+   * 붉은 연무가 되어 "흐리다"는 인상의 주범이었다(2026-08-17 실측). */
   const grad = ctx.createLinearGradient(0, 0, 0, H);
   grad.addColorStop(0, "rgba(17,27,50,0.94)");
   grad.addColorStop(1, "rgba(7,12,26,0.9)");
@@ -335,7 +332,7 @@ export class Ontology3D {
       const a = (mid / ordered.length) * Math.PI * 2;
       const sprite = labelSprite(`⟨ ${c.nameKo} ⟩`, "", SECTOR_C.clone(), "sector");
       sprite.position.set(Math.cos(a) * (RING.macro + 1.0), Y.macro + 1.35, Math.sin(a) * (RING.macro + 1.0));
-      sprite.material.opacity = 0.75;
+      sprite.material.opacity = 1; // 반투명 금지 — 흐릿함 피드백
       this.world.add(sprite);
       this.captions.push(sprite);
     });
@@ -563,23 +560,23 @@ export class Ontology3D {
 
   private applyFocus(): void {
     const keep = this.focus ? this.connected(this.focus) : null;
-    /* 안개(반투명) 방식은 밝은 무대에서 뿌옇게 뭉개진다(실측 두 번). 대신
-     * 참고 디자인 방식: 경로 밖 노드는 라벨을 아예 숨기고 색 점만 남긴다 —
-     * 구조는 보이되 화면은 또렷하다. 두 테마 공통. */
+    /* 흐림·숨김(빼기) 방식은 전면 폐기 — 두 번 다 "흐릿하다"는 피드백(2026-08-17).
+     * 모든 노드·간선은 포커스와 무관하게 항상 원래 밝기 그대로 두고,
+     * 경로는 "더하기"로만 표시한다: 경로 간선은 더 진하게 + 펄스, 포커스 노드는 금색 후광. */
     for (const n of this.nodes) {
-      const on = !keep || keep.has(n.id);
-      n.sprite.visible = on;
+      n.sprite.visible = true;
       (n.sprite.material as THREE.SpriteMaterial).opacity = 1;
       const dm = n.dot.material as THREE.MeshBasicMaterial;
-      dm.transparent = true;
-      dm.opacity = on ? 1 : 0.55;
+      dm.transparent = false;
+      dm.opacity = 1;
     }
     for (const e of this.edges) {
-      const on = !keep || (keep.has(e.from) && keep.has(e.to));
-      const boost = this.lightMode ? 0.12 : 0; // 밝은 배경에서 옅은 색 선 보정
+      const onPath = keep !== null && keep.has(e.from) && keep.has(e.to);
+      const boost = this.lightMode ? 0.24 : 0; // 밝은 배경에서 옅은 색 선은 연무처럼 보인다 — 진하게
       const base = e.dim ? 0.06 + boost : 0.16 + boost + Math.min(0.6, Math.abs(e.contribution) * 1.4);
-      (e.line.material as THREE.LineBasicMaterial).opacity = on ? base : (this.lightMode ? 0.1 : 0.04);
-      (e.pulse.material as THREE.MeshBasicMaterial).opacity = on ? (e.dim ? 0 : 0.9) : 0;
+      (e.line.material as THREE.LineBasicMaterial).opacity = onPath ? Math.min(1, base + 0.55) : base;
+      // 펄스(흐르는 점)는 포커스 중엔 경로에만 — 시선을 경로로 모으되 나머지는 그대로 둔다
+      (e.pulse.material as THREE.MeshBasicMaterial).opacity = e.dim ? 0 : keep ? (onPath ? 1 : 0) : 0.9;
     }
 
     // 후광 + 좌상단 정보 카드
@@ -588,6 +585,11 @@ export class Ontology3D {
       if (!this.halo.parent) this.world.add(this.halo);
       this.halo.position.copy(node.pos);
       this.halo.visible = true;
+      /* 가산 블렌딩은 밝은 배경에서 흰 번짐이 된다 — 라이트 모드는 일반 블렌딩으로 */
+      const hm = this.halo.material as THREE.SpriteMaterial;
+      hm.blending = this.lightMode ? THREE.NormalBlending : THREE.AdditiveBlending;
+      hm.opacity = this.lightMode ? 0.6 : 0.9;
+      hm.needsUpdate = true;
       this.opts.onFocus?.({
         id: node.id,
         kind: node.kind,
@@ -722,9 +724,9 @@ export class Ontology3D {
       e.pulse.position.copy(e.curve.getPoint(t));
     }
 
-    // 마우스가 올라간 노드는 살짝 커진다
+    // 마우스가 올라간 노드·포커스 노드는 살짝 커진다 (강조는 더하기로만)
     for (const n of this.nodes) {
-      const k = n.id === this.hoverId ? 1.18 : 1;
+      const k = n.id === this.hoverId ? 1.18 : n.id === this.focus ? 1.12 : 1;
       n.sprite.scale.x += (LABEL[n.kind].x * k - n.sprite.scale.x) * 0.2;
       n.sprite.scale.y += (LABEL[n.kind].y * k - n.sprite.scale.y) * 0.2;
     }

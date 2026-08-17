@@ -13,7 +13,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { Env } from "./env";
 import { MACRO, type MacroId } from "../shared/ontology";
 import { getGlobalNews, getNews } from "./news";
-import { aiStatus, geminiText, openrouterText } from "./analysis";
+import { aiStatus, geminiText, openrouterText, providerOrder } from "./analysis";
 import { cached, clamp, round } from "./util";
 
 export interface MacroAdjustment {
@@ -106,39 +106,43 @@ async function interpret(env: Env): Promise<MacroNewsResult> {
 
   const prompt = `아래 최근 헤드라인을 읽고 거시요인 보정을 내세요.\n\n${lines.join("\n")}`;
 
-  // 비용 순: Gemini Flash → Claude(저비용 티어) → Workers AI. 실패하면 다음으로 폴백.
+  // providerOrder 순서(기본 비용순, AI_PROVIDER 로 1순위 고정)로 시도. 실패하면 다음으로 폴백.
   const runners: { provider: MacroNewsResult["provider"]; run: () => Promise<string> }[] = [];
-  if (env.OPENROUTER_API_KEY) runners.push({ provider: "openrouter", run: () => openrouterText(env, SYSTEM, prompt, 900) });
-  if (env.GEMINI_API_KEY) runners.push({ provider: "gemini", run: () => geminiText(env, SYSTEM, prompt, 900) });
-  if (env.ANTHROPIC_API_KEY) {
-    runners.push({
-      provider: "anthropic",
-      run: async () => {
-        const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY! });
-        const res = await client.messages.create({
-          model: env.AI_MODEL || "claude-haiku-4-5",
-          max_tokens: 1500,
-          system: SYSTEM,
-          messages: [{ role: "user", content: prompt }],
-        });
-        return res.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text ?? "";
-      },
-    });
-  }
-  if (env.AI) {
-    runners.push({
-      provider: "workers-ai",
-      run: async () => {
-        const out = (await env.AI!.run(env.WORKERS_AI_MODEL || "@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
-          messages: [
-            { role: "system", content: SYSTEM },
-            { role: "user", content: prompt },
-          ],
-          max_tokens: 900,
-        })) as { response?: string };
-        return typeof out === "string" ? out : (out?.response ?? JSON.stringify(out ?? ""));
-      },
-    });
+  for (const p of providerOrder(env)) {
+    if (p === "openrouter" && env.OPENROUTER_API_KEY)
+      runners.push({ provider: "openrouter", run: () => openrouterText(env, SYSTEM, prompt, 900) });
+    if (p === "gemini" && env.GEMINI_API_KEY)
+      runners.push({ provider: "gemini", run: () => geminiText(env, SYSTEM, prompt, 900) });
+    if (p === "anthropic" && env.ANTHROPIC_API_KEY) {
+      runners.push({
+        provider: "anthropic",
+        run: async () => {
+          const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY! });
+          const res = await client.messages.create({
+            model: env.AI_MODEL || "claude-haiku-4-5",
+            max_tokens: 1500,
+            system: SYSTEM,
+            messages: [{ role: "user", content: prompt }],
+          });
+          return res.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text ?? "";
+        },
+      });
+    }
+    if (p === "workers-ai" && env.AI) {
+      runners.push({
+        provider: "workers-ai",
+        run: async () => {
+          const out = (await env.AI!.run(env.WORKERS_AI_MODEL || "@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
+            messages: [
+              { role: "system", content: SYSTEM },
+              { role: "user", content: prompt },
+            ],
+            max_tokens: 900,
+          })) as { response?: string };
+          return typeof out === "string" ? out : (out?.response ?? JSON.stringify(out ?? ""));
+        },
+      });
+    }
   }
 
   for (const r of runners) {

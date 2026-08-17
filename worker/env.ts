@@ -67,5 +67,6 @@ export interface Env {
   OPENROUTER_MODEL?: string; // 기본 google/gemini-2.5-flash
   ANTHROPIC_API_KEY?: string; // 있으면 Claude 사용 (시크릿)
   AI_MODEL?: string; // 기본 claude-haiku-4-5
+  AI_PROVIDER?: string; // 1순위 제공자 고정: openrouter | gemini | anthropic | workers-ai (실패 시 나머지로 폴백)
   WORKERS_AI_MODEL?: string; // 기본 @cf/meta/llama-3.3-70b-instruct-fp8-fast
 }

@@ -37,6 +37,10 @@
     // 사용자 계좌가 실전 전용이므로 "prod". 주문은 아래 스위치들로 여전히 막혀 있다
     // (ORDER_ENABLED=false, ORDER_DRY_RUN=true) — 조회와 검증만 가능한 상태다.
     "KIS_ENV": "prod",
+    // AI 분석 — 사용자 지시(2026-08-17): 이미 등록된 ANTHROPIC_API_KEY로 Claude Sonnet 주력.
+    // anthropic 을 1순위로 고정하고, 실패하면 gemini → workers-ai 순으로 폴백된다.
+    "AI_PROVIDER": "anthropic",
+    "AI_MODEL": "claude-sonnet-5",
     // 주문 API 전체 스위치.
     // 2026-07-27 사용자 지시("실전거래로 해라")로 실주문 활성화. 손실 한도는 전부 유지.
     "ORDER_ENABLED": "true",

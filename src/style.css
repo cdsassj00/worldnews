@@ -3007,12 +3007,12 @@ body {
 .layout.no-rail.no-panel { grid-template-columns: minmax(0, 1fr); }
 .layout.no-rail .rail, .layout.no-panel .panel { display: none; }
 
-/* 라이트 버전 스테이지 — 어두운 유리 칩이 밝은 무대 위에 떠 있는 구도 */
+/* 라이트 버전 스테이지 — 어두운 유리 칩이 밝은 무대 위에 떠 있는 구도.
+ * 중앙 흰색 radial(안개처럼 보인다는 피드백 3회)은 쓰지 않는다 — 평평한 옅은 그라데이션만. */
 [data-theme="light"] .stage {
   background:
-    radial-gradient(ellipse 60% 45% at 78% 6%, rgba(191, 138, 30, 0.09), transparent 60%),
-    radial-gradient(ellipse 75% 60% at 50% 42%, #f4f7fb 0%, rgba(244, 247, 251, 0) 70%),
-    radial-gradient(circle at 50% 45%, #e6edf6 0%, #cfd9e8 74%);
+    radial-gradient(ellipse 60% 45% at 78% 6%, rgba(191, 138, 30, 0.07), transparent 60%),
+    linear-gradient(180deg, #eef2f8 0%, #dde5f0 100%);
 }
 [data-theme="light"] .onto-legend {
   background: rgba(255, 255, 255, 0.92);
