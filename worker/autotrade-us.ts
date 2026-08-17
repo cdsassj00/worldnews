@@ -193,6 +193,8 @@ export interface UsCycleResult {
   budgetUsd: number;
   deployedUsd: number;
   orderableUsd: number;
+  /** 매수가능금액 원본(진단) — 통합증거금 반영 여부를 판별한다 */
+  psDetail?: { frcr: number; total: number; afterExchange: number; maxQty: number };
   pnlUsd: number;
   orders: UsPlannedOrder[];
   results: { code: string; side: string; ok: boolean; message: string }[];
@@ -287,6 +289,10 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
     const ps = await overseasPsamount(env, kis, "NASD", "AAPL", aapl.price);
     fx = ps.fx || 0;
     orderableUsd = Math.max(ps.totalOrderable, ps.frcrOrderable, ps.afterExchangeOrderable);
+    out.psDetail = { frcr: ps.frcrOrderable, total: ps.totalOrderable, afterExchange: ps.afterExchangeOrderable, maxQty: ps.maxQty };
+    // 주문가능금액이 0이면 살 돈이 없다는 뜻이다(통합증거금 미반영 등). maxQty 는
+    // 잡히는데 금액만 0인 응답도 실측됐다 — 그때는 수량 기준으로 금액을 역산한다.
+    if (orderableUsd <= 0 && ps.maxQty > 0) orderableUsd = ps.maxQty * aapl.price;
   } catch (err) {
     const msg = err instanceof ApiError ? `${err.message} ${JSON.stringify(err.detail ?? {})}` : String(err);
     journal.push(entry("error", `미국 — 매수가능금액 조회 실패: ${msg}. 이번 사이클 매수를 건너뜁니다(매도 판단은 계속).`));
@@ -350,10 +356,17 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
   }
 
   /* 8) 신규 매수 */
+  const shadow = opts.shadow ?? !cfg.enabled;
   const blocked: string[] = [];
   if (state.haltedPermanent) blocked.push(`영구 정지: ${state.haltReason}`);
   if (state.haltedDay === today) blocked.push(`당일 정지: ${state.haltReason}`);
   if (state.tradesToday >= cfg.maxTradesPerDay) blocked.push(`당일 매매 한도(${cfg.maxTradesPerDay}회) 도달`);
+
+  // 주문가능금액 0 = 통합증거금 미반영이거나 예수금 부족 — 실주문 모드에서는 매수를
+  // 막는다(어차피 KIS 가 거절한다). 그림자 모드에서는 계획을 계속 보여줘 검증을 돕는다.
+  if (!shadow && orderableUsd <= 0) {
+    blocked.push("KIS 주문가능금액 $0 — 통합증거금 미반영 또는 예수금 부족");
+  }
 
   // 시장 국면 필터 — S&P500 이 20일선 아래면 신규 매수 없음
   let marketNote = "";
@@ -420,7 +433,6 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
   }
 
   /* 9) 실행 — 매도 먼저(현금 확보), 그 다음 매수 */
-  const shadow = opts.shadow ?? !cfg.enabled;
   out.shadow = shadow;
   out.ran = true;
   const queue = [...out.orders].sort((a, b) => (a.side === b.side ? 0 : a.side === "sell" ? -1 : 1));
