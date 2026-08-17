@@ -465,6 +465,7 @@ function setupOntology(): void {
     })(),
   });
   onto.init();
+  onto.setLightTheme(document.documentElement.dataset.theme === "light");
 
   const w = window as unknown as { __wfg?: Record<string, unknown> };
   w.__wfg = { ...(w.__wfg ?? {}), onto };
@@ -732,6 +733,7 @@ function setupTheme(): void {
     if (mode === "light") document.documentElement.dataset.theme = "light";
     else delete document.documentElement.dataset.theme;
     btn.textContent = mode === "light" ? "🌙 어둡게" : "☀️ 밝게";
+    onto?.setLightTheme(mode === "light"); // 3D 무대 흐림 강도도 함께
     try { localStorage.setItem("wfg-theme", mode); } catch { /* 사생활 모드 등 */ }
   };
   apply(document.documentElement.dataset.theme === "light" ? "light" : "dark");

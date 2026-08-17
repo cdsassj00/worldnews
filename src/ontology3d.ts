@@ -229,6 +229,8 @@ export class Ontology3D {
   private haloT = 0;
   private lastMacro = new Map<string, MacroNode>();
 
+  /** 밝은 테마 여부 — 흐림(dim) 강도를 낮춰야 밝은 무대에서 뿌옇게 안 보인다 */
+  private lightMode = false;
   private autoRotate = true;
   private dragging = false;
   private dragMoved = 0;
@@ -456,6 +458,12 @@ export class Ontology3D {
     return edge;
   }
 
+  /** 밝은/어두운 테마 전환 — 흐림 강도만 다시 계산한다 */
+  setLightTheme(on: boolean): void {
+    this.lightMode = on;
+    this.applyFocus();
+  }
+
   /** 노드 하나를 고르면 그와 이어진 경로만 남기고 나머지를 어둡게 한다 */
   setFocus(id: string | null): void {
     if (id === null) this.clearSpotlight();
@@ -555,16 +563,19 @@ export class Ontology3D {
 
   private applyFocus(): void {
     const keep = this.focus ? this.connected(this.focus) : null;
+    // 밝은 무대에서 0.12 는 뿌연 흰 덩어리가 된다 — 어두운 칩을 더 남겨야 읽힌다
+    const dimN = this.lightMode ? 0.34 : 0.12;
     for (const n of this.nodes) {
       const on = !keep || keep.has(n.id);
-      (n.sprite.material as THREE.SpriteMaterial).opacity = on ? 1 : 0.12;
-      (n.dot.material as THREE.MeshBasicMaterial).opacity = on ? 1 : 0.12;
+      (n.sprite.material as THREE.SpriteMaterial).opacity = on ? 1 : dimN;
+      (n.dot.material as THREE.MeshBasicMaterial).opacity = on ? 1 : dimN;
       (n.dot.material as THREE.MeshBasicMaterial).transparent = true;
     }
     for (const e of this.edges) {
       const on = !keep || (keep.has(e.from) && keep.has(e.to));
-      const base = e.dim ? 0.06 : 0.16 + Math.min(0.6, Math.abs(e.contribution) * 1.4);
-      (e.line.material as THREE.LineBasicMaterial).opacity = on ? base : 0.03;
+      const boost = this.lightMode ? 0.12 : 0; // 밝은 배경에서 옅은 색 선 보정
+      const base = e.dim ? 0.06 + boost : 0.16 + boost + Math.min(0.6, Math.abs(e.contribution) * 1.4);
+      (e.line.material as THREE.LineBasicMaterial).opacity = on ? base : (this.lightMode ? 0.08 : 0.03);
       (e.pulse.material as THREE.MeshBasicMaterial).opacity = on ? (e.dim ? 0 : 0.9) : 0.05;
     }
 

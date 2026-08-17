@@ -445,7 +445,8 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 380px;
+  /* 좌우 균등 — "양쪽 폭이 다르다" 피드백(2026-08-17) */
+  grid-template-columns: 340px minmax(0, 1fr) 340px;
   gap: 1px;
   background: var(--border);
   /* 다른 터미널 탭(차트·수급·자동매매)과 같은 가로폭 — 넓은 화면에서 좌우로
@@ -1428,13 +1429,13 @@ body {
 
 @media (max-width: 1280px) {
   .layout {
-    grid-template-columns: 240px minmax(0, 1fr) 380px;
+    grid-template-columns: 300px minmax(0, 1fr) 300px;
   }
 }
 
 @media (max-width: 1024px) {
   .layout {
-    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-columns: minmax(0, 1fr) 340px;
   }
   .rail {
     display: none;
@@ -2973,8 +2974,8 @@ body {
 .side-toggle.right { right: 8px; }
 /* 접힘 상태 — display:none 으로 빠진 자식만큼 열 정의도 줄인다
  * (열을 0폭으로만 두면 남은 자식이 그 0폭 열로 밀려 들어간다 — 실측 버그) */
-.layout.no-rail { grid-template-columns: minmax(0, 1fr) 380px; }
-.layout.no-panel { grid-template-columns: 260px minmax(0, 1fr); }
+.layout.no-rail { grid-template-columns: minmax(0, 1fr) 340px; }
+.layout.no-panel { grid-template-columns: 340px minmax(0, 1fr); }
 .layout.no-rail.no-panel { grid-template-columns: minmax(0, 1fr); }
 .layout.no-rail .rail, .layout.no-panel .panel { display: none; }
 
@@ -3009,6 +3010,13 @@ body {
 [data-theme="light"] .icon-btn:hover,
 [data-theme="light"] .side-toggle:hover { color: #0f172a; border-color: #bf8a1e; }
 [data-theme="light"] .stage-scroll-hint { background: rgba(255, 255, 255, 0.92); color: #0f172a; border-color: #cbd5e1; }
+
+/* 사이드 패널 활자 한 단계 축소 — "폰트가 너무 크다" 피드백(2026-08-17).
+ * 명시 크기가 없는 본문 텍스트만 줄어들고, 제목·수치는 각자 크기를 유지한다. */
+.rail { font-size: 12px; }
+.rail .card-sub { font-size: 11.5px; }
+.panel-body { font-size: 12.5px; }
+.panel-head h2 { font-size: 18px; }
 
 /* ── 온보딩 투어 ─────────────────────────────── */
 .tour-dim {
