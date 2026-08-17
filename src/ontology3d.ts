@@ -115,7 +115,9 @@ const bandZ = (x: number) => -(x * x) / 15; // 얕은 포물선 — 좌우 끝�
  * 텍스처를 표시 크기에 정확히 맞춰 그린다 — 큰 텍스처(512px)를 ~100px로 축소하면
  * 밉맵 보간으로 글자가 "초점 안 맞은 사진"처럼 뭉개진다(2026-08-17 피드백의 원인).
  */
-const LABEL_PX: Record<NodeKind, number> = { macro: 32, sector: 25, ticker: 28 };
+/* 2026-08-17 "폰트 너무 크다" 피드백으로 한 단계 축소 — 텍스처는 표시 크기에
+ * 맞춰 다시 그려지므로 줄여도 선명도는 그대로다 */
+const LABEL_PX: Record<NodeKind, number> = { macro: 27, sector: 21, ticker: 24 };
 const LABEL_ASPECT = 3.2; // 텍스처 512×160 좌표계의 가로/세로 비
 /** fov 42° 카메라에서 sizeAttenuation=false 스프라이트의 화면높이 = scale.y × 캔버스높이 × PROJ11/2 */
 const PROJ11 = 1 / Math.tan(((42 / 2) * Math.PI) / 180);
