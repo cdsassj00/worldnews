@@ -706,6 +706,29 @@ details.acc.card:not([open]) > summary { margin: 0; }
 .onto-mkt .radar-tab { padding: 6px 16px; font-size: 12.5px; border-radius: 999px; }
 [data-theme="light"] .radar-tabs.onto-mkt { background: rgba(255, 255, 255, 0.92); border-color: #cbd5e1; }
 
+/* 히어로 배경 영상 — 스크롤 스크럽. 영상이 없거나 로드 실패면 그라데이션만 남는다 */
+/* overflow:hidden 은 flex 자식의 min-height:auto 를 0으로 만들어 히어로가 쪼그라든다 — shrink 금지 */
+.hero { position: relative; overflow: hidden; flex-shrink: 0; }
+.hero-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.5;
+  pointer-events: none;
+}
+.hero-veil {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0.55) 0%, rgba(2, 6, 23, 0.75) 70%, rgba(2, 6, 23, 0.95) 100%);
+  pointer-events: none;
+}
+.hero-inner { position: relative; z-index: 1; }
+.hero-eyebrow .hero-x { color: #d9a441; font-weight: 900; margin: 0 4px; }
+[data-theme="light"] .hero-video { opacity: 0.28; }
+[data-theme="light"] .hero-veil { background: linear-gradient(180deg, rgba(238, 242, 248, 0.6) 0%, rgba(238, 242, 248, 0.82) 70%, rgba(238, 242, 248, 0.97) 100%); }
+
 /* 접힌 사이드 토글 — 네온 링 + "펼치기" 말풍선 (기본값이 접힘이라 처음 온 사람에게 알려준다) */
 .side-toggle.collapsed {
   color: #ffd982;

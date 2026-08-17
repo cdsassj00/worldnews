@@ -706,6 +706,37 @@ function setupVerdict(): void {
   wire("onto-mkt"); // 3D 무대 위 토글 — 같은 스위치의 다른 손잡이
   // 오른쪽 패널의 "대한민국으로 돌아가기" — 무대·왼쪽 카드도 함께 한국으로
   document.addEventListener("wfg:market-kr", () => setVerdictMarket("KR"));
+  setupHeroScrub();
+}
+
+/** 히어로 배경 영상 스크롤 스크럽 — 스크롤 위치가 재생 헤드를 움직인다.
+ *  영상이 없으면(로드 실패) 조용히 아무 일도 안 한다. */
+function setupHeroScrub(): void {
+  const v = document.getElementById("hero-video") as HTMLVideoElement | null;
+  const hero = document.getElementById("hero");
+  if (!v || !hero) return;
+  v.addEventListener("error", () => v.remove(), { once: true });
+  let ticking = false;
+  const scrub = () => {
+    ticking = false;
+    if (!v.duration || Number.isNaN(v.duration)) return;
+    const r = hero.getBoundingClientRect();
+    // 히어로가 화면을 지나가는 동안 0→1 (위로 사라질 때까지)
+    const total = r.height + window.innerHeight * 0.4;
+    const progress = Math.max(0, Math.min(1, (window.innerHeight * 0.2 - r.top) / Math.max(1, total)));
+    v.currentTime = v.duration * progress;
+  };
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(scrub);
+      }
+    },
+    { passive: true },
+  );
+  v.addEventListener("loadedmetadata", scrub, { once: true });
 }
 
 async function loadVerdict(): Promise<void> {
