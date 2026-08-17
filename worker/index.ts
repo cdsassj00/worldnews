@@ -25,7 +25,7 @@ import {
   type OrderMarket,
   overseasReadiness,
 } from "./kis";
-import { adjustForDeposit, autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle, getEngine, getEngineSel, setEngine, engineKey, AUTO_ENGINES } from "./autotrade";
+import { adjustForDeposit, autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle, getEngine, getEngineSel, setEngine, setReserveKrw, engineKey, AUTO_ENGINES } from "./autotrade";
 import { runStrategy } from "./strategy";
 import { tickerNewsStatus } from "./tickernews";
 import { radarFind, radarOpps, radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
@@ -376,6 +376,21 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     }
     const sel = await getEngineSel(env);
     return json({ engine: sel.id, engineName: sel.nameKo, weights: sel.w, engines: AUTO_ENGINES });
+  }
+
+  if (path === "/api/auto/reserve") {
+    // 미국 배분(예약 현금) 조절 — 국내 봇이 쓰지 않고 남겨 두는 몫
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    const body = (await request.json().catch(() => ({}))) as { reserveKrw?: number };
+    const v = await setReserveKrw(env, Number(body.reserveKrw));
+    // 예약이 바뀌면 예산이 바뀐다 — 옛 계획 캐시를 전부 비운다
+    const sel = await getEngineSel(env);
+    await Promise.all([
+      ...AUTO_ENGINES.map((e) => invalidateCache(env, `auto:plan:${e.id}`)),
+      invalidateCache(env, `auto:plan:${engineKey(sel)}`),
+    ]);
+    return json({ ok: true, reserveKrw: v });
   }
 
   if (path === "/api/auto/status") {

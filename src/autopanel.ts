@@ -435,6 +435,7 @@ export class AutoPanel {
           p.account.connected ? `${p.botPnlKrw >= 0 ? "+" : ""}${fmtKrw(p.botPnlKrw)}` : "-"
         } · 위험회피 ${p.riskOff}`,
       }),
+      this.reserveRow(p),
       el("div", { class: "target-bar", title: `목표 ${fmtKrw(c.targetProfitKrw)} 대비 ${p.targetProgressPct}%` }, [
         el("i", { style: `width:${Math.max(0, pct)}%` }),
       ]),
@@ -450,6 +451,39 @@ export class AutoPanel {
       ...(p.account.reason
         ? [el("p", { class: "note", text: `※ ${p.account.reason}` })]
         : []),
+    ]);
+  }
+
+  /** 미국 배분 슬라이더 — 넣은 돈 중 얼마를 미국주식 대기 자금으로 떼어 둘지 */
+  private reserveRow(p: AutoPlan): HTMLElement {
+    const total = Math.max(1, p.depositKrw);
+    const pct = Math.round(((p.reserveKrw || 0) / total) * 100);
+    const slider = el("input", { type: "range", min: "0", max: "80", step: "5", value: String(Math.min(80, pct)) }) as HTMLInputElement;
+    const label = el("b", {});
+    const show = () => {
+      const krw = Math.round((total * Number(slider.value)) / 100 / 10000) * 10000;
+      label.textContent = `${slider.value}% · ${fmtKrw(krw)}`;
+      return krw;
+    };
+    show();
+    slider.addEventListener("input", show);
+    const apply = el("button", { class: "btn btn-ghost", type: "button", text: "적용" });
+    apply.addEventListener("click", () => {
+      apply.textContent = "적용 중…";
+      void api
+        .autoSetReserve(show())
+        .then(() => this.load())
+        .catch((e) => { window.alert(`실패: ${e instanceof Error ? e.message : e}`); apply.textContent = "적용"; });
+    });
+    return el("div", { class: "reserve-row" }, [
+      el("span", { class: "k", text: "미국 배분(대기 현금)" }),
+      slider,
+      label,
+      apply,
+      el("span", {
+        class: "note",
+        text: "이 몫은 국내 봇이 쓰지 않습니다. 미국 자동매매를 켜면 그 예산이 됩니다.",
+      }),
     ]);
   }
 

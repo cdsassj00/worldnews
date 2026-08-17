@@ -277,6 +277,8 @@ export interface AutoPlan {
   equity: number;
   deployedKrw: number;
   budgetKrw: number;
+  /** 미국 배분(예약 현금) — 국내 매수 예산에서 제외 */
+  reserveKrw: number;
   pnlKrw: number;
   botPnlKrw: number;
   otherPnlKrw: number;
@@ -748,6 +750,9 @@ export const api = {
   /** 입출금 신고 — 넣은 돈(수익 계산 기준)을 보정한다. 음수 = 출금 */
   autoDeposit: (amountKrw: number) =>
     request<{ ok: true }>("/api/auto/deposit", { method: "POST", auth: true, body: JSON.stringify({ amountKrw }) }),
+  /** 미국 배분(예약 현금) 설정 — 국내 봇 예산에서 빼 두는 몫 */
+  autoSetReserve: (reserveKrw: number) =>
+    request<{ ok: true; reserveKrw: number }>("/api/auto/reserve", { method: "POST", auth: true, body: JSON.stringify({ reserveKrw }) }),
   autoReset: () => request<{ ok: true }>("/api/auto/reset", { method: "POST", auth: true, body: "{}" }),
 
   backtest: () => request<BacktestResults>("/api/backtest"),

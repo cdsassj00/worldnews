@@ -392,6 +392,8 @@ export interface AutoPlan {
   equity: number;
   deployedKrw: number;
   budgetKrw: number;
+  /** 미국 배분(예약 현금) — 국내 매수 예산에서 제외되는 몫 */
+  reserveKrw: number;
   pnlKrw: number;
   /** 봇이 산 종목만의 손익 — 기존 보유분과 섞이지 않게 분리해서 보여준다 */
   botPnlKrw: number;
@@ -507,6 +509,21 @@ export function engineKey(sel: EngineSel): string {
   return sel.id === "custom" ? `w${sel.w.onto}-${sel.w.flow}-${sel.w.chart}` : sel.id;
 }
 
+/* ── 미국 배분(예약 현금) — 국내 매수 예산에서 빼 두는 몫. 대시보드 슬라이더로 조절 ── */
+const RESERVE_KEY = "auto:reserve";
+
+export async function getReserveKrw(env: Env): Promise<number> {
+  const raw = await env.CACHE.get(RESERVE_KEY).catch(() => null);
+  const kv = raw === null ? NaN : Number(raw);
+  return Math.max(0, Number.isFinite(kv) ? kv : num(env.AUTO_RESERVE_KRW, 0));
+}
+
+export async function setReserveKrw(env: Env, krw: number): Promise<number> {
+  const v = Math.round(Math.max(0, Math.min(50_000_000, Number(krw) || 0)));
+  await env.CACHE.put(RESERVE_KEY, String(v));
+  return v;
+}
+
 export async function setEngine(env: Env, input: { engine?: string; weights?: Partial<EngineWeights> }): Promise<EngineSel> {
   let sel: EngineSel;
   if (input.weights) {
@@ -592,8 +609,8 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   /* 운용 한도: AUTO_CAPITAL_KRW=0 이면 "넣은 돈 전액"을 자동 추종한다.
    * 2026-08-17 사용자 지시: "계좌에 있는 모든 돈은 다 봇이 컨트롤한다." */
   if (cfg.capitalKrw <= 0) cfg.capitalKrw = Math.max(2_000_000, Math.round(state.totalDepositKrw ?? 0));
-  /* 예약 현금 — 국내 매수 예산에서 빼 두는 몫 (미국주식 대기 자금 등) */
-  const reserveKrw = Math.max(0, num(env.AUTO_RESERVE_KRW, 0));
+  /* 예약 현금 — 국내 매수 예산에서 빼 두는 몫 (미국주식 대기 자금). KV 슬라이더 값 우선 */
+  const reserveKrw = await getReserveKrw(env);
 
   const deployed = deployedValue(state, priceOf);
   const equity = account.connected ? account.totalEval : state.lastEquity || cfg.capitalKrw;
@@ -753,6 +770,7 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
     equity: Math.round(equity),
     deployedKrw: Math.round(deployed),
     budgetKrw: Math.round(budget),
+    reserveKrw: Math.round(reserveKrw),
     pnlKrw: Math.round(pnl),
     botPnlKrw: Math.round(botPnl),
     otherPnlKrw: Math.round(pnl - botPnl),
