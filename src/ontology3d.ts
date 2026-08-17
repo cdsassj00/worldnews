@@ -94,7 +94,7 @@ interface EdgeObj {
   fromKind: NodeKind;
   toKind: NodeKind;
   contribution: number;
-  curve: THREE.QuadraticBezierCurve3;
+  curve: THREE.Curve<THREE.Vector3>;
   line: THREE.Line;
   pulse: THREE.Mesh;
   phase: number;
@@ -369,10 +369,47 @@ export class Ontology3D {
      * 결론(verdict)이 있으면: 추천/회피에 오른 섹터와 종목만 세운다 — 그래프가
      * "온톨로지 분석 결과 이런 섹터·이런 종목"을 그대로 보여주는 화면이 된다.
      * 결론이 아직 없으면(로딩 초기): 민감도 표 기반 폴백. */
+    /* ── 배리센터 정렬 ──────────────────────────────
+     * 아래 층 노드를 "자기와 연결된 위층 노드들의 가중평균 x" 아래에 놓는다
+     * (계층 그래프의 교차 최소화 정석). 인과선이 거의 수직으로 떨어져
+     * 가운데서 긴 대각선이 엉키던 문제가 사라진다. */
+    const macroX = new Map(this.nodes.filter((n) => n.kind === "macro").map((n) => [n.id, n.pos.x]));
+    const spreadX = (desired: { key: string; x: number }[]): Map<string, { x: number; rank: number }> => {
+      const out = new Map<string, { x: number; rank: number }>();
+      const n = desired.length;
+      if (!n) return out;
+      const gap = Math.min(2.4, BAND_W / Math.max(1, n - 1));
+      const sorted = [...desired].sort((a, b) => a.x - b.x);
+      const xs = sorted.map((d) => d.x);
+      for (let i = 1; i < n; i++) xs[i] = Math.max(xs[i], xs[i - 1] + gap); // 최소 간격 보장
+      const mid = (xs[0] + xs[n - 1]) / 2;
+      const span = xs[n - 1] - xs[0];
+      const k = span > BAND_W ? BAND_W / span : 1; // 폭을 넘치면 전체를 눌러 담는다
+      sorted.forEach((d, i) => out.set(d.key, { x: (xs[i] - mid) * k, rank: i }));
+      return out;
+    };
+    const fallbackX = (i: number, n: number) => (n <= 1 ? 0 : (i / (n - 1) - 0.5) * BAND_W);
+
     if (state.verdict) {
       const vSectors = [...state.verdict.sectors.recommend, ...state.verdict.sectors.avoid];
-      vSectors.forEach((s, i) => {
-        this.addNode("sector", s.sector, s.sector, `${s.score >= 0 ? "+" : ""}${s.score.toFixed(2)}`, place(i, vSectors.length, Y.sector, 0.45), s.score);
+      const sx = spreadX(
+        vSectors.map((s, i) => {
+          let wsum = 0;
+          let xsum = 0;
+          for (const e of s.edges) {
+            const x = macroX.get(e.macroId);
+            if (x === undefined || Math.abs(e.contribution) < 0.05) continue;
+            const w = Math.abs(e.contribution);
+            wsum += w;
+            xsum += w * x;
+          }
+          return { key: s.sector, x: wsum ? xsum / wsum : fallbackX(i, vSectors.length) };
+        }),
+      );
+      vSectors.forEach((s) => {
+        const p = sx.get(s.sector)!;
+        const pos = new THREE.Vector3(p.x, Y.sector + (p.rank % 2 ? 0.45 : -0.45), bandZ(p.x));
+        this.addNode("sector", s.sector, s.sector, `${s.score >= 0 ? "+" : ""}${s.score.toFixed(2)}`, pos, s.score);
       });
       for (const s of vSectors) {
         for (const e of s.edges) {
@@ -381,8 +418,16 @@ export class Ontology3D {
         }
       }
       const vStocks = [...state.verdict.stocks.recommend, ...state.verdict.stocks.avoid];
-      vStocks.forEach((t, i) => {
-        const pos = place(i, vStocks.length, Y.ticker, 0.62);
+      const tx = spreadX(
+        vStocks.map((t, i) => ({
+          // 종목은 자기 섹터 바로 아래에 — 같은 섹터 종목들은 spreadX 가 나란히 벌려 준다
+          key: t.code,
+          x: (t.sector ? sx.get(t.sector)?.x : undefined) ?? fallbackX(i, vStocks.length),
+        })),
+      );
+      vStocks.forEach((t) => {
+        const p = tx.get(t.code)!;
+        const pos = new THREE.Vector3(p.x, Y.ticker + (p.rank % 2 ? 0.62 : -0.62), bandZ(p.x));
         this.addNode("ticker", t.code, t.name, t.score.toFixed(2), pos, t.score);
         if (t.sector && vSectors.some((s) => s.sector === t.sector)) {
           this.addEdge(t.sector, "sector", t.code, "ticker", t.score);
@@ -390,8 +435,25 @@ export class Ontology3D {
       });
     } else {
       const sectorDefs = state.sectors ?? [];
-      sectorDefs.forEach((s, i) => {
-        this.addNode("sector", s.sector, s.sector, "", place(i, sectorDefs.length, Y.sector, 0.45), 0);
+      const sx = spreadX(
+        sectorDefs.map((s, i) => {
+          let wsum = 0;
+          let xsum = 0;
+          for (const [macroId, sens] of Object.entries(s.sensitivity)) {
+            const m = macroById.get(macroId);
+            const x = macroX.get(macroId);
+            if (!m || x === undefined) continue;
+            const w = Math.abs(sens * effVal(m));
+            if (w < 0.12) continue;
+            wsum += w;
+            xsum += w * x;
+          }
+          return { key: s.sector, x: wsum ? xsum / wsum : fallbackX(i, sectorDefs.length) };
+        }),
+      );
+      sectorDefs.forEach((s) => {
+        const p = sx.get(s.sector)!;
+        this.addNode("sector", s.sector, s.sector, "", new THREE.Vector3(p.x, Y.sector + (p.rank % 2 ? 0.45 : -0.45), bandZ(p.x)), 0);
       });
       for (const s of sectorDefs) {
         for (const [macroId, sens] of Object.entries(s.sensitivity)) {
@@ -460,12 +522,23 @@ export class Ontology3D {
     const a = this.nodes.find((n) => n.kind === fromKind && n.id === from);
     const b = this.nodes.find((n) => n.kind === toKind && n.id === to);
     if (!a || !b) return null;
-    // 층간 간선은 카메라 쪽으로 살짝 볼록하게 — 라벨을 뚫지 않고 앞을 지난다.
+    // 층간 간선은 세로로 떨어지는 S-곡선 — 출발점에서 수직으로 내려가 도착점 위로
+    // 들어온다(산키 다이어그램 문법). 배리센터 정렬과 합쳐져 "위→아래 흐름"이 그대로 보인다.
     // 같은 층 안의 간선(거시→거시)은 위로 아치를 그려 층간 간선과 확실히 구분한다.
-    const mid = a.pos.clone().add(b.pos).multiplyScalar(0.5);
-    if (opts?.arcUp) mid.y += 1.4;
-    else mid.z += 0.9;
-    const curve = new THREE.QuadraticBezierCurve3(a.pos.clone(), mid, b.pos.clone());
+    let curve: THREE.Curve<THREE.Vector3>;
+    if (opts?.arcUp) {
+      const mid = a.pos.clone().add(b.pos).multiplyScalar(0.5);
+      mid.y += 1.4;
+      curve = new THREE.QuadraticBezierCurve3(a.pos.clone(), mid, b.pos.clone());
+    } else {
+      const drop = Math.max(1, Math.abs(a.pos.y - b.pos.y) * 0.45);
+      curve = new THREE.CubicBezierCurve3(
+        a.pos.clone(),
+        a.pos.clone().add(new THREE.Vector3(0, -drop, 0.3)),
+        b.pos.clone().add(new THREE.Vector3(0, drop, 0.3)),
+        b.pos.clone(),
+      );
+    }
     const color = toneColor(contribution);
     const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(28));
     const line = new THREE.Line(
