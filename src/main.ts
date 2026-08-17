@@ -709,22 +709,43 @@ function setupVerdict(): void {
   setupHeroScrub();
 }
 
-/** 히어로 배경 영상 스크롤 스크럽 — 스크롤 위치가 재생 헤드를 움직인다.
- *  영상이 없으면(로드 실패) 조용히 아무 일도 안 한다. */
+/** 스크롤리텔링 히어로 — 320vh 구간의 진행률(0~1)이 영상 재생 헤드와
+ *  단계 문장(MACRO→수급→기술적분석→최종)의 투명도를 움직인다. */
 function setupHeroScrub(): void {
   const v = document.getElementById("hero-video") as HTMLVideoElement | null;
   const hero = document.getElementById("hero");
-  if (!v || !hero) return;
-  v.addEventListener("error", () => v.remove(), { once: true });
+  if (!hero) return;
+  v?.addEventListener("error", () => v.remove(), { once: true });
+  const steps = [...hero.querySelectorAll<HTMLElement>(".hero-step")];
+  const final = hero.querySelector<HTMLElement>(".hero-step-final");
+  /* 각 단계가 차지하는 진행률 창 [등장, 퇴장] — 최종 화면은 0.72부터 끝까지 */
+  const WINDOWS: [number, number][] = [[0.02, 0.26], [0.26, 0.5], [0.5, 0.72]];
+  const fade = (p: number, [a, b]: [number, number]) => {
+    const inD = 0.05;
+    if (p < a || p > b) return 0;
+    if (p < a + inD) return (p - a) / inD;
+    if (p > b - inD) return (b - p) / inD;
+    return 1;
+  };
   let ticking = false;
   const scrub = () => {
     ticking = false;
-    if (!v.duration || Number.isNaN(v.duration)) return;
     const r = hero.getBoundingClientRect();
-    // 히어로가 화면을 지나가는 동안 0→1 (위로 사라질 때까지)
-    const total = r.height + window.innerHeight * 0.4;
-    const progress = Math.max(0, Math.min(1, (window.innerHeight * 0.2 - r.top) / Math.max(1, total)));
-    v.currentTime = v.duration * progress;
+    const total = Math.max(1, r.height - window.innerHeight);
+    const p = Math.max(0, Math.min(1, -r.top / total));
+    if (v && v.duration && !Number.isNaN(v.duration)) v.currentTime = v.duration * p;
+    steps.forEach((s, i) => {
+      const o = fade(p, WINDOWS[i] ?? [2, 3]);
+      s.style.opacity = String(o);
+      s.style.transform = `translateY(${(1 - o) * 14}px)`;
+    });
+    if (final) {
+      const o = p < 0.72 ? Math.max(0, (p - 0.6) / 0.12) * 0 : Math.min(1, (p - 0.72) / 0.08);
+      // 스크롤리텔링이 꺼진 화면(모바일 media query)에서는 히어로가 낮다 — 최종 화면을 그대로 둔다
+      const scrolly = r.height > window.innerHeight * 1.5;
+      final.style.opacity = scrolly ? String(p < 0.02 ? 1 : o) : "1";
+      final.style.pointerEvents = final.style.opacity === "0" ? "none" : "";
+    }
   };
   window.addEventListener(
     "scroll",
@@ -736,7 +757,9 @@ function setupHeroScrub(): void {
     },
     { passive: true },
   );
-  v.addEventListener("loadedmetadata", scrub, { once: true });
+  window.addEventListener("resize", scrub, { passive: true });
+  v?.addEventListener("loadedmetadata", scrub, { once: true });
+  scrub();
 }
 
 async function loadVerdict(): Promise<void> {
