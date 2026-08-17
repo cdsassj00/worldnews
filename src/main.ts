@@ -514,7 +514,9 @@ async function loadOntology(): Promise<void> {
     ontoState = await api.ontoState();
     pushOntoState();
     $("onto-note").textContent = ontoState.note;
-    hint.textContent = `${ontoState.scores.length}개 종목 · 시세 ${
+    // "89개 종목"이 전체 커버리지처럼 읽힌다는 지적(2026-08-17) — 실제 유니버스를 표기
+    const uni = await api.radarStatus().catch(() => null);
+    hint.textContent = `한국+미국 ${uni?.tickers ?? 454}종목 상시 분석 · 그래프는 결론·검색 종목만 표시 · 시세 ${
       ontoState.dataAsOf ? fmtKst(ontoState.dataAsOf) : "-"
     } 기준 · 계산 ${timeAgo(ontoState.generatedAt)}`;
     hint.style.opacity = "0.75";
