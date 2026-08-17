@@ -712,10 +712,36 @@ function setupVerdict(): void {
 /** 스크롤리텔링 히어로 — 320vh 구간의 진행률(0~1)이 영상 재생 헤드와
  *  단계 문장(MACRO→수급→기술적분석→최종)의 투명도를 움직인다. */
 function setupHeroScrub(): void {
-  const v = document.getElementById("hero-video") as HTMLVideoElement | null;
   const hero = document.getElementById("hero");
   if (!hero) return;
-  v?.addEventListener("error", () => v.remove(), { once: true });
+  /* 프레임 시퀀스 로드 — 서버가 Range 요청을 지원하지 않아 <video> 탐색이 안 된다(2026-08-17 실측 200).
+   * 64장 JPEG 를 미리 받아 캔버스에 cover 로 그린다. 어떤 브라우저·서버에서도 확실하다. */
+  const FRAMES = 64;
+  const canvas = document.getElementById("hero-canvas") as HTMLCanvasElement | null;
+  const ctx = canvas?.getContext("2d") ?? null;
+  const imgs: HTMLImageElement[] = [];
+  let loaded = 0;
+  for (let i = 1; i <= FRAMES; i++) {
+    const im = new Image();
+    im.src = `/heroseq/f${String(i).padStart(2, "0")}.jpg`;
+    im.onload = () => { loaded++; };
+    imgs.push(im);
+  }
+  let lastFrame = -1;
+  const drawFrame = (p: number) => {
+    if (!canvas || !ctx) return;
+    const idx = Math.max(0, Math.min(FRAMES - 1, Math.round(p * (FRAMES - 1))));
+    const im = imgs[idx];
+    if (!im?.complete || !im.naturalWidth) return;
+    if (idx === lastFrame && canvas.width) return;
+    lastFrame = idx;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    // cover — 비율 유지하며 캔버스를 가득 채운다
+    const s = Math.max(w / im.naturalWidth, h / im.naturalHeight);
+    const dw = im.naturalWidth * s, dh = im.naturalHeight * s;
+    ctx.drawImage(im, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  };
   const steps = [...hero.querySelectorAll<HTMLElement>(".hero-step")];
   const final = hero.querySelector<HTMLElement>(".hero-step-final");
   /* 각 단계가 차지하는 진행률 창 [등장, 퇴장] — 최종 화면은 0.72부터 끝까지 */
@@ -733,7 +759,7 @@ function setupHeroScrub(): void {
     const r = hero.getBoundingClientRect();
     const total = Math.max(1, r.height - window.innerHeight);
     const p = Math.max(0, Math.min(1, -r.top / total));
-    if (v && v.duration && !Number.isNaN(v.duration)) v.currentTime = v.duration * p;
+    drawFrame(p);
     steps.forEach((s, i) => {
       const o = fade(p, WINDOWS[i] ?? [2, 3]);
       s.style.opacity = String(o);
@@ -757,9 +783,11 @@ function setupHeroScrub(): void {
     },
     { passive: true },
   );
-  window.addEventListener("resize", scrub, { passive: true });
-  v?.addEventListener("loadedmetadata", scrub, { once: true });
+  window.addEventListener("resize", () => { lastFrame = -1; scrub(); }, { passive: true });
   scrub();
+  // 프레임이 도착하는 대로 첫 그림을 그린다 (이미지 로드는 비동기)
+  window.setTimeout(() => { lastFrame = -1; scrub(); }, 700);
+  window.setTimeout(() => { lastFrame = -1; scrub(); }, 2500);
 }
 
 async function loadVerdict(): Promise<void> {

@@ -120,9 +120,8 @@
          배경 영상(줌인→분해→재조립)이 스크롤에 맞춰 스크럽되며 문장이 3단계로 바뀐다 -->
     <section class="hero" id="hero">
       <div class="hero-sticky">
-        <video id="hero-video" class="hero-video" muted playsinline preload="auto" aria-hidden="true">
-          <source src="/hero-onto.mp4" type="video/mp4" />
-        </video>
+        <!-- 스크럽은 영상 대신 프레임 시퀀스(64장) — 서버가 Range 요청을 안 줘 비디오 탐색이 막힌다(실측) -->
+        <canvas id="hero-canvas" class="hero-video" aria-hidden="true"></canvas>
         <div class="hero-veil" aria-hidden="true"></div>
         <div class="hero-step" data-step="0">
           <p class="hero-step-kicker">MACRO</p>
