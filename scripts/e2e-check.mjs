@@ -67,6 +67,13 @@ check(
 check("좌측 거시 신호", (await page.locator("#macro-list .macro-row").count()) >= 6);
 check("좌측 종목 점수", (await page.locator("#score-list button").count()) >= 5);
 
+// 사이드바 아코디언 — 접힌 섹션은 제목 클릭으로 펼쳐진다 (2026-08-17 개편)
+check("점수 아코디언 접힘", !(await page.locator("#score-list").isVisible()));
+await page.click("details.acc:has(#score-list) > summary");
+check("점수 아코디언 펼침", await page.locator("#score-list").isVisible());
+// 이후 검사들이 접힌 섹션 내부를 클릭하므로 전부 펼쳐둔다
+await page.evaluate(() => document.querySelectorAll(".rail details.acc").forEach((d) => (d.open = true)));
+
 // 종목 노드를 고르면 오른쪽에 점수 구성이 뜬다
 await page.locator("#score-list button").first().click();
 await page.waitForSelector(".tscore", { timeout: 15000 });

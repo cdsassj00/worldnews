@@ -563,20 +563,23 @@ export class Ontology3D {
 
   private applyFocus(): void {
     const keep = this.focus ? this.connected(this.focus) : null;
-    // 밝은 무대에서 0.12 는 뿌연 흰 덩어리가 된다 — 어두운 칩을 더 남겨야 읽힌다
-    const dimN = this.lightMode ? 0.34 : 0.12;
+    /* 안개(반투명) 방식은 밝은 무대에서 뿌옇게 뭉개진다(실측 두 번). 대신
+     * 참고 디자인 방식: 경로 밖 노드는 라벨을 아예 숨기고 색 점만 남긴다 —
+     * 구조는 보이되 화면은 또렷하다. 두 테마 공통. */
     for (const n of this.nodes) {
       const on = !keep || keep.has(n.id);
-      (n.sprite.material as THREE.SpriteMaterial).opacity = on ? 1 : dimN;
-      (n.dot.material as THREE.MeshBasicMaterial).opacity = on ? 1 : dimN;
-      (n.dot.material as THREE.MeshBasicMaterial).transparent = true;
+      n.sprite.visible = on;
+      (n.sprite.material as THREE.SpriteMaterial).opacity = 1;
+      const dm = n.dot.material as THREE.MeshBasicMaterial;
+      dm.transparent = true;
+      dm.opacity = on ? 1 : 0.55;
     }
     for (const e of this.edges) {
       const on = !keep || (keep.has(e.from) && keep.has(e.to));
       const boost = this.lightMode ? 0.12 : 0; // 밝은 배경에서 옅은 색 선 보정
       const base = e.dim ? 0.06 + boost : 0.16 + boost + Math.min(0.6, Math.abs(e.contribution) * 1.4);
-      (e.line.material as THREE.LineBasicMaterial).opacity = on ? base : (this.lightMode ? 0.08 : 0.03);
-      (e.pulse.material as THREE.MeshBasicMaterial).opacity = on ? (e.dim ? 0 : 0.9) : 0.05;
+      (e.line.material as THREE.LineBasicMaterial).opacity = on ? base : (this.lightMode ? 0.1 : 0.04);
+      (e.pulse.material as THREE.MeshBasicMaterial).opacity = on ? (e.dim ? 0 : 0.9) : 0;
     }
 
     // 후광 + 좌상단 정보 카드
@@ -667,7 +670,9 @@ export class Ontology3D {
     this.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const hits = this.raycaster.intersectObjects(this.nodes.map((n) => n.sprite), false);
+    // 라벨을 숨긴(경로 밖) 노드는 픽 대상에서도 뺀다 — 안 보이는 걸 클릭되게 두면 혼란
+    const visibleSprites = this.nodes.filter((n) => n.sprite.visible).map((n) => n.sprite);
+    const hits = this.raycaster.intersectObjects(visibleSprites, false);
     if (!hits.length) return null;
     return this.nodes.find((n) => n.sprite === hits[0].object) ?? null;
   }

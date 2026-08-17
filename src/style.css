@@ -614,6 +614,34 @@ body {
   color: var(--fg-faint);
 }
 
+/* ── 접이식 섹션(아코디언) — 사이드바 복잡도 피드백(2026-08-17)에 따라
+ *    핵심(결론·검색·경로)만 펼치고 나머지는 제목만 남긴다 ── */
+details.acc > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+details.acc > summary::-webkit-details-marker { display: none; }
+details.acc > summary::before {
+  content: "▸";
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--fg-faint);
+  transition: transform 0.15s ease;
+}
+details.acc[open] > summary::before { transform: rotate(90deg); }
+details.acc > summary:hover { color: var(--accent, #f2c14e); }
+/* 접힌 카드는 제목 한 줄만: card 패딩을 줄여 목차처럼 보이게 */
+details.acc.card:not([open]) { padding-top: 10px; padding-bottom: 10px; }
+details.acc.card:not([open]) > summary { margin: 0; }
+/* 패널 안(카드 아님)의 아코디언 — 제목이 h3 자리를 대신한다 */
+.panel-body details.acc { margin: var(--space-2) 0 0; }
+.panel-body details.acc > summary.card-title { margin-bottom: var(--space-1); }
+
 /* 언어 전환 국기 버튼 + 구글 번역 위젯 UI 숨김 */
 /* 언어 전환 — 국기 이모지는 작아서 안 보인다는 피드백(2026-08-17)에 따라
  * 글자 알약 버튼으로. 자체 번역기라 클릭 즉시 새로고침 없이 전환된다. */

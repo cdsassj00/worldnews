@@ -17,6 +17,14 @@ import {
 } from "./api";
 import { dirClass, el, fmtKrw, fmtKst, fmtNum, fmtPct, sparkline, timeAgo } from "./format";
 
+/** 접이식 근거 섹션 — 제목 클릭으로 펼침/접힘 (details/summary) */
+function acc(title: string, open: boolean, children: (Node | string)[]): HTMLElement {
+  return el("details", { class: "acc", open: open || null }, [
+    el("summary", { class: "card-title", text: title }),
+    ...children,
+  ]);
+}
+
 export interface OrderIntent {
   market: string;
   code: string;
@@ -346,33 +354,38 @@ export class Panel {
           bar("가격", t.priceScore, 0.45, "이 종목 자체의 최근 가격 흐름(모멘텀·추세·거래 위치)"),
           bar("뉴스", t.newsScore, 0.2, "이 종목·섹터 관련 기사의 긍정/부정"),
         ]),
-        ...(edgeItems.length
-          ? [
-              el("h3", { class: "card-title", text: "왜 이 점수인가 — 온톨로지 경로" }),
-              el("ul", { class: "plan-detail" }, edgeItems),
-            ]
-          : [
-              el("h3", { class: "card-title", text: "온톨로지 경로" }),
-              el("p", {
-                class: "note",
-                text:
-                  t.sector === null
-                    ? "이 종목은 업종이 자동 분류되지 않아 거시 전파 없이 가격 흐름만으로 점수를 냅니다."
-                    : "지금 유의미하게 움직인 거시요인이 없어 가격·뉴스 축이 점수를 이끕니다.",
-              }),
-            ]),
-        el("h3", { class: "card-title", text: "뉴스가 점수에 어떻게 들어갔나" }),
-        ...(newsItems.length
-          ? [el("ul", { class: "plan-detail" }, newsItems)]
-          : [el("p", { class: "note", text: newsEmptyNote })]),
-        el("h3", { class: "card-title", text: "판단 근거 전체" }),
-        el(
-          "ul",
-          { class: "plan-detail" },
-          (t.reasons ?? []).map((r) =>
-            el("li", { text: `[${r.kind === "ontology" ? "온톨로지" : r.kind === "price" ? "가격" : "뉴스"}] ${r.text}` }),
-          ),
+        /* 근거 섹션들은 아코디언으로 — 핵심(경로)만 펼치고 나머지는 접어 패널을 가볍게 */
+        acc(
+          edgeItems.length ? "왜 이 점수인가 — 온톨로지 경로" : "온톨로지 경로",
+          true,
+          edgeItems.length
+            ? [el("ul", { class: "plan-detail" }, edgeItems)]
+            : [
+                el("p", {
+                  class: "note",
+                  text:
+                    t.sector === null
+                      ? "이 종목은 업종이 자동 분류되지 않아 거시 전파 없이 가격 흐름만으로 점수를 냅니다."
+                      : "지금 유의미하게 움직인 거시요인이 없어 가격·뉴스 축이 점수를 이끕니다.",
+                }),
+              ],
         ),
+        acc(
+          "뉴스가 점수에 어떻게 들어갔나",
+          false,
+          newsItems.length
+            ? [el("ul", { class: "plan-detail" }, newsItems)]
+            : [el("p", { class: "note", text: newsEmptyNote })],
+        ),
+        acc("판단 근거 전체", false, [
+          el(
+            "ul",
+            { class: "plan-detail" },
+            (t.reasons ?? []).map((r) =>
+              el("li", { text: `[${r.kind === "ontology" ? "온톨로지" : r.kind === "price" ? "가격" : "뉴스"}] ${r.text}` }),
+            ),
+          ),
+        ]),
         el("p", {
           class: "note",
           text: `일변동성 ${t.volatility}%${t.atr ? ` · ATR ${fmtNum(t.atr, 0)}` : ""}${

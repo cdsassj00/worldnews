@@ -194,38 +194,38 @@
           <div id="verdict-body"><p class="note">분석 중…</p></div>
         </section>
 
-        <section class="card">
-          <h2 class="card-title">종목 검색</h2>
+        <details class="card acc" open>
+          <summary class="card-title">종목 검색</summary>
           <p class="card-sub">이름이나 코드를 입력하면 지금 시점 온톨로지 분석이 열립니다.</p>
           <label class="ticker-search">
             <span class="sr-only">종목 검색</span>
             <input id="ticker-search" type="search" placeholder="예: 현대해상, 삼성전자, 005930" autocomplete="off" />
             <ul id="ticker-results" class="search-results" hidden></ul>
           </label>
-        </section>
+        </details>
 
-        <section class="card">
-          <h2 class="card-title">거시 신호</h2>
+        <details class="card acc">
+          <summary class="card-title">거시 신호</summary>
           <p class="card-sub">5일 변화율을 요인별 기준폭으로 나눈 -1~1 신호. 이게 그래프의 입력입니다.</p>
           <ul class="macro-list" id="macro-list">
             <li class="skeleton-row"></li>
             <li class="skeleton-row"></li>
             <li class="skeleton-row"></li>
           </ul>
-        </section>
+        </details>
 
-        <section class="card">
-          <h2 class="card-title">종목 점수 상위</h2>
+        <details class="card acc">
+          <summary class="card-title">종목 점수 상위</summary>
           <p class="card-sub">클릭하면 3D 그래프가 그 종목의 경로만 남깁니다.</p>
           <ul class="hot-list" id="score-list">
             <li class="skeleton-row"></li>
             <li class="skeleton-row"></li>
             <li class="skeleton-row"></li>
           </ul>
-        </section>
+        </details>
 
-        <section class="card">
-          <h2 class="card-title">기회 탐색 <span class="card-tag">KOSPI200+KOSDAQ150</span></h2>
+        <details class="card acc">
+          <summary class="card-title">기회 탐색 <span class="card-tag">KOSPI200+KOSDAQ150</span></summary>
           <p class="card-sub" id="radar-sub">하락장에서도 350종목 중 순풍 받는 곳과 피할 곳을 찾습니다.</p>
           <div class="radar-tabs" id="radar-tabs" role="tablist">
             <button type="button" class="radar-tab active" data-tab="tailwind" role="tab">수혜 경로</button>
@@ -237,24 +237,24 @@
             <li class="skeleton-row"></li>
             <li class="skeleton-row"></li>
           </ul>
-        </section>
+        </details>
 
-        <section class="card">
-          <h2 class="card-title">지금 움직이는 시장</h2>
+        <details class="card acc">
+          <summary class="card-title">지금 움직이는 시장</summary>
           <ul class="hot-list" id="hot-list">
             <li class="skeleton-row"></li>
             <li class="skeleton-row"></li>
           </ul>
-        </section>
+        </details>
 
-        <section class="card card-guide">
-          <h2 class="card-title">쓰는 순서</h2>
+        <details class="card card-guide acc">
+          <summary class="card-title">쓰는 순서</summary>
           <ol class="steps">
             <li><b>가운데 3D 그래프</b>는 개념 그래프다 — 거시요인(의미 클러스터)끼리의 인과와 섹터로의 전파를 보여준다. 종목은 검색하거나 목록에서 클릭하면 그래프에 얹힌다.</li>
             <li>오른쪽 아래 <b>돌아가는 지구본</b>을 누르면 세계 경제 지표와 지도가 열린다. 나라를 클릭하면 그 나라 상세가 뜬다.</li>
             <li>상단 <b>자동매매</b>에서 계획·근거·백테스트 결과를 확인한다.</li>
           </ol>
-        </section>
+        </details>
       </aside>
 
       <section class="stage">
