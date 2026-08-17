@@ -149,18 +149,19 @@ function labelSprite(title: string, sub: string, color: THREE.Color, kind: NodeK
   grad.addColorStop(1, "rgba(7,12,26,0.9)");
   ctx.fillStyle = grad;
   ctx.strokeStyle = hex;
-  ctx.lineWidth = 3;
-  const r = 28;
+  ctx.lineWidth = 3.5;
+  // 알약(pill) — 2026-08-17 "라벨 동그랗게 + 테두리" 피드백
+  const r = (H - 8) / 2;
   ctx.beginPath();
   ctx.roundRect(4, 4, W - 8, H - 8, r);
   ctx.fill();
   ctx.stroke();
   ctx.shadowBlur = 0;
 
-  // 왼쪽 색상 바 — 계층(요인·섹터·종목)이 한눈에 읽히게
+  // 왼쪽 계층 색 점 — 참고 디자인의 노드 점 문법
   ctx.fillStyle = hex;
   ctx.beginPath();
-  ctx.roundRect(14, 26, 8, H - 52, 4);
+  ctx.arc(52, H / 2, 13, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.textAlign = "center";

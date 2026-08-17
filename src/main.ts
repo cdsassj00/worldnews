@@ -469,6 +469,23 @@ function setupOntology(): void {
   const w = window as unknown as { __wfg?: Record<string, unknown> };
   w.__wfg = { ...(w.__wfg ?? {}), onto };
 
+  // 사이드 패널 접기/펴기 — 그래프를 넓게. 선택은 기억한다.
+  const layout = document.querySelector<HTMLElement>("main.layout");
+  const sideToggle = (btnId: string, cls: string, key: string, openCh: string, closedCh: string) => {
+    const btn = $(btnId);
+    const apply = (hidden: boolean) => {
+      layout?.classList.toggle(cls, hidden);
+      btn.textContent = hidden ? closedCh : openCh;
+      try { localStorage.setItem(key, hidden ? "1" : "0"); } catch { /* 무시 */ }
+    };
+    let hidden = false;
+    try { hidden = localStorage.getItem(key) === "1"; } catch { /* 무시 */ }
+    apply(hidden);
+    btn.addEventListener("click", () => apply(!layout?.classList.contains(cls)));
+  };
+  sideToggle("btn-rail-toggle", "no-rail", "wfg-rail-hidden", "◀", "▶");
+  sideToggle("btn-panel-toggle", "no-panel", "wfg-panel-hidden", "▶", "◀");
+
   const spinBtn = $("btn-spin");
   spinBtn.addEventListener("click", () => {
     const next = !onto!.isAutoRotating();

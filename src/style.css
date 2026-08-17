@@ -2951,6 +2951,65 @@ body {
 .method-list { margin: 4px 0; padding-left: 18px; display: grid; gap: 3px; }
 .method-list li { font-size: 11.5px; line-height: 1.55; color: var(--fg-dim, #94a3b8); }
 
+/* ── 온톨로지 스테이지 — 사이드 접기 + 라이트 버전 ───────────── */
+.side-toggle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 64px;
+  z-index: 6;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: linear-gradient(165deg, rgba(18, 28, 52, 0.9), rgba(8, 13, 28, 0.85));
+  color: #c7d2e4;
+  font-size: 11px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: color 160ms ease, border-color 160ms ease;
+}
+.side-toggle:hover { color: #f8fafc; border-color: #d9a441; }
+.side-toggle.left { left: 8px; }
+.side-toggle.right { right: 8px; }
+/* 접힘 상태 — display:none 으로 빠진 자식만큼 열 정의도 줄인다
+ * (열을 0폭으로만 두면 남은 자식이 그 0폭 열로 밀려 들어간다 — 실측 버그) */
+.layout.no-rail { grid-template-columns: minmax(0, 1fr) 380px; }
+.layout.no-panel { grid-template-columns: 260px minmax(0, 1fr); }
+.layout.no-rail.no-panel { grid-template-columns: minmax(0, 1fr); }
+.layout.no-rail .rail, .layout.no-panel .panel { display: none; }
+
+/* 라이트 버전 스테이지 — 어두운 유리 칩이 밝은 무대 위에 떠 있는 구도 */
+[data-theme="light"] .stage {
+  background:
+    radial-gradient(ellipse 60% 45% at 78% 6%, rgba(191, 138, 30, 0.09), transparent 60%),
+    radial-gradient(ellipse 75% 60% at 50% 42%, #f4f7fb 0%, rgba(244, 247, 251, 0) 70%),
+    radial-gradient(circle at 50% 45%, #e6edf6 0%, #cfd9e8 74%);
+}
+[data-theme="light"] .onto-legend {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(191, 138, 30, 0.4);
+}
+[data-theme="light"] .onto-legend .onto-title b { color: #0f172a; }
+[data-theme="light"] .onto-legend .onto-title span,
+[data-theme="light"] .onto-legend .onto-layers,
+[data-theme="light"] .onto-legend .onto-help { color: #3d4c66; }
+[data-theme="light"] .onto-legend .onto-what { color: #0f172a; background: #f1f5f9; border-color: #cbd5e1; }
+[data-theme="light"] .onto-focus {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: #bf8a1e;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.25), 0 0 22px rgba(191, 138, 30, 0.2);
+}
+[data-theme="light"] .onto-focus-head b { color: #0f172a; }
+[data-theme="light"] .onto-focus-sub { color: #a06e10; }
+[data-theme="light"] .onto-focus-meta { color: #3d4c66; }
+[data-theme="light"] .onto-focus-x { color: #5d6c84; }
+[data-theme="light"] .globe-hint { background: rgba(255, 255, 255, 0.88); color: #3d4c66; border-color: #cbd5e1; }
+[data-theme="light"] .icon-btn,
+[data-theme="light"] .side-toggle { background: rgba(255, 255, 255, 0.9); color: #3d4c66; border-color: #b9c4d4; }
+[data-theme="light"] .icon-btn:hover,
+[data-theme="light"] .side-toggle:hover { color: #0f172a; border-color: #bf8a1e; }
+[data-theme="light"] .stage-scroll-hint { background: rgba(255, 255, 255, 0.92); color: #0f172a; border-color: #cbd5e1; }
+
 /* ── 온보딩 투어 ─────────────────────────────── */
 .tour-dim {
   position: fixed;
