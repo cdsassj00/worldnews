@@ -476,16 +476,22 @@ function setupOntology(): void {
   w.__wfg = { ...(w.__wfg ?? {}), onto };
 
   // 사이드 패널 접기/펴기 — 그래프를 넓게. 선택은 기억한다.
+  // 2026-08-17 사용자 지시: 기본값 = 접힘(그래프 전체 화면). 처음 온 사람은
+  // 온톨로지부터 크게 보고, 네온 버튼 말풍선이 패널 펼치는 법을 알려준다.
   const layout = document.querySelector<HTMLElement>("main.layout");
   const sideToggle = (btnId: string, cls: string, key: string, openCh: string, closedCh: string) => {
     const btn = $(btnId);
     const apply = (hidden: boolean) => {
       layout?.classList.toggle(cls, hidden);
       btn.textContent = hidden ? closedCh : openCh;
+      btn.classList.toggle("collapsed", hidden); // 접힘 상태 = 네온 + 말풍선
       try { localStorage.setItem(key, hidden ? "1" : "0"); } catch { /* 무시 */ }
     };
-    let hidden = false;
-    try { hidden = localStorage.getItem(key) === "1"; } catch { /* 무시 */ }
+    let hidden = true; // 저장된 선택이 없으면 접힘이 기본
+    try {
+      const saved = localStorage.getItem(key);
+      if (saved !== null) hidden = saved === "1";
+    } catch { /* 무시 */ }
     apply(hidden);
     btn.addEventListener("click", () => apply(!layout?.classList.contains(cls)));
   };

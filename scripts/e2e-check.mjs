@@ -41,7 +41,14 @@ const page = await browser.newPage({
 });
 
 // 온보딩 투어 자동 실행이 클릭을 가로채지 않게 "이미 봤다"로 표시
-await page.addInitScript(() => { try { localStorage.setItem("wfg-tour-done", "1"); } catch { /* 무시 */ } });
+await page.addInitScript(() => {
+  try {
+    localStorage.setItem("wfg-tour-done", "1");
+    // 2026-08-17 부터 사이드 패널 접힘이 기본값 — 검사들은 펼친 상태를 전제한다
+    localStorage.setItem("wfg-rail-hidden", "0");
+    localStorage.setItem("wfg-panel-hidden", "0");
+  } catch { /* 무시 */ }
+});
 
 const consoleErrors = [];
 page.on("console", (m) => {

@@ -706,6 +706,43 @@ details.acc.card:not([open]) > summary { margin: 0; }
 .onto-mkt .radar-tab { padding: 6px 16px; font-size: 12.5px; border-radius: 999px; }
 [data-theme="light"] .radar-tabs.onto-mkt { background: rgba(255, 255, 255, 0.92); border-color: #cbd5e1; }
 
+/* 접힌 사이드 토글 — 네온 링 + "펼치기" 말풍선 (기본값이 접힘이라 처음 온 사람에게 알려준다) */
+.side-toggle.collapsed {
+  color: #ffd982;
+  border-color: #d9a441;
+  box-shadow: 0 0 6px rgba(242, 193, 78, 0.8), 0 0 18px rgba(217, 164, 65, 0.45);
+  animation: fab-neon 2.6s ease-in-out infinite;
+}
+.side-toggle.collapsed::after {
+  content: "패널 펼치기";
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 9px;
+  border-radius: 8px;
+  color: #0f172a;
+  background: #f2c14e;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+/* 왼쪽 버튼은 오른쪽으로, 오른쪽 버튼은 왼쪽으로 말풍선 + 꼬리 */
+.side-toggle.left.collapsed::after { left: calc(100% + 10px); }
+.side-toggle.right.collapsed::after { right: calc(100% + 10px); }
+.side-toggle.collapsed::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  pointer-events: none;
+}
+.side-toggle.left.collapsed::before { left: calc(100% + 1px); border-right-color: #f2c14e; }
+.side-toggle.right.collapsed::before { right: calc(100% + 1px); border-left-color: #f2c14e; }
+[data-theme="light"] .side-toggle.collapsed { background: rgba(255, 255, 255, 0.95); color: #a86f0e; }
+
 /* 지구본 모달 안 나라 상세 — 온톨로지 3분할을 건드리지 않고 모달에서 본다 */
 #world-country { min-height: 200px; }
 #world-country[hidden] { display: none; }
