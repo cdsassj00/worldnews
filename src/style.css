@@ -128,7 +128,9 @@
 html,
 body {
   margin: 0;
-  height: 100%;
+  /* body 가 height:100%(=뷰포트)면 sticky 의 활동 범위가 첫 화면에서 끝난다 —
+   * 상단 고정 바(top-fixed)가 스크롤과 함께 사라지던 원인(2026-08-17 실측) */
+  min-height: 100%;
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-ui);
@@ -252,6 +254,14 @@ body {
 }
 
 /* ── 상단바 ─────────────────────────────── */
+
+/* 배너+상단바 고정 래퍼 — 스크롤해도 광고와 실시간 지수판이 항상 보인다 (2026-08-17) */
+.top-fixed {
+  position: sticky;
+  top: 36px; /* 광고 배너(fixed, 36px) 바로 아래에 상단바가 붙는다 */
+  z-index: 40; /* 무대 오버레이(≤7) 위, 모달(더 높음) 아래 */
+  flex: 0 0 auto;
+}
 
 .topbar {
   height: var(--topbar-h);
