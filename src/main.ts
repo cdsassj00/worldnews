@@ -657,12 +657,14 @@ function setupVerdict(): void {
     tabs.addEventListener("click", (ev) => {
       ev.stopPropagation();
       const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>(".radar-tab");
-      if (!btn) return;
-      setVerdictMarket((btn.dataset.mkt as "KR" | "US") ?? "KR");
+      if (!btn?.dataset.mkt) return; // 🌍 버튼 등 시장 탭이 아닌 것은 통과
+      setVerdictMarket(btn.dataset.mkt as "KR" | "US");
     });
   };
   wire("verdict-mkt");
   wire("onto-mkt"); // 3D 무대 위 토글 — 같은 스위치의 다른 손잡이
+  // 🌍 — 무대에서 바로 세계 지도를 연다 (아래로 스크롤할 필요 없이)
+  document.getElementById("btn-onto-world")?.addEventListener("click", () => $("btn-world").click());
 }
 
 async function loadVerdict(): Promise<void> {

@@ -410,6 +410,13 @@ export class Panel {
 
     root.append(this.renderHead());
 
+    // 다른 나라를 보다가 돌아갈 길 — 지도를 다시 열 필요 없이 맨 위에서 바로 (2026-08-17)
+    if (this.cc && this.cc !== "KR") {
+      const back = el("button", { class: "btn btn-ghost panel-back", type: "button", text: "← 대한민국 시장으로 돌아가기" });
+      back.addEventListener("click", () => void this.open("KR", "대한민국"));
+      root.append(back);
+    }
+
     const tabs = el("div", { class: "tabs", role: "tablist" });
     const defs: { id: Tab; label: string }[] = [
       { id: "news", label: `뉴스${this.news ? ` (${this.news.length})` : ""}` },
