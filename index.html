@@ -262,6 +262,11 @@
           <canvas id="onto3d" aria-label="3D 온톨로지 그래프. 거시요인에서 섹터를 거쳐 종목까지 신호가 전파되는 구조입니다."></canvas>
           <!-- 범례는 네온 원형 버튼으로 껐다 켰다 — 큰 카드가 거시요인 층을 가린다는 피드백(2026-08-17) -->
           <button class="onto-fab" id="btn-legend" type="button" title="온톨로지 분석 설명 열기/닫기" aria-expanded="false">i</button>
+          <!-- 무대 위 시장 토글 — 그래프·결론·점수 상위·기회 탐색이 함께 전환된다 -->
+          <div class="radar-tabs onto-mkt" id="onto-mkt" role="tablist" aria-label="온톨로지 시장 선택" data-no-translate>
+            <button type="button" class="radar-tab active" data-mkt="KR" role="tab">🇰🇷 한국</button>
+            <button type="button" class="radar-tab" data-mkt="US" role="tab">🇺🇸 미국</button>
+          </div>
           <div class="onto-legend" id="onto-legend" hidden>
             <div class="onto-title">
               <b>온톨로지 분석</b>

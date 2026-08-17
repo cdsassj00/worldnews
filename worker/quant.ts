@@ -217,9 +217,11 @@ const kstDay = (t = Date.now()) => new Date(t + 9 * 3600_000).toISOString().slic
  */
 export async function quantScanChunk(env: Env): Promise<{ scanned: number; cursor: number; skipped: number }> {
   const store = await loadRank(env);
-  const start = store.cursor % Math.max(1, SCAN_UNIVERSE.length);
-  const slice: Seed[] = [];
-  for (let i = 0; i < CHUNK && i < SCAN_UNIVERSE.length; i++) slice.push(SCAN_UNIVERSE[(start + i) % SCAN_UNIVERSE.length]);
+  /* 스캔 순서: 한 번도 안 훑은 종목 → 가장 오래된 순. 순환 커서는 유니버스가
+   * 커질 때(미국 104종목 추가) 새 종목이 하루 뒤에나 채워지는 문제가 있었다. */
+  const slice: Seed[] = [...SCAN_UNIVERSE]
+    .sort((a, b) => (store.rows[a.code]?.scannedAt ?? 0) - (store.rows[b.code]?.scannedAt ?? 0))
+    .slice(0, CHUNK);
 
   // 시장 지수 — 상대강도 계산용. 이 조각에 미국 종목이 있으면 S&P500 도 받는다.
   let marketCloses: number[] = [];
@@ -273,7 +275,7 @@ export async function quantScanChunk(env: Env): Promise<{ scanned: number; curso
     });
   }
 
-  store.cursor = (start + slice.length) % SCAN_UNIVERSE.length;
+  store.cursor = (store.cursor + slice.length) % SCAN_UNIVERSE.length; // 커서는 진단용 카운터로만 남긴다
   store.updatedAt = now;
   await env.CACHE.put(RANK_KEY, JSON.stringify(store));
   return { scanned, cursor: store.cursor, skipped };
@@ -290,7 +292,17 @@ export interface QuantRankResult {
 export async function quantRank(env: Env, profileId?: string, limit = 20, market: QuantMarket = "KR"): Promise<QuantRankResult> {
   const c = cfg(env);
   const profile = profileId ? profileById(profileId) : c.profile;
-  const store = await loadRank(env);
+  let store = await loadRank(env);
+  /* 이 시장의 풀이 얕으면(방금 유니버스가 확장된 직후) 크론을 기다리지 않고
+   * 즉석에서 한 조각을 채운다. 잠금(55초)으로 공개 엔드포인트 남용을 막는다. */
+  if (Object.values(store.rows).filter((r) => rowMarket(r) === market).length < 40) {
+    const lock = await env.CACHE.get("quant:scanlock").catch(() => null);
+    if (!lock) {
+      await env.CACHE.put("quant:scanlock", "1", { expirationTtl: 55 }).catch(() => undefined);
+      await quantScanChunk(env).catch(() => undefined); // 안 훑은 종목부터라 이 시장이 먼저 채워진다
+      store = await loadRank(env);
+    }
+  }
   const rows = Object.values(store.rows)
     .filter((r) => rowMarket(r) === market && turnoverOk(r, c.minTurnover))
     .map((r) => ({ ...r, score: r.scores[profile.id] ?? 0 }))

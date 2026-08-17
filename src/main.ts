@@ -159,6 +159,8 @@ function onCountryPicked(c: CountryRef): void {
     return;
   }
   void panel.open(c.iso2, c.ko);
+  // 온톨로지 유니버스가 있는 나라(한국·미국)를 고르면 무대·사이드도 그 시장으로 전환
+  if (c.iso2 === "US" || c.iso2 === "KR") setVerdictMarket(c.iso2);
   history.replaceState(null, "", `#${c.iso2}`);
   // 나라를 골랐으면 모달의 목적은 끝났다. 오른쪽 상세로 시선을 넘긴다.
   $("world-modal").hidden = true;
@@ -631,20 +633,36 @@ function pushOntoState(): void {
   });
 }
 
+/** 시장 전환의 단일 진입점 — 결론 카드·무대 토글·지구본이 전부 이 함수를 부른다.
+ *  그래프(결론 층)·결론 카드·종목 점수 상위·기회 탐색이 한 몸으로 바뀐다. */
+function setVerdictMarket(mkt: "KR" | "US"): void {
+  verdictMarket = mkt;
+  for (const group of ["verdict-mkt", "onto-mkt"]) {
+    const elGroup = document.getElementById(group);
+    if (!elGroup) continue;
+    for (const b of elGroup.querySelectorAll<HTMLButtonElement>(".radar-tab")) {
+      b.classList.toggle("active", b.dataset.mkt === mkt);
+    }
+  }
+  void loadVerdict();
+  void loadRadar(); // 기회 탐색도 같은 시장으로 따라간다
+  if (mkt === "US") void renderUsScoreList();
+  else if (ontoState) renderScoreList(ontoState);
+}
+
 function setupVerdict(): void {
-  const tabs = $("verdict-mkt");
-  tabs.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>(".radar-tab");
-    if (!btn) return;
-    verdictMarket = (btn.dataset.mkt as "KR" | "US") ?? "KR";
-    for (const b of tabs.querySelectorAll(".radar-tab")) b.classList.toggle("active", b === btn);
-    void loadVerdict();
-    void loadRadar(); // 기회 탐색도 같은 시장으로 따라간다
-    // 종목 점수 상위도 같은 시장으로 — 그래프(결론 층)·기회 탐색과 한 몸으로 움직인다
-    if (verdictMarket === "US") void renderUsScoreList();
-    else if (ontoState) renderScoreList(ontoState);
-  });
+  const wire = (id: string) => {
+    const tabs = document.getElementById(id);
+    if (!tabs) return;
+    tabs.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>(".radar-tab");
+      if (!btn) return;
+      setVerdictMarket((btn.dataset.mkt as "KR" | "US") ?? "KR");
+    });
+  };
+  wire("verdict-mkt");
+  wire("onto-mkt"); // 3D 무대 위 토글 — 같은 스위치의 다른 손잡이
 }
 
 async function loadVerdict(): Promise<void> {
