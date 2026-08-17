@@ -508,7 +508,9 @@ async function loadOntology(): Promise<void> {
     } 기준 · 계산 ${timeAgo(ontoState.generatedAt)}`;
     hint.style.opacity = "0.75";
     renderMacroList(ontoState);
-    renderScoreList(ontoState);
+    // 결론 카드가 '미국'이면 점수 상위도 미국을 유지한다 — KR 갱신이 덮어쓰지 않게
+    if (verdictMarket === "US") void renderUsScoreList();
+    else renderScoreList(ontoState);
     renderMacroLinks(ontoState);
     // 첫 방문이면 최고 점수 종목의 분석을 예시로 열어 준다 — 빈 패널만 보고 나가지 않게.
     // 3D 포커스는 걸지 않는다: 사용자가 클릭하지 않았는데 그래프에 포커스가 있으면 혼란스럽다(2026-08-17 피드백).
@@ -558,6 +560,33 @@ function renderMacroLinks(s: OntoState): void {
   list.replaceChildren(
     ...s.macroLinks.map((l) => el("li", { text: `${nameOf(l.from)} → ${nameOf(l.to)}: ${l.ko}` })),
   );
+}
+
+/** 미국 점수 상위 — 결론 카드 탭이 '미국'일 때 레이더 DB의 미국 종목으로 채운다 (2026-08-17) */
+async function renderUsScoreList(): Promise<void> {
+  try {
+    const top = await api.radarTop(100);
+    const rows = top.items.filter((r) => r.market === "US").slice(0, 8);
+    if (!rows.length) return;
+    $("score-list").replaceChildren(
+      ...rows.map((r) => {
+        const t = radarToTicker(r);
+        const btn = el("button", { type: "button" }, [
+          el("span", { class: "hot-name" }, [
+            el("span", { text: r.name }),
+            el("span", { class: "hot-index", text: `$${fmtNum(r.price, 2)} · 온톨 ${r.onto}` }),
+          ]),
+          el("span", { class: dirClass(r.score), text: r.score.toFixed(3) }),
+        ]);
+        btn.addEventListener("click", () => {
+          onto?.showTicker(t);
+          panel.openTicker(t);
+          void taPanel?.show(t.symbol, t.nameKo);
+        });
+        return el("li", {}, [btn]);
+      }),
+    );
+  } catch { /* 다음 갱신에서 다시 */ }
 }
 
 function renderScoreList(s: OntoState): void {
@@ -612,6 +641,9 @@ function setupVerdict(): void {
     for (const b of tabs.querySelectorAll(".radar-tab")) b.classList.toggle("active", b === btn);
     void loadVerdict();
     void loadRadar(); // 기회 탐색도 같은 시장으로 따라간다
+    // 종목 점수 상위도 같은 시장으로 — 그래프(결론 층)·기회 탐색과 한 몸으로 움직인다
+    if (verdictMarket === "US") void renderUsScoreList();
+    else if (ontoState) renderScoreList(ontoState);
   });
 }
 

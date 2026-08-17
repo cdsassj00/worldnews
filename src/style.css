@@ -679,8 +679,23 @@ details.acc.card:not([open]) > summary { margin: 0; }
 [data-theme="light"] .onto-fab { background: rgba(255, 255, 255, 0.95); color: #a86f0e; }
 [data-theme="light"] .onto-fab[aria-expanded="true"] { background: #f2c14e; color: #0f172a; }
 
-/* 시장(한국/미국) 전환 칩 — 전략실 리그 · 수급 · 조합 */
-.lab-mkt { margin: 0 0 10px; }
+/* 시장(한국/미국) 전환 칩 — 전략실 리그 · 수급 · 조합.
+ * 가로로 쫙 늘어난다는 피드백(2026-08-17) — 내용 폭만큼만 차지하는 알약으로 */
+.lab-mkt {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 0 12px;
+}
+.lab-mkt .radar-tab { flex: 0 0 auto; padding: 7px 22px; font-size: 13px; }
+
+/* 종목 상세 상단의 "시장 전체 보기" — 맨 위 고정 배치 */
+.panel-back {
+  display: block;
+  width: 100%;
+  margin: 6px 0 2px;
+  text-align: left;
+}
 .flow-tab-sep {
   display: inline-block;
   width: 1px;

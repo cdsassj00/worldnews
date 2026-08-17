@@ -265,7 +265,8 @@ export class Panel {
       ]),
     ]);
 
-    const backBtn = el("button", { class: "btn btn-ghost", type: "button", text: "← 대한민국 시장 전체 보기" });
+    // 시장 전체로 돌아가는 버튼 — 긴 상세를 다 내리지 않아도 되게 맨 위에 둔다(2026-08-17)
+    const backBtn = el("button", { class: "btn btn-ghost panel-back", type: "button", text: "← 대한민국 시장 전체 보기" });
     backBtn.addEventListener("click", () => void this.open("KR", "대한민국"));
 
     const st = this.deps.onto?.() ?? null;
@@ -337,6 +338,7 @@ export class Panel {
 
     return [
       head,
+      backBtn,
       el("div", { class: "tab-panel" }, [
         el("div", { class: `verdict verdict-${verdict.cls}` }, [
           el("b", { text: verdict.text }),
@@ -393,7 +395,6 @@ export class Panel {
           }`,
         }),
         el("p", { class: "note", text: "참고 자료입니다. 투자 자문이 아니며 수익을 보장하지 않습니다." }),
-        backBtn,
       ]),
     ];
   }
