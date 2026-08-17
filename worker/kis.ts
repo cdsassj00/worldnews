@@ -749,6 +749,9 @@ export async function placeOrder(env: Env, cfg: KisConfig, req: OrderRequest): P
       },
     });
   } else {
+    /* 주문 TR 의 미국 거래소 코드는 4자리(NASD/NYSE/AMEX)다 — 시세·잔고의 3자리
+     * (NAS/NYS/AMS)와 다르다. psamount 도 4자리를 쓴다(위 overseasReadiness 실측). */
+    const ORDER_EXCG: Partial<Record<OrderMarket, string>> = { NAS: "NASD", NYS: "NYSE", AMS: "AMEX" };
     out = await kisCall(env, cfg, {
       method: "POST",
       path: "/uapi/overseas-stock/v1/trading/order",
@@ -757,7 +760,7 @@ export async function placeOrder(env: Env, cfg: KisConfig, req: OrderRequest): P
       body: {
         CANO: cfg.cano,
         ACNT_PRDT_CD: cfg.acntPrdtCd,
-        OVRS_EXCG_CD: req.market,
+        OVRS_EXCG_CD: ORDER_EXCG[req.market] ?? req.market,
         PDNO: req.code,
         ORD_QTY: String(req.qty),
         OVRS_ORD_UNPR: String(req.price),

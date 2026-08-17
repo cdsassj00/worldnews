@@ -180,6 +180,12 @@ async function loadRank(env: Env): Promise<RankStore> {
   return { rows: {}, cursor: 0, updatedAt: 0 };
 }
 
+/** 미국 실계좌 사이클(autotrade-us.ts)용 — 미국 수급 행(시세·거래대금·스캔시각) 전부 */
+export async function usQuantRows(env: Env): Promise<QuantRow[]> {
+  const store = await loadRank(env);
+  return Object.values(store.rows).filter((r) => rowMarket(r) === "US");
+}
+
 export async function loadQuantState(env: Env): Promise<QuantState> {
   const raw = await env.CACHE.get(STATE_KEY, "json");
   if (raw && typeof raw === "object") return raw as QuantState;
@@ -338,7 +344,7 @@ async function marketOk(env: Env, c: QuantConfig, market: QuantMarket = "KR"): P
 }
 
 /** 미국 정규장(현지 09:30~16:00, 주말·휴장일 제외)인가 — DST 는 타임존 API가 처리한다 */
-function usMarketOpen(now = new Date()): boolean {
+export function usMarketOpen(now = new Date()): boolean {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "America/New_York",
     year: "numeric", month: "2-digit", day: "2-digit",

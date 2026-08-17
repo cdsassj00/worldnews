@@ -303,14 +303,14 @@ export async function getJournal(env: Env): Promise<JournalEntry[]> {
   return Array.isArray(raw) ? raw : [];
 }
 
-async function appendJournal(env: Env, entries: JournalEntry[]): Promise<void> {
+export async function appendJournal(env: Env, entries: JournalEntry[]): Promise<void> {
   if (!entries.length) return;
   const prev = await getJournal(env);
   const next = [...entries, ...prev].slice(0, JOURNAL_MAX);
   await env.CACHE.put(JOURNAL_KEY, JSON.stringify(next)).catch(() => undefined);
 }
 
-function entry(kind: JournalEntry["kind"], text: string, detail?: unknown): JournalEntry {
+export function entry(kind: JournalEntry["kind"], text: string, detail?: unknown): JournalEntry {
   return { at: Date.now(), kstDate: kstNow().date, kind, text, detail };
 }
 
@@ -826,8 +826,8 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
   /* 입출금 자동 감지 — 보유 수량은 그대로인데 현금만 크게 변했다면 매매로 설명이
    * 안 되는 돈이 들어오거나 나간 것이다(입금·출금). 넣은 돈(수익 계산 기준)에 자동
    * 반영한다. 2026-08-17 사용자 지시: "계좌의 모든 돈은 봇이 컨트롤한다 — 수동 신고는 이상하다."
-   * 배당·수수료 수준의 잔변동은 오탐을 피하려고 30만원 미만은 무시한다. 수동 보정은
-   * /api/auto/deposit(입출금 반영 버튼)이 그대로 남아 있다. */
+   * 배당·수수료 수준의 잔변동은 오탐을 피하려고 30만원 미만은 무시한다. 수동 보정
+   * API(/api/auto/deposit)는 감지가 놓친 경우의 비상용으로만 남아 있다(버튼 없음). */
   if (plan.account.connected && state.lastCash !== undefined && state.qtySnapshot) {
     const qtyNow = Object.fromEntries(plan.account.holdings.map((h) => [h.symbol, h.qty]));
     const sameQty =

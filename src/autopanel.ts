@@ -394,21 +394,11 @@ export class AutoPanel {
   private moneyBlock(p: AutoPlan): HTMLElement {
     const c = p.config;
     const pct = Math.max(-100, Math.min(100, p.targetProgressPct));
-    // 입출금 신고 버튼 — "넣은 돈"(수익 계산 기준)을 여기서 바로 보정한다
-    const depositBtn = el("button", { class: "btn btn-ghost", type: "button", text: "입출금 반영" });
-    depositBtn.addEventListener("click", () => {
-      const raw = window.prompt("입금/출금 금액(원)을 입력하세요. 입금은 양수, 출금은 음수.\n예: 4000000", "");
-      if (raw === null) return;
-      const amount = Math.round(Number(raw.replace(/[,\s원]/g, "")));
-      if (!Number.isFinite(amount) || amount === 0) { window.alert("금액을 숫자로 입력해주세요."); return; }
-      depositBtn.textContent = "반영 중…";
-      void api
-        .autoDeposit(amount)
-        .then(() => this.load())
-        .catch((e) => { window.alert(`실패: ${e instanceof Error ? e.message : e}`); depositBtn.textContent = "입출금 반영"; });
-    });
+    /* 입출금 반영 버튼은 없앴다(2026-08-18 사용자 지시 "자동화 연동해놨는데 왜 버튼이
+     * 필요하냐"). 입출금은 사이클마다 자동 감지한다 — 수동 보정 API(/api/auto/deposit)는
+     * 감지가 놓친 경우를 위한 비상용으로만 서버에 남아 있다. */
     return el("section", { class: "auto-block" }, [
-      el("h3", {}, [el("span", { text: "자금과 목표" }), depositBtn]),
+      el("h3", {}, [el("span", { text: "자금과 목표" })]),
       // 내가 넣은 돈이 지금 어디에 얼마로 있고, 얼마를 벌었나 — 이 네 가지만.
       el("div", { class: "auto-grid" }, [
         stat("내가 넣은 돈", fmtKrw(p.depositKrw)),
@@ -445,7 +435,7 @@ export class AutoPanel {
       }),
       el("p", {
         class: "note",
-        text: `‘수익’은 넣은 돈 대비 지금 계좌 전체의 증감입니다(봇 매매 + 기존 보유 ${p.account.holdings.length}종목 등락 합산). 입출금은 사이클마다 자동 감지해 넣은 돈에 반영합니다 — 즉시 반영하고 싶을 때만 위 ‘입출금 반영’ 버튼을 쓰세요.`,
+        text: `‘수익’은 넣은 돈 대비 지금 계좌 전체의 증감입니다(봇 매매 + 기존 보유 ${p.account.holdings.length}종목 등락 합산). 입출금은 사이클마다 자동 감지해 ‘넣은 돈’에 반영됩니다 — 따로 신고할 것이 없습니다.`,
       }),
       // 계좌 조회가 실패했거나 캐시값으로 대체됐으면 이유를 숨기지 않는다
       ...(p.account.reason
@@ -482,7 +472,7 @@ export class AutoPanel {
       apply,
       el("span", {
         class: "note",
-        text: "이 몫은 국내 봇이 쓰지 않습니다. 미국 자동매매를 켜면 그 예산이 됩니다.",
+        text: "이 몫은 국내 봇이 쓰지 않습니다 — 미국 자동매매의 예산입니다.",
       }),
     ]);
   }

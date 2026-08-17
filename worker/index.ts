@@ -26,6 +26,7 @@ import {
   overseasReadiness,
 } from "./kis";
 import { adjustForDeposit, autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle, getEngine, getEngineSel, setEngine, setReserveKrw, engineKey, AUTO_ENGINES } from "./autotrade";
+import { usAutoStatus, usRunCycle } from "./autotrade-us";
 import { runStrategy } from "./strategy";
 import { tickerNewsStatus } from "./tickernews";
 import { radarFind, radarOpps, radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
@@ -572,6 +573,21 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     });
   }
 
+  if (path === "/api/auto/us/run") {
+    // 미국 실계좌 사이클 수동 실행 — 기본은 그림자(주문 미전송), shadow:false 를
+    // 명시해야 실주문 경로를 탄다. force 로 장 마감 중에도 점검할 수 있다.
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    const body = (await request.json().catch(() => ({}))) as { shadow?: boolean; force?: boolean };
+    return json(await usRunCycle(env, { shadow: body.shadow !== false, force: body.force === true }));
+  }
+
+  if (path === "/api/auto/us/status") {
+    // 미국 봇 상태 — 원장·마지막 사이클 결과. 계좌 정보가 섞이므로 운영자 전용.
+    assertTradeAuth(env, request);
+    return json(await usAutoStatus(env));
+  }
+
   if (path === "/api/auto/deposit") {
     // 입출금 기준선 보정: {"amountKrw": 4000000} 입금 / 음수면 출금
     if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
@@ -717,15 +733,21 @@ export default {
     // 매시간 크론이 겹치면 매매(runCycle·labCycle)가 두 번 돌아 중복 주문이 난다.
     const h = now.getUTCHours();
     const marketWindow = now.getUTCDay() >= 1 && now.getUTCDay() <= 5 && (h <= 6 || (h >= 13 && h <= 21));
-    // 미국장 15분 크론은 리그·스캔 전용 — 한국 실계좌 봇(runCycle)까지 돌리면
-    // 밤새 "그림자 실행" 기록이 15분마다 쌓여 일지(120줄)를 잡음으로 채운다(2026-08-18 실측)
+    // 미국장 15분 크론은 미국 실계좌 사이클(usRunCycle) + 리그·스캔 — 한국 실계좌
+    // 봇(runCycle)까지 돌리면 밤새 "그림자 실행" 기록이 15분마다 쌓여 일지(120줄)를
+    // 잡음으로 채운다(2026-08-18 실측). 한국 크론은 반대로 runCycle 만 돈다.
     const usCron = event.cron === "*/15 13-21 * * 1-5";
     const skipTrade = usCron || (event.cron === "0 * * * *" && marketWindow);
 
     // 반드시 순차로: 두 작업이 같은 인보케이션의 서브리퀘스트 한도(50)를 나눠 쓴다.
-    // 주문(runCycle)이 예산을 먼저 쓰고, 레이더는 남은 예산으로 돈다(실패해도 다음 크론이 재시도).
+    // 주문(runCycle/usRunCycle)이 예산을 먼저 쓰고, 레이더는 남은 예산으로 돈다(실패해도 다음 크론이 재시도).
     ctx.waitUntil(
-      (skipTrade ? Promise.resolve() : runCycle(env).then(() => undefined)).catch(() => {
+      (usCron
+        ? usRunCycle(env).then(() => undefined)
+        : skipTrade
+          ? Promise.resolve()
+          : runCycle(env).then(() => undefined)
+      ).catch(() => {
         /* 크론은 조용히 실패한다. 원인은 일지·tail 로 확인 */
       })
         // 전 시장 레이더: 한 번에 80종목씩 순회
