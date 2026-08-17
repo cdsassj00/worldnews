@@ -234,10 +234,12 @@ if (cfg.ai?.enabled) {
   await page.evaluate(() => window.__wfg.globe.selectByIso2("KR"));
   await page.waitForFunction(() => document.querySelector(".panel-head h2")?.textContent?.includes("대한민국"), { timeout: 20000 });
   await page.getByRole("tab", { name: "AI 분석" }).click();
-  await page.waitForSelector(".ai-block", { timeout: 120000 });
+  // AI 호출은 외부 쿼터(Workers AI 무료 한도)에 좌우된다 — 실패해도 검사 하나만
+  // 떨어뜨리고 나머지 검사는 계속한다(전체 크래시 금지).
+  const aiOk = await page.waitForSelector(".ai-block", { timeout: 90000 }).then(() => true).catch(() => false);
   const blocks = await page.locator(".ai-block").count();
   const bullets = await page.locator(".ai-list li").count();
-  check("AI 분석 렌더", blocks >= 1 && bullets >= 2, `블록 ${blocks} · 항목 ${bullets} · ${cfg.ai.provider}`);
+  check("AI 분석 렌더", aiOk && blocks >= 1 && bullets >= 2, `블록 ${blocks} · 항목 ${bullets} · ${cfg.ai.provider}${aiOk ? "" : " · 시간초과(쿼터 가능성)"}`);
   await page.screenshot({ path: `${outDir}/07-ai.png` });
 } else {
   console.log(`[참고] AI 분석 검사 건너뜀 — ${cfg.ai?.reason ?? "상태 불명"}`);
