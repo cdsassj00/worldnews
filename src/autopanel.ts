@@ -394,8 +394,21 @@ export class AutoPanel {
   private moneyBlock(p: AutoPlan): HTMLElement {
     const c = p.config;
     const pct = Math.max(-100, Math.min(100, p.targetProgressPct));
+    // 입출금 신고 버튼 — "넣은 돈"(수익 계산 기준)을 여기서 바로 보정한다
+    const depositBtn = el("button", { class: "btn btn-ghost", type: "button", text: "입출금 반영" });
+    depositBtn.addEventListener("click", () => {
+      const raw = window.prompt("입금/출금 금액(원)을 입력하세요. 입금은 양수, 출금은 음수.\n예: 4000000", "");
+      if (raw === null) return;
+      const amount = Math.round(Number(raw.replace(/[,\s원]/g, "")));
+      if (!Number.isFinite(amount) || amount === 0) { window.alert("금액을 숫자로 입력해주세요."); return; }
+      depositBtn.textContent = "반영 중…";
+      void api
+        .autoDeposit(amount)
+        .then(() => this.load())
+        .catch((e) => { window.alert(`실패: ${e instanceof Error ? e.message : e}`); depositBtn.textContent = "입출금 반영"; });
+    });
     return el("section", { class: "auto-block" }, [
-      el("h3", {}, [el("span", { text: "자금과 목표" })]),
+      el("h3", {}, [el("span", { text: "자금과 목표" }), depositBtn]),
       // 내가 넣은 돈이 지금 어디에 얼마로 있고, 얼마를 벌었나 — 이 네 가지만.
       el("div", { class: "auto-grid" }, [
         stat("내가 넣은 돈", fmtKrw(p.depositKrw)),
@@ -431,7 +444,7 @@ export class AutoPanel {
       }),
       el("p", {
         class: "note",
-        text: `‘수익’은 넣은 돈 대비 지금 계좌 전체의 증감입니다(봇 매매 + 기존 보유 ${p.account.holdings.length}종목 등락 합산). 입금·출금하시면 알려주세요 — 넣은 돈에 반영해야 수익이 정확해집니다.`,
+        text: `‘수익’은 넣은 돈 대비 지금 계좌 전체의 증감입니다(봇 매매 + 기존 보유 ${p.account.holdings.length}종목 등락 합산). 입금·출금하면 위 ‘입출금 반영’ 버튼으로 알려주세요 — 넣은 돈에 반영해야 수익이 정확해집니다.`,
       }),
       // 계좌 조회가 실패했거나 캐시값으로 대체됐으면 이유를 숨기지 않는다
       ...(p.account.reason

@@ -102,20 +102,23 @@ interface EdgeObj {
   dim?: boolean;
 }
 
-const RING = { macro: 3.2, sector: 4.9, ticker: 6.9 };
-const Y = { macro: 2.8, sector: 0, ticker: -2.8 };
+/* ── 3단 무대(계단식 밴드) 배치 ──────────────────────────
+ * 원반 3겹(깔대기) 배치는 층이 안 읽히고 간선이 중앙에서 엉킨다는 피드백(2026-08-17)으로 폐기.
+ * 거시요인(위) → 섹터(가운데) → 종목(아래) 를 카메라를 향한 얕은 호(암피시어터) 3단으로 쌓아
+ * "위에서 아래로 신호가 흐르는" 인과 구조가 그대로 보이게 한다. */
+const Y = { macro: 3.0, sector: 0, ticker: -3.0 };
+const BAND_W = 11; // 밴드 가로폭 — 무대 시야(세로형 종횡비) 안에 좌우 끝 라벨까지 들어오는 폭
+const bandZ = (x: number) => -(x * x) / 15; // 얕은 포물선 — 좌우 끝이 뒤로 물러나 깊이감만 남긴다
 
 /**
- * 라벨 크기는 화면 기준으로 고정한다(sizeAttenuation=false).
- * 원근으로 크기가 변하면 앞쪽 노드가 화면을 다 덮어 그래프를 읽을 수 없다.
+ * 라벨은 화면 픽셀 크기 고정(sizeAttenuation=false).
+ * 텍스처를 표시 크기에 정확히 맞춰 그린다 — 큰 텍스처(512px)를 ~100px로 축소하면
+ * 밉맵 보간으로 글자가 "초점 안 맞은 사진"처럼 뭉개진다(2026-08-17 피드백의 원인).
  */
-/* 2026-08-17 "폰트가 너무 커서 가독성이 나쁘다" 피드백 — 칩을 한 단계 줄인다.
- * 줄일수록 노드가 많이 보이고 겹침이 줄어 오히려 잘 읽힌다. */
-const LABEL: Record<NodeKind, { x: number; y: number }> = {
-  macro: { x: 0.104, y: 0.0325 },
-  sector: { x: 0.082, y: 0.0256 },
-  ticker: { x: 0.093, y: 0.029 },
-};
+const LABEL_PX: Record<NodeKind, number> = { macro: 32, sector: 25, ticker: 28 };
+const LABEL_ASPECT = 3.2; // 텍스처 512×160 좌표계의 가로/세로 비
+/** fov 42° 카메라에서 sizeAttenuation=false 스프라이트의 화면높이 = scale.y × 캔버스높이 × PROJ11/2 */
+const PROJ11 = 1 / Math.tan(((42 / 2) * Math.PI) / 180);
 
 const UP = new THREE.Color("#f87171");
 const DOWN = new THREE.Color("#60a5fa");
@@ -128,48 +131,51 @@ function toneColor(tone: number): THREE.Color {
   return FLAT.clone().lerp(target, Math.min(1, Math.abs(tone) * 1.6 + 0.35));
 }
 
-/** 라벨 스프라이트 (캔버스로 그려 항상 카메라를 향하게 한다) */
+/** 라벨 스프라이트 (캔버스로 그려 항상 카메라를 향하게 한다).
+ *  해상도를 실제 표시 크기(px × DPR × 2)에 맞춰 그린다 — 2×라 밉맵 1단계가
+ *  정확히 화면 크기와 일치해 글자가 또렷하다. 좌표계는 512×160 그대로 쓰고 scale 로 맞춘다. */
 function labelSprite(title: string, sub: string, color: THREE.Color, kind: NodeKind): THREE.Sprite {
-  const W = 512;
-  const H = 160;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const H = Math.max(48, Math.round(LABEL_PX[kind] * dpr * 2));
+  const W = Math.round(H * LABEL_ASPECT);
   const cv = document.createElement("canvas");
   cv.width = W;
   cv.height = H;
   const ctx = cv.getContext("2d")!;
+  ctx.scale(H / 160, H / 160); // 이하 좌표는 기존 512×160 기준
   const hex = `#${color.getHexString()}`;
 
   /* 유리판 칩 — 진한 남색 유리 + 색상 테두리.
    * 칩마다 넣던 색 글로우(shadowBlur)는 제거: 수십 개가 겹치면 밝은 배경에서
    * 붉은 연무가 되어 "흐리다"는 인상의 주범이었다(2026-08-17 실측). */
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  const grad = ctx.createLinearGradient(0, 0, 0, 160);
   grad.addColorStop(0, "rgba(17,27,50,0.94)");
   grad.addColorStop(1, "rgba(7,12,26,0.9)");
   ctx.fillStyle = grad;
   ctx.strokeStyle = hex;
   ctx.lineWidth = 3.5;
   // 알약(pill) — 2026-08-17 "라벨 동그랗게 + 테두리" 피드백
-  const r = (H - 8) / 2;
   ctx.beginPath();
-  ctx.roundRect(4, 4, W - 8, H - 8, r);
+  ctx.roundRect(4, 4, 512 - 8, 160 - 8, (160 - 8) / 2);
   ctx.fill();
   ctx.stroke();
-  ctx.shadowBlur = 0;
 
   // 왼쪽 계층 색 점 — 참고 디자인의 노드 점 문법
   ctx.fillStyle = hex;
   ctx.beginPath();
-  ctx.arc(52, H / 2, 13, 0, Math.PI * 2);
+  ctx.arc(52, 80, 13, 0, Math.PI * 2);
   ctx.fill();
 
+  // 글자를 알약 높이의 40%로 — 글자가 작아서 뭉개져 보이던 문제의 다른 절반
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = "#f8fafc";
-  ctx.font = "700 46px Pretendard, system-ui, sans-serif";
-  ctx.fillText(title, W / 2 + 8, sub ? H / 2 - 20 : H / 2, W - 72);
+  ctx.font = "700 64px Pretendard, system-ui, sans-serif";
+  ctx.fillText(title, 256 + 8, sub ? 80 - 24 : 80, 512 - 84);
   if (sub) {
     ctx.fillStyle = hex;
-    ctx.font = "600 34px 'Fira Code', ui-monospace, monospace";
-    ctx.fillText(sub, W / 2 + 8, H / 2 + 32, W - 72);
+    ctx.font = "600 40px 'Fira Code', ui-monospace, monospace";
+    ctx.fillText(sub, 256 + 8, 80 + 34, 512 - 84);
   }
 
   const tex = new THREE.CanvasTexture(cv);
@@ -177,7 +183,7 @@ function labelSprite(title: string, sub: string, color: THREE.Color, kind: NodeK
   const sprite = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false, sizeAttenuation: false }),
   );
-  sprite.scale.set(LABEL[kind].x, LABEL[kind].y, 1);
+  sprite.userData.kind = kind; // 표시 크기는 resize()/animate() 에서 캔버스 높이에 맞춰 계산
   return sprite;
 }
 
@@ -232,9 +238,14 @@ export class Ontology3D {
   private dragging = false;
   private dragMoved = 0;
   private last = { x: 0, y: 0 };
-  private rotY = 0.35;
+  private rotY = 0; // 계단식 밴드는 정면이 기본 — 좌우 스웨이만 한다
   private rotX = -0.18;
-  private targetZoom = 16.5;
+  private targetZoom = 17.5;
+  /** 캔버스 CSS 높이 — 라벨 화면픽셀 크기 계산용 */
+  private hostH = 720;
+  private swayT = 0;
+  /** 층 제목 칩 — setState 로 지워지지 않는 상설 장식 */
+  private bandDecor: THREE.Sprite[] = [];
   private focus: string | null = null;
   private hoverId: string | null = null;
   private reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -252,23 +263,38 @@ export class Ontology3D {
     this.camera.position.set(0, 0, this.targetZoom);
     this.scene.add(this.world);
     this.scene.add(new THREE.AmbientLight(0xdbeafe, 1.2));
-    this.buildRings();
+    this.buildBands();
     this.bindEvents();
     this.resize();
     this.animate();
   }
 
-  /** 층을 눈으로 구분해 주는 얇은 고리 */
-  private buildRings(): void {
-    for (const [key, radius] of Object.entries(RING) as [keyof typeof RING, number][]) {
-      const geo = new THREE.RingGeometry(radius - 0.012, radius + 0.012, 128);
-      const mesh = new THREE.Mesh(
-        geo,
-        new THREE.MeshBasicMaterial({ color: 0x1e3a5f, transparent: true, opacity: 0.75, side: THREE.DoubleSide }),
+  /** 3단 밴드를 눈으로 구분해 주는 받침 호 + 층 제목 — 깔대기 대신 계단식 무대 */
+  private buildBands(): void {
+    const titles: [keyof typeof Y, string, string][] = [
+      ["macro", "거시요인", "원인"],
+      ["sector", "섹터", "전파"],
+      ["ticker", "종목", "결론"],
+    ];
+    const gold = new THREE.Color("#d9a441");
+    for (const [key, name, sub] of titles) {
+      // 받침 호 — 밴드 바로 아래를 따라 흐르는 가는 선
+      const pts: THREE.Vector3[] = [];
+      for (let x = -BAND_W / 2 - 0.4; x <= BAND_W / 2 + 0.4; x += 0.35) {
+        pts.push(new THREE.Vector3(x, Y[key] - 0.75, bandZ(x)));
+      }
+      const line = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(pts),
+        new THREE.LineBasicMaterial({ color: 0x27548d, transparent: true, opacity: 0.85 }),
       );
-      mesh.rotation.x = Math.PI / 2;
-      mesh.position.y = Y[key];
-      this.world.add(mesh);
+      this.world.add(line);
+      // 층 제목 — 왼쪽 끝, 금색. 층이 무엇인지 그래프 안에서 바로 읽힌다
+      const chip = labelSprite(name, sub, gold.clone(), "macro");
+      this.applyLabelScale(chip, "macro");
+      const tx = -BAND_W / 2 + 0.4; // 카메라 시야 안, 밴드 왼쪽 위
+      chip.position.set(tx, Y[key] + 1.15, bandZ(tx));
+      this.world.add(chip);
+      this.bandDecor.push(chip);
     }
   }
 
@@ -314,27 +340,29 @@ export class Ontology3D {
     });
     for (const m of state.macro) if (!ordered.some((o) => o.m.id === m.id)) ordered.push({ m, cluster: -1 });
 
-    const place = (i: number, n: number, radius: number, y: number) => {
-      const a = (i / Math.max(1, n)) * Math.PI * 2;
-      return new THREE.Vector3(Math.cos(a) * radius, y, Math.sin(a) * radius);
+    /* 밴드 위 자리: i 번째 노드를 가로로 고르게 펴고, 이웃끼리 높이를 엇갈려 겹침을 줄인다 */
+    const place = (i: number, n: number, y: number, stagger: number) => {
+      const t = n <= 1 ? 0.5 : i / (n - 1);
+      const x = (t - 0.5) * BAND_W;
+      return new THREE.Vector3(x, y + (i % 2 ? stagger : -stagger), bandZ(x));
     };
 
     ordered.forEach(({ m }, i) => {
-      // 클러스터 경계마다 라벨 높이를 엇갈려 이웃 겹침을 줄인다
-      const pos = place(i, ordered.length, RING.macro, Y.macro + (i % 2 ? 0.5 : 0));
+      const pos = place(i, ordered.length, Y.macro, 0.55);
       this.addNode("macro", m.id, m.nameKo, `${m.changePct >= 0 ? "+" : ""}${m.changePct}%`, pos, m.value);
     });
-    // 클러스터 캡션 (픽 대상이 아니므로 nodes 에 넣지 않는다)
+    // 클러스터 캡션 (픽 대상이 아니므로 nodes 에 넣지 않는다) — 해당 구간 위에 띄운다
     clusters.forEach((c, ci) => {
       const idxs = ordered.map((o, i) => (o.cluster === ci ? i : -1)).filter((i) => i >= 0);
       if (!idxs.length || !c.nameKo) return;
       const mid = (idxs[0] + idxs[idxs.length - 1]) / 2;
-      const a = (mid / ordered.length) * Math.PI * 2;
+      const t = ordered.length <= 1 ? 0.5 : mid / (ordered.length - 1);
+      const x = (t - 0.5) * BAND_W;
       const sprite = labelSprite(`⟨ ${c.nameKo} ⟩`, "", SECTOR_C.clone(), "sector");
-      sprite.position.set(Math.cos(a) * (RING.macro + 1.0), Y.macro + 1.35, Math.sin(a) * (RING.macro + 1.0));
-      sprite.material.opacity = 1; // 반투명 금지 — 흐릿함 피드백
+      sprite.position.set(x, Y.macro + 1.5, bandZ(x));
       this.world.add(sprite);
       this.captions.push(sprite);
+      this.applyLabelScale(sprite, "sector");
     });
 
     /* 가운데·아래 층 = 결론의 시각화.
@@ -344,7 +372,7 @@ export class Ontology3D {
     if (state.verdict) {
       const vSectors = [...state.verdict.sectors.recommend, ...state.verdict.sectors.avoid];
       vSectors.forEach((s, i) => {
-        this.addNode("sector", s.sector, s.sector, `${s.score >= 0 ? "+" : ""}${s.score.toFixed(2)}`, place(i, vSectors.length, RING.sector, Y.sector + (i % 2 ? 0.45 : -0.45)), s.score);
+        this.addNode("sector", s.sector, s.sector, `${s.score >= 0 ? "+" : ""}${s.score.toFixed(2)}`, place(i, vSectors.length, Y.sector, 0.45), s.score);
       });
       for (const s of vSectors) {
         for (const e of s.edges) {
@@ -354,7 +382,7 @@ export class Ontology3D {
       }
       const vStocks = [...state.verdict.stocks.recommend, ...state.verdict.stocks.avoid];
       vStocks.forEach((t, i) => {
-        const pos = place(i, vStocks.length, RING.ticker, Y.ticker + (i % 2 ? 0.62 : -0.62));
+        const pos = place(i, vStocks.length, Y.ticker, 0.62);
         this.addNode("ticker", t.code, t.name, t.score.toFixed(2), pos, t.score);
         if (t.sector && vSectors.some((s) => s.sector === t.sector)) {
           this.addEdge(t.sector, "sector", t.code, "ticker", t.score);
@@ -363,7 +391,7 @@ export class Ontology3D {
     } else {
       const sectorDefs = state.sectors ?? [];
       sectorDefs.forEach((s, i) => {
-        this.addNode("sector", s.sector, s.sector, "", place(i, sectorDefs.length, RING.sector, Y.sector + (i % 2 ? 0.45 : -0.45)), 0);
+        this.addNode("sector", s.sector, s.sector, "", place(i, sectorDefs.length, Y.sector, 0.45), 0);
       });
       for (const s of sectorDefs) {
         for (const [macroId, sens] of Object.entries(s.sensitivity)) {
@@ -394,9 +422,20 @@ export class Ontology3D {
     else this.applyFocus();
   }
 
+  /** 라벨의 화면 세로 크기를 LABEL_PX(css px)에 정확히 맞춘다 — 텍스처 해상도와 1:1 */
+  private labelScaleY(kind: NodeKind, k = 1): number {
+    return ((LABEL_PX[kind] * 2) / (PROJ11 * Math.max(1, this.hostH))) * k;
+  }
+
+  private applyLabelScale(sprite: THREE.Sprite, kind: NodeKind, k = 1): void {
+    const sy = this.labelScaleY(kind, k);
+    sprite.scale.set(sy * LABEL_ASPECT, sy, 1);
+  }
+
   private addNode(kind: NodeKind, id: string, label: string, sub: string, pos: THREE.Vector3, tone: number): NodeObj {
     const color = kind === "sector" ? SECTOR_C.clone() : toneColor(tone);
     const sprite = labelSprite(label, sub, color, kind);
+    this.applyLabelScale(sprite, kind);
     // 라벨을 살짝 위로 올려 점이 가려지지 않게 한다
     sprite.position.copy(pos).add(new THREE.Vector3(0, 0.3, 0));
     const dot = new THREE.Mesh(
@@ -421,10 +460,11 @@ export class Ontology3D {
     const a = this.nodes.find((n) => n.kind === fromKind && n.id === from);
     const b = this.nodes.find((n) => n.kind === toKind && n.id === to);
     if (!a || !b) return null;
-    // 가운데를 안쪽으로 당겨 고리 사이를 지나가게 한다(직선이면 라벨을 뚫는다).
-    // 같은 고리 안의 간선(거시→거시)은 위로 아치를 그려 층간 간선과 구분한다.
-    const mid = a.pos.clone().add(b.pos).multiplyScalar(0.5).multiplyScalar(opts?.arcUp ? 0.8 : 0.62);
-    if (opts?.arcUp) mid.y += 1.5;
+    // 층간 간선은 카메라 쪽으로 살짝 볼록하게 — 라벨을 뚫지 않고 앞을 지난다.
+    // 같은 층 안의 간선(거시→거시)은 위로 아치를 그려 층간 간선과 확실히 구분한다.
+    const mid = a.pos.clone().add(b.pos).multiplyScalar(0.5);
+    if (opts?.arcUp) mid.y += 1.4;
+    else mid.z += 0.9;
     const curve = new THREE.QuadraticBezierCurve3(a.pos.clone(), mid, b.pos.clone());
     const color = toneColor(contribution);
     const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(28));
@@ -495,17 +535,16 @@ export class Ontology3D {
     }
     const nodes: NodeObj[] = [];
     const edges: EdgeObj[] = [];
-    const baseA = -0.5;
-    const at = (radius: number, y: number, a: number) => new THREE.Vector3(Math.cos(a) * radius, y, Math.sin(a) * radius);
-
-    nodes.push(this.addNode("ticker", t.code, t.nameKo, t.score.toFixed(2), at(RING.ticker + 0.5, Y.ticker + 0.95, baseA), t.score));
+    // 스포트라이트 종목은 종목 밴드 정면 중앙보다 살짝 앞(카메라 쪽)에 세운다
+    nodes.push(this.addNode("ticker", t.code, t.nameKo, t.score.toFixed(2), new THREE.Vector3(0, Y.ticker - 0.3, 1.1), t.score));
 
     const tEdges = t.edges ?? [];
     const missingSectors = [...new Set(tEdges.map((e) => e.sector))].filter(
       (s) => !this.nodes.some((n) => n.kind === "sector" && n.id === s),
     );
     missingSectors.forEach((s, i) => {
-      nodes.push(this.addNode("sector", s, s, "", at(RING.sector + 0.4, Y.sector + 0.5, baseA + (i - (missingSectors.length - 1) / 2) * 0.3), 0));
+      const x = (i - (missingSectors.length - 1) / 2) * 2.4;
+      nodes.push(this.addNode("sector", s, s, "", new THREE.Vector3(x, Y.sector + 0.55, bandZ(x) + 0.5), 0));
     });
     const missingMacros = [...new Set(tEdges.map((e) => e.macroId))].filter(
       (id) => !this.nodes.some((n) => n.kind === "macro" && n.id === id),
@@ -513,8 +552,9 @@ export class Ontology3D {
     missingMacros.forEach((id, i) => {
       const m = this.lastMacro.get(id);
       if (!m) return;
+      const x = (i - (missingMacros.length - 1) / 2) * 2.4;
       nodes.push(
-        this.addNode("macro", m.id, m.nameKo, `${m.changePct >= 0 ? "+" : ""}${m.changePct}%`, at(RING.macro + 0.4, Y.macro + 0.4, baseA + (i - (missingMacros.length - 1) / 2) * 0.28), m.value),
+        this.addNode("macro", m.id, m.nameKo, `${m.changePct >= 0 ? "+" : ""}${m.changePct}%`, new THREE.Vector3(x, Y.macro + 0.5, bandZ(x) + 0.5), m.value),
       );
     });
 
@@ -617,8 +657,9 @@ export class Ontology3D {
         const dx = e.clientX - this.last.x;
         const dy = e.clientY - this.last.y;
         this.dragMoved += Math.abs(dx) + Math.abs(dy);
-        this.rotY += dx * 0.005;
-        this.rotX = Math.max(-0.9, Math.min(0.9, this.rotX + dy * 0.004));
+        // 계단식 밴드가 옆·뒤로 뒤집히지 않게 회전 범위를 좁게 잡는다
+        this.rotY = Math.max(-0.5, Math.min(0.5, this.rotY + dx * 0.005));
+        this.rotX = Math.max(-0.45, Math.min(0.2, this.rotX + dy * 0.004));
         this.last = { x: e.clientX, y: e.clientY };
         return;
       }
@@ -704,6 +745,10 @@ export class Ontology3D {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / Math.max(1, h);
     this.camera.updateProjectionMatrix();
+    this.hostH = h;
+    // 화면픽셀 고정 라벨 — 캔버스 높이가 바뀌면 전부 다시 맞춘다
+    for (const s of this.bandDecor) this.applyLabelScale(s, "macro");
+    for (const s of this.captions) this.applyLabelScale(s, "sector");
   }
 
   private animate = (): void => {
@@ -711,7 +756,11 @@ export class Ontology3D {
     requestAnimationFrame(this.animate);
     const dt = Math.min(0.05, this.clock.getDelta());
 
-    if (this.autoRotate && !this.dragging && !this.reducedMotion) this.rotY += dt * 0.09;
+    // 계단식 밴드는 한 바퀴 돌 이유가 없다 — 좌우로 천천히 흔들리는 시차(패럴랙스)만 준다
+    if (this.autoRotate && !this.dragging && !this.reducedMotion) {
+      this.swayT += dt;
+      this.rotY += (Math.sin(this.swayT * 0.22) * 0.14 - this.rotY) * 0.03;
+    }
     this.world.rotation.y = this.rotY;
     this.world.rotation.x = this.rotX;
     this.camera.position.z += (this.targetZoom - this.camera.position.z) * 0.1;
@@ -727,8 +776,9 @@ export class Ontology3D {
     // 마우스가 올라간 노드·포커스 노드는 살짝 커진다 (강조는 더하기로만)
     for (const n of this.nodes) {
       const k = n.id === this.hoverId ? 1.18 : n.id === this.focus ? 1.12 : 1;
-      n.sprite.scale.x += (LABEL[n.kind].x * k - n.sprite.scale.x) * 0.2;
-      n.sprite.scale.y += (LABEL[n.kind].y * k - n.sprite.scale.y) * 0.2;
+      const sy = this.labelScaleY(n.kind, k);
+      n.sprite.scale.x += (sy * LABEL_ASPECT - n.sprite.scale.x) * 0.2;
+      n.sprite.scale.y += (sy - n.sprite.scale.y) * 0.2;
     }
 
     // 포커스 후광 맥동

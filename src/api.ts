@@ -745,6 +745,9 @@ export const api = {
   autoRun: (shadow: boolean) =>
     request<CycleResponse>("/api/auto/run", { method: "POST", auth: true, body: JSON.stringify({ shadow }) }),
   autoResume: () => request<{ ok: true }>("/api/auto/resume", { method: "POST", auth: true, body: "{}" }),
+  /** 입출금 신고 — 넣은 돈(수익 계산 기준)을 보정한다. 음수 = 출금 */
+  autoDeposit: (amountKrw: number) =>
+    request<{ ok: true }>("/api/auto/deposit", { method: "POST", auth: true, body: JSON.stringify({ amountKrw }) }),
   autoReset: () => request<{ ok: true }>("/api/auto/reset", { method: "POST", auth: true, body: "{}" }),
 
   backtest: () => request<BacktestResults>("/api/backtest"),

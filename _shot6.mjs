@@ -1,0 +1,12 @@
+import { chromium } from "playwright";
+const out = "/tmp/claude-0/-home-user-worldnews/ea5702fb-828c-5a5e-9e3a-7b12a44d68a5/scratchpad";
+const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium", args: ["--no-sandbox"] });
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+await page.addInitScript(() => { localStorage.setItem("wfg-tour-done", "1"); });
+await page.goto("http://127.0.0.1:8787/", { waitUntil: "domcontentloaded" });
+await page.waitForTimeout(7000);
+await page.locator(".stage").scrollIntoViewIfNeeded();
+await page.waitForTimeout(1500);
+await page.screenshot({ path: `${out}/v6-dark-overview.png` });
+await browser.close();
+console.log("ok");

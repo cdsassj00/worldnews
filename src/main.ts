@@ -511,10 +511,10 @@ async function loadOntology(): Promise<void> {
     renderScoreList(ontoState);
     renderMacroLinks(ontoState);
     // 첫 방문이면 최고 점수 종목의 분석을 예시로 열어 준다 — 빈 패널만 보고 나가지 않게.
+    // 3D 포커스는 걸지 않는다: 사용자가 클릭하지 않았는데 그래프에 포커스가 있으면 혼란스럽다(2026-08-17 피드백).
     if (!exampleShown && ontoState.scores.length && $("panel-body").hidden) {
       exampleShown = true;
       panel.openTicker({ ...ontoState.scores[0], asOf: ontoState.generatedAt });
-      onto?.showTicker(ontoState.scores[0]);
     }
     (window as unknown as { __wfg?: Record<string, unknown> }).__wfg = {
       ...((window as unknown as { __wfg?: Record<string, unknown> }).__wfg ?? {}),

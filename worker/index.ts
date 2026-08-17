@@ -9,6 +9,7 @@ import { DISCLAIMER, recommend } from "./recommend";
 import { aiStatus, getAnalysis } from "./analysis";
 import { translateBatch } from "./translate";
 import { langIndex } from "./langpages";
+import { isKrxHoliday } from "./holidays";
 import {
   assertOverseasAllowed,
   assertTradeAuth,
@@ -45,25 +46,36 @@ const CC_NAME_KO: Record<string, string> = Object.fromEntries(
 function marketOpen(tz: string, session?: [string, string]): { open: boolean; localTime: string; label: string } {
   const fmt = new Intl.DateTimeFormat("en-GB", {
     timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     weekday: "short",
     hour12: false,
   });
   const parts = fmt.formatToParts(new Date());
-  const hour = parts.find((p) => p.type === "hour")?.value ?? "00";
-  const minute = parts.find((p) => p.type === "minute")?.value ?? "00";
-  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "Mon";
-  const localTime = `${hour}:${minute}`;
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const localTime = `${get("hour") || "00"}:${get("minute") || "00"}`;
+  const weekday = get("weekday") || "Mon";
   const isWeekend = weekday === "Sat" || weekday === "Sun";
+  // 한국 공휴일 휴장 — "휴일인데 정규장 진행중으로 나온다" 버그(2026-08-17 광복절 대체휴일) 수정
+  const dateLocal = `${get("year")}-${get("month")}-${get("day")}`;
+  const isHoliday = tz === "Asia/Seoul" && isKrxHoliday(dateLocal);
   if (!session) return { open: false, localTime, label: "장시간 정보 없음" };
   const toMin = (s: string) => Number(s.slice(0, 2)) * 60 + Number(s.slice(3, 5));
   const now = toMin(localTime);
-  const open = !isWeekend && now >= toMin(session[0]) && now <= toMin(session[1]);
+  const open = !isWeekend && !isHoliday && now >= toMin(session[0]) && now <= toMin(session[1]);
   return {
     open,
     localTime,
-    label: isWeekend ? "주말 휴장" : open ? `정규장 진행중 (${session[0]}~${session[1]})` : `장 마감 (${session[0]}~${session[1]})`,
+    label: isWeekend
+      ? "주말 휴장"
+      : isHoliday
+        ? "공휴일 휴장"
+        : open
+          ? `정규장 진행중 (${session[0]}~${session[1]})`
+          : `장 마감 (${session[0]}~${session[1]})`,
   };
 }
 
