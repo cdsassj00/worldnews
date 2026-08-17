@@ -717,7 +717,10 @@ export default {
     // 매시간 크론이 겹치면 매매(runCycle·labCycle)가 두 번 돌아 중복 주문이 난다.
     const h = now.getUTCHours();
     const marketWindow = now.getUTCDay() >= 1 && now.getUTCDay() <= 5 && (h <= 6 || (h >= 13 && h <= 21));
-    const skipTrade = event.cron === "0 * * * *" && marketWindow;
+    // 미국장 15분 크론은 리그·스캔 전용 — 한국 실계좌 봇(runCycle)까지 돌리면
+    // 밤새 "그림자 실행" 기록이 15분마다 쌓여 일지(120줄)를 잡음으로 채운다(2026-08-18 실측)
+    const usCron = event.cron === "*/15 13-21 * * 1-5";
+    const skipTrade = usCron || (event.cron === "0 * * * *" && marketWindow);
 
     // 반드시 순차로: 두 작업이 같은 인보케이션의 서브리퀘스트 한도(50)를 나눠 쓴다.
     // 주문(runCycle)이 예산을 먼저 쓰고, 레이더는 남은 예산으로 돈다(실패해도 다음 크론이 재시도).
