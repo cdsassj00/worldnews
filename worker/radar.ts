@@ -157,7 +157,9 @@ export class RadarDB extends DurableObject {
 
   /** 점수 순 상위/하위. sector·market 필터 옵션. */
   top(limit: number, order: "desc" | "asc", sector?: string, market?: string): RadarScoreRow[] {
-    const lim = Math.min(100, Math.max(1, limit));
+    // 상한 100 → 600: 리그·조합이 전 유니버스(454) 온톨로지 점수를 조인해야 한다.
+    // 100이면 미국 종목은 전체 상위 100에 든 것만 점수를 받아 onto·융합 원장이 굶는다(2026-08-17 실측).
+    const lim = Math.min(600, Math.max(1, limit));
     const dir = order === "asc" ? "ASC" : "DESC";
     const conds: string[] = [];
     const args: unknown[] = [];
