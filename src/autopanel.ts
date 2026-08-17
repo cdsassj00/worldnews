@@ -444,12 +444,15 @@ export class AutoPanel {
     ]);
   }
 
-  /** 미국 배분 슬라이더 — 넣은 돈 중 얼마를 미국주식 대기 자금으로 떼어 둘지 */
+  /** 미국 배분 슬라이더 — 넣은 돈 중 얼마를 미국 자동매매 예산으로 떼어 둘지.
+   * 적용 버튼 없이 손을 떼는 즉시 저장된다(2026-08-18 사용자 지시). 서버는 매 사이클
+   * KV 값을 새로 읽으므로 다음 매매부터 바로 반영된다. */
   private reserveRow(p: AutoPlan): HTMLElement {
     const total = Math.max(1, p.depositKrw);
     const pct = Math.round(((p.reserveKrw || 0) / total) * 100);
     const slider = el("input", { type: "range", min: "0", max: "80", step: "5", value: String(Math.min(80, pct)) }) as HTMLInputElement;
     const label = el("b", {});
+    const status = el("span", { class: "reserve-status", text: "" });
     const show = () => {
       const krw = Math.round((total * Number(slider.value)) / 100 / 10000) * 10000;
       label.textContent = `${slider.value}% · ${fmtKrw(krw)}`;
@@ -457,22 +460,34 @@ export class AutoPanel {
     };
     show();
     slider.addEventListener("input", show);
-    const apply = el("button", { class: "btn btn-ghost", type: "button", text: "적용" });
-    apply.addEventListener("click", () => {
-      apply.textContent = "적용 중…";
+    // "change" 는 손을 뗄 때 한 번만 온다 — 드래그 중(input) 저장하면 요청이 수십 번 나간다
+    slider.addEventListener("change", () => {
+      const krw = show();
+      status.textContent = "저장 중…";
+      status.className = "reserve-status";
       void api
-        .autoSetReserve(show())
-        .then(() => this.load())
-        .catch((e) => { window.alert(`실패: ${e instanceof Error ? e.message : e}`); apply.textContent = "적용"; });
+        .autoSetReserve(krw)
+        .then(() => {
+          status.textContent = "저장됨 — 다음 사이클부터 이 예산으로 매매합니다";
+          status.className = "reserve-status ok";
+          if (this.plan) this.plan.reserveKrw = krw;
+        })
+        .catch((e) => {
+          status.textContent = `저장 실패: ${e instanceof Error ? e.message : e}`;
+          status.className = "reserve-status err";
+          // 서버에 안 올라간 값을 화면에 남기지 않는다
+          slider.value = String(Math.min(80, pct));
+          show();
+        });
     });
     return el("div", { class: "reserve-row" }, [
-      el("span", { class: "k", text: "미국 배분(대기 현금)" }),
+      el("span", { class: "k", text: "미국 배분(자동매매 예산)" }),
       slider,
       label,
-      apply,
+      status,
       el("span", {
         class: "note",
-        text: "이 몫은 국내 봇이 쓰지 않습니다 — 미국 자동매매의 예산입니다.",
+        text: "이 몫은 국내 봇이 쓰지 않습니다 — 미국 자동매매의 예산입니다. 움직이면 바로 저장됩니다.",
       }),
     ]);
   }

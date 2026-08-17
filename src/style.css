@@ -860,6 +860,10 @@ details.acc.card:not([open]) > summary { margin: 0; }
 .reserve-row input[type="range"] { flex: 1; min-width: 110px; accent-color: #d9a441; }
 .reserve-row b { font-size: 12.5px; white-space: nowrap; }
 .reserve-row .note { flex-basis: 100%; margin: 0; }
+/* 슬라이더 즉시 저장 결과 — 버튼이 없으므로 이 문구가 유일한 피드백이다 */
+.reserve-status { font-size: 11.5px; color: var(--fg-faint); white-space: nowrap; }
+.reserve-status.ok { color: #4ade80; }
+.reserve-status.err { color: #f87171; }
 
 /* 언어 전환 국기 버튼 + 구글 번역 위젯 UI 숨김 */
 /* 언어 전환 — 국기 이모지는 작아서 안 보인다는 피드백(2026-08-17)에 따라
