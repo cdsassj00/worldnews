@@ -63,6 +63,8 @@ export interface Env {
   US_AUTOTRADE_ENABLED?: string; // 미국 자동매매 — 백테스트 통과 전까지 "false"
   GEMINI_API_KEY?: string; // 있으면 Gemini 를 1순위로 사용 (시크릿, aistudio.google.com/apikey)
   GEMINI_MODEL?: string; // 기본 gemini-2.5-flash
+  OPENROUTER_API_KEY?: string; // 있으면 OpenRouter 를 1순위 AI 제공자로 (시크릿)
+  OPENROUTER_MODEL?: string; // 기본 google/gemini-2.5-flash
   ANTHROPIC_API_KEY?: string; // 있으면 Claude 사용 (시크릿)
   AI_MODEL?: string; // 기본 claude-haiku-4-5
   WORKERS_AI_MODEL?: string; // 기본 @cf/meta/llama-3.3-70b-instruct-fp8-fast

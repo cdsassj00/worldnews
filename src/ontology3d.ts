@@ -109,10 +109,12 @@ const Y = { macro: 2.8, sector: 0, ticker: -2.8 };
  * 라벨 크기는 화면 기준으로 고정한다(sizeAttenuation=false).
  * 원근으로 크기가 변하면 앞쪽 노드가 화면을 다 덮어 그래프를 읽을 수 없다.
  */
+/* 2026-08-17 "폰트가 너무 커서 가독성이 나쁘다" 피드백 — 칩을 한 단계 줄인다.
+ * 줄일수록 노드가 많이 보이고 겹침이 줄어 오히려 잘 읽힌다. */
 const LABEL: Record<NodeKind, { x: number; y: number }> = {
-  macro: { x: 0.125, y: 0.039 },
-  sector: { x: 0.1, y: 0.031 },
-  ticker: { x: 0.112, y: 0.035 },
+  macro: { x: 0.104, y: 0.0325 },
+  sector: { x: 0.082, y: 0.0256 },
+  ticker: { x: 0.093, y: 0.029 },
 };
 
 const UP = new THREE.Color("#f87171");
@@ -164,11 +166,11 @@ function labelSprite(title: string, sub: string, color: THREE.Color, kind: NodeK
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = "#f8fafc";
-  ctx.font = "800 50px Pretendard, system-ui, sans-serif";
+  ctx.font = "700 46px Pretendard, system-ui, sans-serif";
   ctx.fillText(title, W / 2 + 8, sub ? H / 2 - 20 : H / 2, W - 72);
   if (sub) {
     ctx.fillStyle = hex;
-    ctx.font = "600 37px 'Fira Code', ui-monospace, monospace";
+    ctx.font = "600 34px 'Fira Code', ui-monospace, monospace";
     ctx.fillText(sub, W / 2 + 8, H / 2 + 32, W - 72);
   }
 
@@ -714,7 +716,7 @@ export class Ontology3D {
     if (this.halo.visible) {
       this.haloT += dt;
       const pulse = this.reducedMotion ? 1 : 1 + Math.sin(this.haloT * 2.4) * 0.1;
-      const base = 0.16 * pulse;
+      const base = 0.135 * pulse;
       this.halo.scale.set(base, base, 1);
     }
 

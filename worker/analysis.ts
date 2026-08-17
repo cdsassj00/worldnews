@@ -20,7 +20,7 @@ import type { NewsItem } from "./news";
 import type { RecommendResult } from "./recommend";
 import { ApiError, cached } from "./util";
 
-export type AiProvider = "gemini" | "anthropic" | "workers-ai";
+export type AiProvider = "openrouter" | "gemini" | "anthropic" | "workers-ai";
 
 export interface AnalysisResult {
   cc: string;
@@ -46,6 +46,8 @@ export interface AiStatus {
 }
 
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+// OpenRouter 기본 모델 — 저비용·JSON 안정성 기준. OPENROUTER_MODEL 로 교체 가능.
+const DEFAULT_OPENROUTER_MODEL = "google/gemini-2.5-flash";
 // 사용자 요청(2026-08-01)으로 저비용 티어를 기본값으로 한다. 되돌리려면 AI_MODEL 로 오버라이드.
 const DEFAULT_CLAUDE_MODEL = "claude-haiku-4-5";
 const DEFAULT_WORKERS_AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
@@ -54,6 +56,14 @@ const DISCLAIMER =
   "AI가 정리한 참고 브리핑입니다. 투자 자문이 아니며 수익을 보장하지 않습니다. 원문 뉴스와 지표를 직접 확인하세요.";
 
 export function aiStatus(env: Env): AiStatus {
+  if (env.OPENROUTER_API_KEY) {
+    return {
+      enabled: true,
+      provider: "openrouter",
+      model: env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL,
+      reason: "OpenRouter API 키로 분석합니다 (모델은 OPENROUTER_MODEL 로 교체 가능).",
+    };
+  }
   if (env.GEMINI_API_KEY) {
     return {
       enabled: true,
@@ -181,6 +191,45 @@ ${recoText}
 }
 
 /* ── 제공자별 호출 ─────────────────────────────── */
+
+/** OpenRouter chat completions — OpenAI 호환. 워커 어디서든 재사용할 수 있는 공용 헬퍼. */
+export async function openrouterText(env: Env, system: string, prompt: string, maxTokens = 2000): Promise<string> {
+  const model = env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL;
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${env.OPENROUTER_API_KEY!}`,
+      "http-referer": "https://stockontology.cc",
+      "x-title": "Stockontology",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    throw new ApiError(502, "openrouter_error", { status: res.status, body: (await res.text()).slice(0, 300) });
+  }
+  const out = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+  const text = out.choices?.[0]?.message?.content ?? "";
+  if (!text) throw new ApiError(502, "ai_empty_response", { provider: "openrouter" });
+  return text;
+}
+
+async function runOpenRouter(env: Env, prompt: string): Promise<{ data: AnalysisPayload; model: string }> {
+  const model = env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL;
+  const text = await openrouterText(
+    env,
+    `${SYSTEM_PROMPT}\n\n반드시 아래 JSON 형식만 출력하세요(설명·코드블록 금지):\n{"summary":["..."],"picks":[{"name":"","symbol":"","stance":"","reason":""}],"risks":["..."],"checklist":["..."]}`,
+    prompt,
+  );
+  return { data: parsePayload(text), model };
+}
 
 /** Gemini generateContent — JSON 강제 출력. 워커 어디서든 재사용할 수 있게 단순 REST 로 부른다. */
 export async function geminiText(env: Env, system: string, prompt: string, maxTokens = 2000): Promise<string> {
@@ -333,6 +382,7 @@ export async function analyze(
 
   // 비용 순으로 시도하고, 실패하면 다음 제공자로 폴백한다.
   const attempts: { provider: AiProvider; run: () => Promise<{ data: AnalysisPayload; model: string }> }[] = [];
+  if (env.OPENROUTER_API_KEY) attempts.push({ provider: "openrouter", run: () => runOpenRouter(env, prompt) });
   if (env.GEMINI_API_KEY) attempts.push({ provider: "gemini", run: () => runGemini(env, prompt) });
   if (env.ANTHROPIC_API_KEY) attempts.push({ provider: "anthropic", run: () => runAnthropic(env, prompt) });
   if (env.AI) attempts.push({ provider: "workers-ai", run: () => runWorkersAi(env, prompt) });

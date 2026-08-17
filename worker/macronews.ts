@@ -13,7 +13,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { Env } from "./env";
 import { MACRO, type MacroId } from "../shared/ontology";
 import { getGlobalNews, getNews } from "./news";
-import { aiStatus, geminiText } from "./analysis";
+import { aiStatus, geminiText, openrouterText } from "./analysis";
 import { cached, clamp, round } from "./util";
 
 export interface MacroAdjustment {
@@ -25,7 +25,7 @@ export interface MacroAdjustment {
 
 export interface MacroNewsResult {
   generatedAt: number;
-  provider: "gemini" | "anthropic" | "workers-ai" | null;
+  provider: "openrouter" | "gemini" | "anthropic" | "workers-ai" | null;
   headlinesUsed: number;
   adjustments: MacroAdjustment[];
 }
@@ -108,6 +108,7 @@ async function interpret(env: Env): Promise<MacroNewsResult> {
 
   // 비용 순: Gemini Flash → Claude(저비용 티어) → Workers AI. 실패하면 다음으로 폴백.
   const runners: { provider: MacroNewsResult["provider"]; run: () => Promise<string> }[] = [];
+  if (env.OPENROUTER_API_KEY) runners.push({ provider: "openrouter", run: () => openrouterText(env, SYSTEM, prompt, 900) });
   if (env.GEMINI_API_KEY) runners.push({ provider: "gemini", run: () => geminiText(env, SYSTEM, prompt, 900) });
   if (env.ANTHROPIC_API_KEY) {
     runners.push({
