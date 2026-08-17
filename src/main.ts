@@ -159,8 +159,10 @@ function onCountryPicked(c: CountryRef): void {
     return;
   }
   void panel.open(c.iso2, c.ko);
-  // 온톨로지 유니버스가 있는 나라(한국·미국)를 고르면 무대·사이드도 그 시장으로 전환
+  // 온톨로지 유니버스가 있는 나라(한국·미국)는 시장 전환, 그 외 나라는 나라 모드 —
+  // 그래프·왼쪽 카드·오른쪽 패널이 항상 같은 나라를 본다
   if (c.iso2 === "US" || c.iso2 === "KR") setVerdictMarket(c.iso2);
+  else void showCountryMode(c.iso2, c.ko);
   history.replaceState(null, "", `#${c.iso2}`);
   // 나라를 골랐으면 모달의 목적은 끝났다. 오른쪽 상세로 시선을 넘긴다.
   $("world-modal").hidden = true;
@@ -510,8 +512,9 @@ async function loadOntology(): Promise<void> {
     } 기준 · 계산 ${timeAgo(ontoState.generatedAt)}`;
     hint.style.opacity = "0.75";
     renderMacroList(ontoState);
-    // 결론 카드가 '미국'이면 점수 상위도 미국을 유지한다 — KR 갱신이 덮어쓰지 않게
-    if (verdictMarket === "US") void renderUsScoreList();
+    // 결론 카드가 '미국'/나라 모드면 점수 상위도 그 시장을 유지한다 — KR 갱신이 덮어쓰지 않게
+    if (countryMode) { /* 나라 모드 목록 유지 */ }
+    else if (verdictMarket === "US") void renderUsScoreList();
     else renderScoreList(ontoState);
     renderMacroLinks(ontoState);
     // 첫 방문이면 최고 점수 종목의 분석을 예시로 열어 준다 — 빈 패널만 보고 나가지 않게.
@@ -616,6 +619,38 @@ function renderScoreList(s: OntoState): void {
 
 let verdictMarket: "KR" | "US" = "KR";
 let lastVerdict: OntoVerdict | null = null;
+/** 나라 모드 — 온톨로지 유니버스(한국·미국) 밖 나라를 보는 중이면 그 iso2 */
+let countryMode: string | null = null;
+
+/** 지구본에서 다른 나라를 고르면: 그래프 + 왼쪽 카드들도 그 나라의 추천으로 채운다 */
+async function showCountryMode(cc: string, nameKo: string): Promise<void> {
+  countryMode = cc;
+  try {
+    const reco = await api.recommend(cc);
+    if (countryMode !== cc) return; // 기다리는 사이 다른 선택으로 넘어감
+    const items = reco.items.slice(0, 8).map((r) => ({ symbol: r.symbol, name: r.name, score: r.score }));
+    onto?.showCountry(nameKo, items);
+    $("verdict-body").replaceChildren(
+      el("p", { class: "verdict-line", text: `${nameKo} — 지수·뉴스 흐름 기반 추천입니다. 거시→섹터→종목 온톨로지 인과 분석은 한국·미국 유니버스에서 제공됩니다.` }),
+      el("div", { class: "vd-chips" },
+        reco.items.slice(0, 6).map((r) =>
+          el("span", { class: `vd-chip ${r.score >= 0 ? "up" : "down"}`, title: r.actionKo, text: `${r.name} ${r.score >= 0 ? "+" : ""}${r.score.toFixed(2)}` }))),
+    );
+    $("score-list").replaceChildren(
+      ...reco.items.slice(0, 8).map((r) => {
+        const btn = el("button", { type: "button" }, [
+          el("span", { class: "hot-name" }, [
+            el("span", { text: r.name }),
+            el("span", { class: "hot-index", text: `${fmtNum(r.price, 2)} ${r.currency} · ${r.actionKo}` }),
+          ]),
+          el("span", { class: dirClass(r.score), text: r.score.toFixed(2) }),
+        ]);
+        btn.addEventListener("click", () => void taPanel?.show(r.symbol, r.name));
+        return el("li", {}, [btn]);
+      }),
+    );
+  } catch { /* 오른쪽 나라 패널은 이미 열려 있다 — 왼쪽만 다음 선택까지 유지 */ }
+}
 
 /** 그래프는 결론의 시각화 — 온톨로지 상태와 결론이 갱신될 때마다 함께 민다 */
 function pushOntoState(): void {
@@ -636,6 +671,7 @@ function pushOntoState(): void {
 /** 시장 전환의 단일 진입점 — 결론 카드·무대 토글·지구본이 전부 이 함수를 부른다.
  *  그래프(결론 층)·결론 카드·종목 점수 상위·기회 탐색이 한 몸으로 바뀐다. */
 function setVerdictMarket(mkt: "KR" | "US"): void {
+  countryMode = null; // 나라 모드 해제 — 온톨로지 유니버스로 복귀
   verdictMarket = mkt;
   for (const group of ["verdict-mkt", "onto-mkt"]) {
     const elGroup = document.getElementById(group);
@@ -665,9 +701,12 @@ function setupVerdict(): void {
   wire("onto-mkt"); // 3D 무대 위 토글 — 같은 스위치의 다른 손잡이
   // 🌍 — 무대에서 바로 세계 지도를 연다 (아래로 스크롤할 필요 없이)
   document.getElementById("btn-onto-world")?.addEventListener("click", () => $("btn-world").click());
+  // 오른쪽 패널의 "대한민국으로 돌아가기" — 무대·왼쪽 카드도 함께 한국으로
+  document.addEventListener("wfg:market-kr", () => setVerdictMarket("KR"));
 }
 
 async function loadVerdict(): Promise<void> {
+  if (countryMode) return; // 나라 모드에서는 왼쪽 카드가 그 나라를 유지한다
   const body = $("verdict-body");
   try {
     const v = await api.ontoVerdict(verdictMarket);

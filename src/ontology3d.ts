@@ -482,6 +482,7 @@ export class Ontology3D {
     }
 
     if (keepSpot) this.showTicker(keepSpot);
+    else if (this.countrySpot) this.showCountry(this.countrySpot.nameKo, this.countrySpot.items); // 데이터 갱신에도 나라 모드 유지
     else this.applyFocus();
   }
 
@@ -582,7 +583,30 @@ export class Ontology3D {
     this.applyFocus();
   }
 
+  /** 나라 모드 — 온톨로지 유니버스(한국·미국) 밖 나라의 추천 종목을 무대에 얹는다 */
+  private countrySpot: { nameKo: string; items: { symbol: string; name: string; score: number }[] } | null = null;
+
+  showCountry(nameKo: string, items: { symbol: string; name: string; score: number }[]): void {
+    this.clearSpotlight();
+    this.focus = null;
+    this.countrySpot = { nameKo, items: items.slice(0, 8) };
+    const nodes: NodeObj[] = [];
+    const edges: EdgeObj[] = [];
+    const cid = `country:${nameKo}`;
+    // 나라 칩은 섹터 밴드 정면 중앙 — 여기서 추천 종목으로 흘러내린다
+    nodes.push(this.addNode("sector", cid, nameKo, "지수·뉴스 기반", new THREE.Vector3(0, Y.sector + 0.3, 1.0), 0));
+    this.countrySpot.items.forEach((it, i) => {
+      const x = (i - (this.countrySpot!.items.length - 1) / 2) * 2.3;
+      nodes.push(this.addNode("ticker", it.symbol, it.name, it.score.toFixed(2), new THREE.Vector3(x, Y.ticker + (i % 2 ? 0.55 : -0.55), bandZ(x) + 0.6), it.score));
+      const e = this.addEdge(cid, "sector", it.symbol, "ticker", it.score);
+      if (e) edges.push(e);
+    });
+    this.spotlight = { ticker: { code: cid } as unknown as TickerNode, nodes, edges };
+    this.applyFocus();
+  }
+
   private clearSpotlight(): void {
+    this.countrySpot = null;
     if (!this.spotlight) return;
     for (const n of this.spotlight.nodes) {
       this.world.remove(n.sprite, n.dot);

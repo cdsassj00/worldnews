@@ -413,7 +413,10 @@ export class Panel {
     // 다른 나라를 보다가 돌아갈 길 — 지도를 다시 열 필요 없이 맨 위에서 바로 (2026-08-17)
     if (this.cc && this.cc !== "KR") {
       const back = el("button", { class: "btn btn-ghost panel-back", type: "button", text: "← 대한민국 시장으로 돌아가기" });
-      back.addEventListener("click", () => void this.open("KR", "대한민국"));
+      back.addEventListener("click", () => {
+        void this.open("KR", "대한민국");
+        document.dispatchEvent(new CustomEvent("wfg:market-kr")); // 무대·왼쪽 카드도 한국으로
+      });
       root.append(back);
     }
 
