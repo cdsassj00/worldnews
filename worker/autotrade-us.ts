@@ -32,6 +32,7 @@ import {
   overseasPrice,
   overseasPsamount,
   placeOrder,
+  type Holding,
   type KisConfig,
   type OrderMarket,
 } from "./kis";
@@ -178,6 +179,43 @@ async function usQuote(env: Env, kis: KisConfig, code: string): Promise<{ excd: 
   throw new ApiError(502, "us_quote_failed", { code });
 }
 
+/** 미국 3거래소(나스닥·뉴욕·아멕스) 잔고 합본.
+ *
+ * 잔고 TR 의 거래소 코드는 **조회 범위**다 — NAS 로만 조회하면 NYSE 종목이 응답에
+ * 없어서 "계좌에 없음"으로 오판한다. 2026-08-19 실사고: NYSE 인 Blackstone 6주가
+ * 실계좌에 있는데 잔고 대사가 장부에서 제거했고, 대시보드 미국 투입이 0원이 됐다.
+ * 코드 체계가 문서(NASD/NYSE/AMEX)와 실측(NAS 성공)이 갈려 있어 둘 다 시도한다. */
+async function usBalanceAll(env: Env, kis: KisConfig): Promise<{ holdings: Holding[] }> {
+  const holdings: Holding[] = [];
+  const seen = new Set<string>();
+  let okCount = 0;
+  let lastErr: unknown = null;
+  for (const codes of [["NAS", "NASD"], ["NYS", "NYSE"], ["AMS", "AMEX"]]) {
+    let got: Awaited<ReturnType<typeof overseasBalance>> | null = null;
+    for (const code of codes) {
+      try {
+        got = await overseasBalance(env, kis, code as OrderMarket, "USD");
+        break;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    if (!got) continue; // 이 거래소만 실패 — 나머지는 계속 (아래 okCount 로 판정)
+    okCount++;
+    // 어떤 코드가 '미국 전체'를 돌려줘도 안전하게 심볼 기준으로 합친다
+    for (const h of got.holdings) {
+      if (!seen.has(h.symbol)) {
+        seen.add(h.symbol);
+        holdings.push(h);
+      }
+    }
+  }
+  // 세 거래소 전부 실패면 잔고를 모른다 — 빈 목록을 돌려주면 대사가 보유 전체를
+  // 지워버리므로 반드시 실패로 처리한다
+  if (!okCount) throw lastErr ?? new ApiError(502, "us_balance_failed");
+  return { holdings };
+}
+
 /* ── 사이클 ───────────────────────────────────────────── */
 
 export interface UsPlannedOrder {
@@ -245,10 +283,10 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
     state.dayStartPnlUsd = undefined;
   }
 
-  /* 1) 계좌 잔고 — 미국 보유분과 통합증거금의 진실 */
-  let bal: Awaited<ReturnType<typeof overseasBalance>>;
+  /* 1) 계좌 잔고 — 미국 보유분과 통합증거금의 진실 (3거래소 합본) */
+  let bal: { holdings: Holding[] };
   try {
-    bal = await overseasBalance(env, kis, "NAS" as OrderMarket, "USD");
+    bal = await usBalanceAll(env, kis);
   } catch (err) {
     const msg = err instanceof ApiError ? `${err.message} ${JSON.stringify(err.detail ?? {})}` : String(err);
     journal.push(entry("error", `미국 — 해외 잔고 조회 실패로 사이클 중단: ${msg}`));
