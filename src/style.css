@@ -779,8 +779,18 @@ details.acc.card:not([open]) > summary { margin: 0; }
 [data-theme="light"] .hero-video { opacity: 0.3; }
 [data-theme="light"] .hero-veil { background: radial-gradient(ellipse 80% 70% at 50% 45%, rgba(238, 242, 248, 0.45) 0%, rgba(238, 242, 248, 0.92) 100%); }
 [data-theme="light"] .hero-step-sub { color: #3d4c66; }
-/* 모바일·짧은 화면 — 스크롤리텔링을 끄고 보통 히어로로 */
-@media (max-width: 760px), (max-height: 560px) {
+/* 모바일 — 스크롤리텔링을 끄지 않는다(2026-08-18 사용자 지시 "모바일에서도 스크럽").
+ * 구간을 240vh 로 줄여 엄지 스크롤 몇 번이면 끝나게 하고, sticky 높이는 svh 로
+ * 잡아 주소창이 접혔다 펴져도 화면이 튀지 않게 한다. */
+@media (max-width: 760px) {
+  .hero { height: 240vh; }
+  .hero-sticky { height: 100vh; height: 100svh; }
+  .hero-step { padding: 0 18px; }
+  .hero-step-title { font-size: clamp(25px, 8vw, 34px); line-height: 1.25; }
+  .hero-step-sub { font-size: 14px; max-width: 92vw; line-height: 1.75; }
+}
+/* 아주 짧은 화면(가로 폰)만 보통 히어로 — sticky 스크럽이 성립하지 않는다 */
+@media (max-height: 560px) {
   .hero { height: auto; }
   .hero-sticky { position: relative; height: auto; padding: 40px 0; }
   .hero-step { display: none; }
@@ -3522,3 +3532,89 @@ body {
 .ta-win-pat { margin: 4px 0; font-size: 12.5px; line-height: 1.55; }
 .ta-win-pat.up strong { color: #d9a441; }
 .ta-win-pat.down strong { color: #f97316; }
+
+/* ══ 모바일 최적화 (2026-08-18 사용자 지시 "빽빽하다 — 널찍널찍, 옹기종기 잘 보이게") ══
+ * 원칙: 좁은 화면에서는 ①여백을 줄이는 게 아니라 늘리고 ②글씨를 줄이는 게 아니라 키우고
+ * ③표는 찌그러뜨리지 말고 옆으로 스크롤시킨다. 밀도는 열 수를 줄여서 낮춘다. */
+@media (max-width: 760px) {
+  /* 기본 읽기 편의 — 본문·주석 글자를 키우고 줄간격을 늘린다 */
+  body { font-size: 15px; }
+  .note { font-size: 12.5px; line-height: 1.7; }
+  .card-sub, .lab-sub { font-size: 13px; line-height: 1.65; }
+
+  /* 섹션 사이 숨 쉴 공간 */
+  .terminal-pane { padding: 8px 14px 44px; }
+  .pane-inner { gap: 18px; }
+  .lab-strip { padding: 32px 14px; }
+
+  /* 자동매매 대시보드 — 블록 간격·패딩을 넉넉히 */
+  .auto-block { padding: 14px 12px; }
+  .auto-block h3 { font-size: 15px; margin-bottom: 10px; }
+  .market-group { padding: 14px 12px 8px; margin: 20px 0; }
+  .mg-head { margin-bottom: 8px; }
+  .mg-head h2 { font-size: 19px; }
+
+  /* 통계 타일 — 항상 2열, 큼직한 숫자 */
+  .auto-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .auto-stat { padding: 12px 10px; }
+  .auto-stat .k { font-size: 12px; }
+  .auto-stat .v { font-size: 16.5px; }
+
+  /* 보유 종목·계획 카드 — 행 사이 여백 */
+  .pos-row { padding: 12px 10px; row-gap: 6px; }
+  .pos-list { display: grid; gap: 8px; }
+  .order-plan { gap: 12px; }
+  .plan-card { padding: 12px 12px; }
+  .journal .jr { padding: 9px 8px; line-height: 1.6; }
+
+  /* 칩·탭 — 터치 타깃 확대 + 줄바꿈 허용 */
+  .radar-tab { padding: 9px 15px; font-size: 13px; }
+  .macro-chips { gap: 8px; }
+  .macro-chip { padding: 8px 11px; font-size: 12.5px; }
+  .vd-chips { gap: 8px; }
+  .vd-chip { padding: 7px 10px; font-size: 12.5px; }
+  .terminal-tabs { gap: 10px; }
+  .tt-tab { padding: 12px 14px; }
+
+  /* 표·격자 — 좁은 화면에서 눌러 담지 말고 옆으로 스크롤 */
+  .bt-table { font-size: 12.5px; }
+  .bt-table, .flow-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .bt-row { min-width: 460px; }
+
+  /* 카드 그리드 — 1열로 시원하게 */
+  .lab-grid { grid-template-columns: 1fr; gap: 14px; }
+  .lab-card { padding: 14px 14px; }
+  .combo-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .engine-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .engine-picker button { padding: 10px 10px; }
+
+  /* 히어로 최종 화면 — 지표 타일 2열, 버튼 세로 스택 */
+  .hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .hero-stat { padding: 12px 12px; }
+  .hero-cta { flex-direction: column; align-items: stretch; gap: 10px; }
+  .hero-cta .btn { justify-content: center; padding: 13px 16px; font-size: 14.5px; }
+
+  /* 배분 바·슬라이더 — 손가락 조작 여유 */
+  .alloc-legend { font-size: 13px; }
+  .reserve-row { padding: 12px 10px; row-gap: 8px; }
+  .reserve-row input[type="range"] { min-height: 28px; }
+  .reserve-status { white-space: normal; }
+
+  /* 온톨로지 경로 SVG·수급 표 — 가로 스크롤 컨테이너 */
+  .onto-svg { min-width: 560px; }
+  .score-detail { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* 상단 고정 헤더 — 세로 844px 화면에서 절반을 먹지 않게 압축한다.
+   * 배너(36px) + 로고·버튼 두 줄 + 시세 한 줄 ≈ 170px 이내가 목표. */
+  .topbar { padding: 6px 10px; gap: 6px 8px; }
+  .brand-mark { width: 24px; height: 24px; }
+  .brand-text strong { font-size: 13.5px; letter-spacing: 0.04em; }
+  .brand-text .badge { font-size: 9.5px; padding: 2px 7px; }
+  .topbar .btn { padding: 7px 10px; font-size: 12px; }
+  #btn-tour { display: none; } /* 사용법은 첫 방문 투어로 이미 안내 — 모바일 헤더에선 뺀다 */
+  .lang-switch { padding: 2px 4px; gap: 2px; }
+  .lang-switch button { padding: 3px 6px; font-size: 11px; }
+  .lang-globe { display: none; }
+  /* 시세 티커는 맨 아랫줄 전체 폭 한 줄 */
+  .tape { order: 10; flex-basis: 100%; min-width: 0; }
+}
