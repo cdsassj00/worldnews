@@ -23,7 +23,7 @@ import type { Env } from "./env";
 import { isKrxHoliday } from "./holidays";
 import { UNIVERSE, roundToTick } from "../shared/ontology";
 import { runStrategy, type StrategyResult, type TickerScore } from "./strategy";
-import { quantRank } from "./quant";
+import { quantRank, usMarketOpen } from "./quant";
 import {
   domesticBalance,
   isDryRun,
@@ -409,6 +409,18 @@ export interface AutoPlan {
   /** 그중 미국 보유분(미국 봇 원장 × 환율) */
   usValueKrw: number;
   cashKrw: number;
+  /** 미국 봇 요약 — 대시보드의 🇺🇸 섹션. 원장은 autotrade-us.ts 가 따로 관리한다. */
+  us: {
+    enabled: boolean;
+    marketOpen: boolean;
+    budgetKrw: number;
+    valueKrw: number;
+    pendingKrw: number;
+    fx: number;
+    lastCycleAt: number;
+    pnlKrw: number;
+    positions: { code: string; name: string; qty: number; avgPriceUsd: number; priceUsd: number; pnlPct: number; valueKrw: number }[];
+  };
   targetProgressPct: number;
   /** 지금 어떤 점수 엔진으로 종목을 고르고 있는가 */
   engine: AutoEngine;
@@ -640,13 +652,21 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
    * 더한다. 안 더하면 미국 매수 대금이 결제되는 날 '수익'이 −400만처럼 보인다.
    * 값·환율은 미국 사이클이 저장한 최신 관측값(장 마감 중엔 마지막 값)을 쓴다. */
   let usValueKrw = 0;
+  let usFx = 1400;
+  type UsStateLite = {
+    positions?: Record<string, { code: string; name: string; qty: number; avgPrice: number; lastPrice?: number }>;
+    lastFx?: number;
+    lastValueUsd?: number;
+    lastCycleAt?: number;
+  };
+  let usState: UsStateLite | null = null;
   try {
-    const us = (await env.CACHE.get("auto:us:state", "json")) as
-      | { positions?: Record<string, { qty: number; avgPrice: number }>; lastFx?: number; lastValueUsd?: number }
-      | null;
-    if (us) {
-      const usd = us.lastValueUsd ?? Object.values(us.positions ?? {}).reduce((s, p) => s + p.qty * p.avgPrice, 0);
-      usValueKrw = Math.round(usd * (us.lastFx && us.lastFx > 800 ? us.lastFx : 1400));
+    usState = (await env.CACHE.get("auto:us:state", "json")) as UsStateLite | null;
+    if (usState) {
+      if (usState.lastFx && usState.lastFx > 800) usFx = usState.lastFx;
+      const usd =
+        usState.lastValueUsd ?? Object.values(usState.positions ?? {}).reduce((s, p) => s + p.qty * p.avgPrice, 0);
+      usValueKrw = Math.round(usd * usFx);
     }
   } catch { /* 미국 원장이 없으면 0 */ }
 
@@ -827,6 +847,28 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
     netProfitPct: deposit > 0 ? round((netProfit / deposit) * 100, 2) : 0,
     investedKrw: Math.round((account.connected ? account.stockEval : deployed) + usValueKrw),
     usValueKrw,
+    us: {
+      enabled: (env.US_AUTOTRADE_ENABLED ?? "false").toLowerCase() === "true",
+      marketOpen: usMarketOpen(),
+      budgetKrw: Math.round(reserveKrw),
+      valueKrw: usValueKrw,
+      pendingKrw: Math.round(usPendingKrw),
+      fx: usFx,
+      lastCycleAt: usState?.lastCycleAt ?? 0,
+      pnlKrw: Math.round(
+        Object.values(usState?.positions ?? {}).reduce(
+          (s, p) => s + p.qty * ((p.lastPrice ?? p.avgPrice) - p.avgPrice), 0) * usFx,
+      ),
+      positions: Object.values(usState?.positions ?? {}).map((p) => ({
+        code: p.code,
+        name: p.name,
+        qty: p.qty,
+        avgPriceUsd: round(p.avgPrice, 2),
+        priceUsd: round(p.lastPrice ?? p.avgPrice, 2),
+        pnlPct: p.avgPrice ? round((((p.lastPrice ?? p.avgPrice) - p.avgPrice) / p.avgPrice) * 100, 2) : 0,
+        valueKrw: Math.round(p.qty * (p.lastPrice ?? p.avgPrice) * usFx),
+      })),
+    },
     /* 현금에서 미국 매수 결제 대기분을 뺀다 — 그 돈은 이미 미국 주식이 되어 '주식'에
      * 잡혀 있다. 안 빼면 주식+현금이 계좌 총액보다 383만 커 보인다(2026-08-18 실측). */
     cashKrw: Math.round(Math.max(0, (account.connected ? account.cash : 0) - usPendingKrw)),

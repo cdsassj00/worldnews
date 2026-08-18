@@ -860,6 +860,35 @@ details.acc.card:not([open]) > summary { margin: 0; }
 .reserve-row input[type="range"] { flex: 1; min-width: 110px; accent-color: #d9a441; }
 .reserve-row b { font-size: 12.5px; white-space: nowrap; }
 .reserve-row .note { flex-basis: 100%; margin: 0; }
+
+/* 시장 그룹 — 한국/미국 봇 섹션을 시각적으로 분리 (2026-08-18 "한국·미국 분리" 지시) */
+.market-group {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 12px;
+  padding: 12px 14px 6px;
+  margin: 14px 0;
+}
+.market-group.mg-kr { border-color: rgba(217, 164, 65, 0.45); }
+.market-group.mg-us { border-color: rgba(96, 165, 250, 0.45); }
+.mg-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.mg-head h2 { font-size: 17px; margin: 0; letter-spacing: 0.02em; }
+.mg-sub { font-size: 12px; color: var(--fg-faint); }
+.market-group .auto-block { border: none; padding-left: 0; padding-right: 0; }
+
+/* 한국·미국 배분 바 */
+.alloc-bar {
+  display: flex;
+  height: 14px;
+  border-radius: 7px;
+  overflow: hidden;
+  margin: 6px 0 4px;
+  background: rgba(148, 163, 184, 0.15);
+}
+.alloc-bar .kr { background: #d9a441; }
+.alloc-bar .us { background: #60a5fa; }
+.alloc-legend { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 6px; }
+.alloc-legend .kr b { color: #d9a441; }
+.alloc-legend i { font-style: normal; color: var(--fg-faint); }
 /* 슬라이더 즉시 저장 결과 — 버튼이 없으므로 이 문구가 유일한 피드백이다 */
 .reserve-status { font-size: 11.5px; color: var(--fg-faint); white-space: nowrap; }
 .reserve-status.ok { color: #4ade80; }

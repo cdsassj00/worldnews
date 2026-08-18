@@ -95,6 +95,8 @@ export interface UsPosition {
   qty: number;
   /** 평단(달러) */
   avgPrice: number;
+  /** 마지막 관측 현재가(달러) — 장 마감 중 대시보드 표시용 */
+  lastPrice?: number;
   enteredAt: number;
   lastAddedAt: number;
   reason: string;
@@ -269,6 +271,11 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
       if (h.avgPrice) pos.avgPrice = h.avgPrice;
       pos.lastAddedAt = Date.now();
     }
+  }
+  // 현재가 기록 — 장 마감 후에도 대시보드가 마지막 관측가로 손익을 보여줄 수 있게
+  for (const pos of Object.values(state.positions)) {
+    const h = held.get(pos.code);
+    if (h?.price) pos.lastPrice = h.price;
   }
   const GRACE_MS = 2 * 60 * 60 * 1000; // 방금 낸 주문의 체결·반영 대기
   for (const pos of Object.values(state.positions)) {

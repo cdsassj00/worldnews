@@ -122,20 +122,44 @@ export class AutoPanel {
     if (!p) return;
     this.renderBadge();
     if (!this.focusCode && p.top.length) this.focusCode = p.top[0].code;
+    /* 화면 순서 (2026-08-18 사용자 지시): ① 계좌 전체 → ② 한국·미국 배분 →
+     * ③ 🇰🇷 한국 봇(전략·게이트·자금·보유·계획) → ④ 🇺🇸 미국 봇(전략·자금·보유)
+     * → 성적표·분석 상세·수동 제어·일지. 한국 것과 미국 것을 섞지 않는다. */
     this.deps.root.replaceChildren(
-      this.backtestBlock(),
-      this.engineBlock(p),
-      this.gateBlock(p),
       this.moneyBlock(p),
+      this.allocBlock(p),
+      this.marketGroup("kr", "🇰🇷 한국 봇", [
+        el("span", { class: `gate-pill ${p.gate.canTrade ? "on" : "off"}`, text: p.gate.canTrade ? "가동" : "대기" }),
+        el("span", { class: "mg-sub", text: `전략 ${p.engineName} · ${p.market.label}` }),
+      ], [
+        this.engineBlock(p),
+        this.gateBlock(p),
+        this.krFundsBlock(p),
+        this.positionsBlock(p),
+        this.ordersBlock(p),
+      ]),
+      this.marketGroup("us", "🇺🇸 미국 봇", [
+        el("span", { class: `gate-pill ${p.us.enabled ? "on" : "off"}`, text: p.us.enabled ? "가동" : "꺼짐" }),
+        el("span", { class: "mg-sub", text: `전략 온톨로지(한국과 동일 규칙) · ${p.us.marketOpen ? "정규장 진행중" : "장 마감 (개장 22:30 KST)"}` }),
+      ], [
+        this.usBlock(p),
+      ]),
+      this.backtestBlock(),
       this.macroBlock(p),
       this.ontologyBlock(p),
-      this.positionsBlock(p),
-      this.ordersBlock(p),
       this.scoresBlock(p),
       this.controlsBlock(),
       this.journalBlock(),
       el("p", { class: "note", text: `계획 생성 ${timeAgo(p.generatedAt)} · 계획은 2분 캐시됩니다.` }),
     );
+  }
+
+  /** 시장 그룹 래퍼 — 한국/미국 봇을 시각적으로 확실히 분리한다 */
+  private marketGroup(id: "kr" | "us", title: string, badges: HTMLElement[], blocks: HTMLElement[]): HTMLElement {
+    return el("section", { class: `market-group mg-${id}` }, [
+      el("div", { class: "mg-head" }, [el("h2", { text: title }), ...badges]),
+      ...blocks,
+    ]);
   }
 
   /* ── 블록들 ─────────────────────────────── */
@@ -391,15 +415,11 @@ export class AutoPanel {
     ]);
   }
 
+  /** ① 계좌 전체 — 넣은 돈이 지금 어디에 얼마로 있고, 얼마를 벌었나. 봇 얘기는 아래 섹션에서. */
   private moneyBlock(p: AutoPlan): HTMLElement {
-    const c = p.config;
-    const pct = Math.max(-100, Math.min(100, p.targetProgressPct));
-    /* 입출금 반영 버튼은 없앴다(2026-08-18 사용자 지시 "자동화 연동해놨는데 왜 버튼이
-     * 필요하냐"). 입출금은 사이클마다 자동 감지한다 — 수동 보정 API(/api/auto/deposit)는
-     * 감지가 놓친 경우를 위한 비상용으로만 서버에 남아 있다. */
+    const krStockKrw = p.investedKrw - p.usValueKrw;
     return el("section", { class: "auto-block" }, [
-      el("h3", {}, [el("span", { text: "자금과 목표" })]),
-      // 내가 넣은 돈이 지금 어디에 얼마로 있고, 얼마를 벌었나 — 이 네 가지만.
+      el("h3", {}, [el("span", { text: "① 내 계좌 전체" })]),
       el("div", { class: "auto-grid" }, [
         stat("내가 넣은 돈", fmtKrw(p.depositKrw)),
         stat("주식", p.account.connected ? fmtKrw(p.investedKrw) : "-"),
@@ -415,32 +435,96 @@ export class AutoPanel {
       el("p", {
         class: "auto-sub",
         text: p.account.connected
-          ? `지금 계좌 ${fmtKrw(p.equity)} = 주식 ${fmtKrw(p.investedKrw)} + 현금 ${fmtKrw(p.cashKrw)}  ·  넣은 돈 ${fmtKrw(p.depositKrw)} 대비 ${p.netProfitKrw >= 0 ? "+" : ""}${fmtKrw(p.netProfitKrw)}`
+          ? `지금 계좌 ${fmtKrw(p.equity)} = 한국 주식 ${fmtKrw(krStockKrw)} + 미국 주식 ${fmtKrw(p.usValueKrw)} + 현금 ${fmtKrw(p.cashKrw)}`
           : "계좌 조회 실패로 표시할 수 없습니다",
       }),
-      // 그 안에서 봇이 굴리는 몫 (보조 정보)
       el("p", {
         class: "note",
-        text: `이 중 봇이 굴리는 돈: ${fmtKrw(p.deployedKrw)} (한도 ${fmtKrw(c.capitalKrw)}, 여유 ${fmtKrw(p.budgetKrw)}) · 봇 매매 손익 ${
-          p.account.connected ? `${p.botPnlKrw >= 0 ? "+" : ""}${fmtKrw(p.botPnlKrw)}` : "-"
-        } · 위험회피 ${p.riskOff}`,
+        text: `‘수익’은 넣은 돈 대비 지금 계좌 전체(한국+미국)의 증감입니다. 입출금은 사이클마다 자동 감지해 ‘넣은 돈’에 반영됩니다 — 따로 신고할 것이 없습니다.`,
       }),
+      ...(p.us.pendingKrw > 0
+        ? [el("p", { class: "note", text: `※ 미국 매수 대금 ${fmtKrw(p.us.pendingKrw)}은 결제 대기 중 — 이미 미국 주식이 된 돈이라 현금에서 빼고 표시합니다.` })]
+        : []),
+      ...(p.account.reason ? [el("p", { class: "note", text: `※ ${p.account.reason}` })] : []),
+    ]);
+  }
+
+  /** ② 한국·미국 배분 — 넣은 돈을 두 봇이 어떻게 나눠 쓰는가 + 슬라이더 */
+  private allocBlock(p: AutoPlan): HTMLElement {
+    const total = Math.max(1, p.depositKrw);
+    const usPct = Math.round(((p.reserveKrw || 0) / total) * 100);
+    const krKrw = Math.max(0, p.depositKrw - p.reserveKrw);
+    return el("section", { class: "auto-block" }, [
+      el("h3", {}, [el("span", { text: "② 한국 · 미국 배분" })]),
+      el("div", { class: "alloc-bar", title: `한국 ${100 - usPct}% · 미국 ${usPct}%` }, [
+        el("i", { class: "kr", style: `width:${100 - usPct}%` }),
+        el("i", { class: "us", style: `width:${usPct}%` }),
+      ]),
+      el("div", { class: "alloc-legend" }, [
+        el("span", {}, [el("b", { text: `🇰🇷 한국 ${100 - usPct}%` }), el("i", { text: ` · ${fmtKrw(krKrw)}` })]),
+        el("span", {}, [el("b", { text: `🇺🇸 미국 ${usPct}%` }), el("i", { text: ` · ${fmtKrw(p.reserveKrw)}` })]),
+      ]),
       this.reserveRow(p),
+    ]);
+  }
+
+  /** 🇰🇷 한국 봇의 자금·목표·규칙 */
+  private krFundsBlock(p: AutoPlan): HTMLElement {
+    const c = p.config;
+    const pct = Math.max(-100, Math.min(100, p.targetProgressPct));
+    return el("section", { class: "auto-block" }, [
+      el("h3", {}, [el("span", { text: "한국 봇 자금" })]),
+      el("div", { class: "auto-grid" }, [
+        stat("예산(한국 몫)", fmtKrw(Math.max(0, c.capitalKrw - p.reserveKrw))),
+        stat("주식에 투입", fmtKrw(p.deployedKrw)),
+        stat("매수 여유", fmtKrw(p.budgetKrw)),
+        stat(
+          "봇 매매 손익",
+          p.account.connected ? `${p.botPnlKrw >= 0 ? "+" : ""}${fmtKrw(p.botPnlKrw)}` : "-",
+          p.account.connected ? dirClass(p.botPnlKrw) : "",
+        ),
+      ]),
       el("div", { class: "target-bar", title: `목표 ${fmtKrw(c.targetProfitKrw)} 대비 ${p.targetProgressPct}%` }, [
         el("i", { style: `width:${Math.max(0, pct)}%` }),
       ]),
       el("p", {
         class: "note",
-        text: `목표 ${fmtKrw(c.targetProfitKrw)} · 진행 ${p.targetProgressPct}% · 원금한도 ${fmtKrw(c.capitalKrw)} · 종목당 최대 ${c.maxPositionPct}% · 손절 -${c.stopLossPct}% · 익절 +${c.takeProfitPct}% · 당일정지 -${c.dailyLossHaltPct}% · 영구정지 -${c.maxDrawdownPct}%`,
+        text: `목표 ${fmtKrw(c.targetProfitKrw)} · 진행 ${p.targetProgressPct}% · 종목당 최대 ${c.maxPositionPct}% · 손절 -${c.stopLossPct}% · 익절 +${c.takeProfitPct}% · 당일정지 -${c.dailyLossHaltPct}% · 영구정지 -${c.maxDrawdownPct}% · 위험회피 ${p.riskOff}`,
       }),
+    ]);
+  }
+
+  /** 🇺🇸 미국 봇 — 자금·보유 종목. 원장이 한국과 완전히 분리되어 있다. */
+  private usBlock(p: AutoPlan): HTMLElement {
+    const u = p.us;
+    const investedKrw = u.valueKrw;
+    const freeKrw = Math.max(0, u.budgetKrw - investedKrw);
+    const rows = u.positions.length
+      ? u.positions.map((pos) =>
+          el("div", { class: "pos-row" }, [
+            el("div", { class: "pos-name" }, [
+              el("b", { text: pos.name }),
+              el("span", { class: "mono", text: pos.code }),
+            ]),
+            el("div", { class: "pos-qty", text: `${fmtNum(pos.qty, 0)}주 · 평단 $${pos.avgPriceUsd.toFixed(2)} · 현재 $${pos.priceUsd.toFixed(2)}` }),
+            el("div", { class: `pos-pnl ${dirClass(pos.pnlPct)}`, text: fmtPct(pos.pnlPct) }),
+            el("div", { class: "pos-reason", text: `≈ ${fmtKrw(pos.valueKrw)}` }),
+          ]),
+        )
+      : [el("p", { class: "note", text: "미국 봇이 보유한 종목이 없습니다. 개장(22:30 KST) 후 첫 사이클부터 매수를 검토합니다." })];
+    return el("section", { class: "auto-block" }, [
+      el("h3", {}, [el("span", { text: "미국 봇 자금 · 보유 종목" })]),
+      el("div", { class: "auto-grid" }, [
+        stat("예산(미국 몫)", fmtKrw(u.budgetKrw)),
+        stat("주식에 투입", fmtKrw(investedKrw)),
+        stat("매수 여유", fmtKrw(freeKrw)),
+        stat("평가손익", `${u.pnlKrw >= 0 ? "+" : ""}${fmtKrw(u.pnlKrw)}`, dirClass(u.pnlKrw)),
+      ]),
+      el("div", { class: "pos-list" }, rows),
       el("p", {
         class: "note",
-        text: `‘수익’은 넣은 돈 대비 지금 계좌 전체의 증감입니다(봇 매매 + 기존 보유 ${p.account.holdings.length}종목 등락 합산). 입출금은 사이클마다 자동 감지해 ‘넣은 돈’에 반영됩니다 — 따로 신고할 것이 없습니다.`,
+        text: `종목 선정은 온톨로지 미국 점수 상위(문턱 0.35), 통합증거금으로 원화 매수 · 적용 환율 ${u.fx.toLocaleString("ko-KR")}원 · 손절·익절·정지 규칙은 한국과 동일 · 마지막 사이클 ${u.lastCycleAt ? timeAgo(u.lastCycleAt) : "-"}`,
       }),
-      // 계좌 조회가 실패했거나 캐시값으로 대체됐으면 이유를 숨기지 않는다
-      ...(p.account.reason
-        ? [el("p", { class: "note", text: `※ ${p.account.reason}` })]
-        : []),
     ]);
   }
 
@@ -709,9 +793,9 @@ export class AutoPanel {
             el("div", { class: "pos-reason", text: pos.reason }),
           ]),
         )
-      : [el("p", { class: "note", text: "봇이 보유한 종목이 없습니다. (계좌의 기존 보유분은 봇이 건드리지 않습니다.)" })];
+      : [el("p", { class: "note", text: "한국 봇이 보유한 종목이 없습니다." })];
     return el("section", { class: "auto-block" }, [
-      el("h3", {}, [el("span", { text: "봇 보유 종목" })]),
+      el("h3", {}, [el("span", { text: "한국 봇 보유 종목" })]),
       el("div", { class: "pos-list" }, rows),
     ]);
   }
