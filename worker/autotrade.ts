@@ -650,8 +650,13 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
     }
   } catch { /* 미국 원장이 없으면 0 */ }
 
+  /* 결제 대기 차감 — 미국 매수 대금이 아직 원화 예수금에서 안 빠졌으면(대기 중)
+   * 그 돈이 국내 총평가에 그대로 있으므로, 미국 보유분을 더할 때 같은 금액을 빼야
+   * 이중 계상이 안 된다. 결제가 관측되면 runCycle 이 대기분을 지워 자연히 0이 된다. */
+  const usPendingKrw = await getUsCashflowKrw(env);
   const deployed = deployedValue(state, priceOf);
-  const equity = (account.connected ? account.totalEval : state.lastEquity || cfg.capitalKrw) + usValueKrw;
+  const equity =
+    (account.connected ? account.totalEval : state.lastEquity || cfg.capitalKrw) + usValueKrw - usPendingKrw;
   const baseline = state.baselineEquity || equity;
   const budget = Math.max(0, cfg.capitalKrw - reserveKrw - deployed);
 
@@ -781,6 +786,7 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   if (deployed > 0) notes.push(`운용 투입 ${Math.round(deployed).toLocaleString("ko-KR")}원 / 한도 ${cfg.capitalKrw.toLocaleString("ko-KR")}원`);
   if (reserveKrw > 0) notes.push(`미국 배분 ${reserveKrw.toLocaleString("ko-KR")}원은 국내 매수 예산에서 제외합니다(미국 자동매매 예산).`);
   if (usValueKrw > 0) notes.push(`미국 보유분 ≈ ${usValueKrw.toLocaleString("ko-KR")}원을 총평가·투자금에 포함했습니다(미국 봇 원장 기준).`);
+  if (usPendingKrw > 0) notes.push(`미국 매수 대금 ${usPendingKrw.toLocaleString("ko-KR")}원은 결제 대기 중이라 총평가에서 차감했습니다(이중 계상 방지).`);
   if (isDryRun(env)) notes.push("ORDER_DRY_RUN=true — 주문은 검증만 하고 전송되지 않습니다.");
 
   /* 봇 성과와 기존 보유분을 분리한다. 계좌 전체 손익만 보면 봇이 잘하고 있어도
