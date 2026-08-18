@@ -67,7 +67,9 @@ export function usAutoConfig(env: Env): UsAutoConfig {
     maxPositionPct: num(env.AUTO_MAX_POSITION_PCT, 30),
     // 400만원 × 30% ≈ 종목당 $870 — 4종목이면 예산이 찬다
     maxPositions: 4,
-    maxOrdersPerCycle: 2,
+    // 사이클당 3건 — 미국 크론은 레이더·수급 스캔과 예산(50)을 나눠 쓴다
+    maxOrdersPerCycle: 3,
+    // 한국과 같은 값(999 = 사실상 무제한, 2026-08-18 사용자 지시 "끊임없이 매매")
     maxTradesPerDay: num(env.AUTO_MAX_TRADES_PER_DAY, 6),
     minOrderKrw: num(env.AUTO_MIN_ORDER_KRW, 150_000),
     buyScore: 0.35,
