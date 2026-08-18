@@ -454,13 +454,20 @@ export class AutoPanel {
       el("p", {
         class: "auto-sub",
         text: p.account.connected
-          ? `계좌 ${fmtKrw(p.equity)} = 넣은 돈 ${fmtKrw(p.depositKrw)} ${p.netProfitKrw >= 0 ? "+" : "−"} 손익 ${fmtKrw(Math.abs(p.netProfitKrw))}  ·  구성: 한국 주식 ${fmtKrw(krStockKrw)} · 미국 주식 ${fmtKrw(p.usValueKrw)} · 현금 ${fmtKrw(p.cashKrw)}`
+          ? `계좌 ${fmtKrw(p.equity)} = 한국 주식 ${fmtKrw(krStockKrw)} + 미국 주식 ${fmtKrw(p.usValueKrw)} + 현금 ${fmtKrw(p.cashKrw)}  ·  넣은 돈 ${fmtKrw(p.depositKrw)} 대비 ${p.netProfitKrw >= 0 ? "+" : "−"}${fmtKrw(Math.abs(p.netProfitKrw))}`
           : "계좌 조회 실패로 표시할 수 없습니다",
       }),
       el("p", {
         class: "note",
-        text: `‘수익’은 추정 없이 실측값만 더한 것입니다: 한국 보유 평가손익(증권사 제공) + 한국 실현손익(체결가) + 미국 보유 평가손익(증권사 제공) + 미국 실현손익. 매수 대금이 결제(1~2영업일)로 이동하는 동안 ‘구성’ 합계가 계좌와 잠시 다를 수 있지만 수익에는 영향이 없습니다.`,
+        text: `‘수익’은 추정 없이 실측값만 더한 것입니다: 한국 보유 평가손익(증권사 제공) + 한국 실현손익(체결가) + 미국 보유 평가손익(증권사 제공) + 미국 실현손익.`,
       }),
+      // 예수금 원본과 표시 현금이 다르면 이유를 밝힌다 — 결제(1~2영업일) 이동 중인 돈
+      ...(p.account.connected && Math.abs(p.bankCashKrw - p.cashKrw) > 10_000
+        ? [el("p", {
+            class: "note",
+            text: `※ 증권사 앱의 원화 예수금은 ${fmtKrw(p.bankCashKrw)}으로 보입니다 — 아직 결제(1~2영업일)가 끝나지 않은 매수 대금 ${fmtKrw(Math.abs(p.bankCashKrw - p.cashKrw))}이 포함된 값이라서, 여기서는 결제 후 남을 현금(${fmtKrw(p.cashKrw)})으로 표시합니다.`,
+          })]
+        : []),
       ...(p.account.reason ? [el("p", { class: "note", text: `※ ${p.account.reason}` })] : []),
     ]);
   }

@@ -408,6 +408,8 @@ export interface AutoPlan {
   investedKrw: number;
   /** 그중 미국 보유분(미국 봇 원장 × 환율) */
   usValueKrw: number;
+  /** 증권사 원화 주문가능현금 원본 — 결제 이동분이 포함될 수 있어 표시 현금과 다를 수 있다 */
+  bankCashKrw: number;
   cashKrw: number;
   /** 미국 봇 요약 — 값은 전부 KIS 해외 잔고 스냅샷(auto:us:balance) 실측 */
   us: {
@@ -871,10 +873,14 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
         valueKrw: Math.round((h.evalAmount || h.qty * h.price) * usFx),
       })),
     },
-    /* 현금은 KIS 국내 주문가능현금 그대로 보여준다 — 결제 이동을 추정으로 빼거나
-     * 더하지 않는다. 주식+현금 단순합이 '계좌'와 잠시 다른 것은 결제(D+1~2) 이동
-     * 중인 돈 때문이며, 수익 계산에는 어떤 영향도 없다(화면 문구로 설명). */
-    cashKrw: Math.round(account.connected ? account.cash : 0),
+    /* 현금 = 계좌 − 주식 (결제가 다 끝난 뒤 남을 현금). 이렇게 정의해야
+     * 주식+현금=계좌가 **항상** 성립한다 — 예수금 원본을 그대로 보여주면 아직
+     * 안 빠져나간 미국 매수 대금이 '미국 주식'과 이중으로 보여 합계가 어긋난다
+     * (2026-08-19 사용자 보고: 구성 합 1,339만 vs 계좌 970만). 추정이 아니라
+     * 항등식(계좌−주식)이라 결제가 진행되어도 스스로 맞아 들어간다.
+     * 예수금 원본은 bankCashKrw 로 따로 내려 화면 설명에 쓴다. */
+    cashKrw: Math.max(0, Math.round(equity - ((account.connected ? account.stockEval : deployed) + usValueKrw))),
+    bankCashKrw: Math.round(account.connected ? account.cash : 0),
     // 목표(+100만)는 봇이 벌어야 하는 돈이다 — 기존 보유분 등락은 목표 진행률에서 뺀다
     targetProgressPct: cfg.targetProfitKrw > 0 ? round((botPnl / cfg.targetProfitKrw) * 100, 1) : 0,
     engine: engineSel.id,

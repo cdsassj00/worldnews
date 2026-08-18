@@ -281,6 +281,8 @@ export interface AutoPlan {
   reserveKrw: number;
   /** 투자금 중 미국 보유분(미국 봇 원장 × 환율) */
   usValueKrw: number;
+  /** 증권사 원화 주문가능현금 원본(결제 이동분 포함 가능) */
+  bankCashKrw: number;
   /** 미국 봇 요약 — 전부 KIS 해외 잔고 스냅샷 실측값 */
   us: {
     enabled: boolean;
