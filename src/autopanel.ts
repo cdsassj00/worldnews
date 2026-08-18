@@ -495,6 +495,8 @@ export class AutoPanel {
   private krFundsBlock(p: AutoPlan): HTMLElement {
     const c = p.config;
     const pct = Math.max(-100, Math.min(100, p.targetProgressPct));
+    // 타일 구성은 미국 섹션과 완전히 동일해야 한다(2026-08-19 사용자 지시 "왜 계산법이 다르냐")
+    const holdPnl = p.pnlKrw - p.realizedKrw;
     return el("section", { class: "auto-block" }, [
       el("h3", {}, [el("span", { text: "한국 봇 자금" })]),
       el("div", { class: "auto-grid" }, [
@@ -502,11 +504,15 @@ export class AutoPanel {
         stat("주식에 투입", fmtKrw(p.deployedKrw)),
         stat("매수 여유", fmtKrw(p.budgetKrw)),
         stat(
-          "봇 매매 손익",
-          p.account.connected ? `${p.botPnlKrw >= 0 ? "+" : ""}${fmtKrw(p.botPnlKrw)}` : "-",
-          p.account.connected ? dirClass(p.botPnlKrw) : "",
+          "손익(실현 포함)",
+          p.account.connected ? `${p.pnlKrw >= 0 ? "+" : ""}${fmtKrw(p.pnlKrw)}` : "-",
+          p.account.connected ? dirClass(p.pnlKrw) : "",
         ),
       ]),
+      el("p", {
+        class: "note",
+        text: `손익 = 보유 평가손익 ${holdPnl >= 0 ? "+" : ""}${fmtKrw(holdPnl)} + 실현손익 ${p.realizedKrw >= 0 ? "+" : ""}${fmtKrw(p.realizedKrw)} (증권사 실측·체결가 기준, 미국 섹션과 같은 계산법).`,
+      }),
       el("div", { class: "target-bar", title: `목표 ${fmtKrw(c.targetProfitKrw)} 대비 ${p.targetProgressPct}%` }, [
         el("i", { style: `width:${Math.max(0, pct)}%` }),
       ]),
@@ -536,18 +542,23 @@ export class AutoPanel {
         )
       : [el("p", { class: "note", text: "미국 봇이 보유한 종목이 없습니다. 개장(22:30 KST) 후 첫 사이클부터 매수를 검토합니다." })];
     const totalPnl = u.pnlKrw + u.realizedKrw;
+    // 타일 구성은 한국 섹션과 완전히 동일 — 예산 / 투입 / 여유 / 손익(실현 포함)
     return el("section", { class: "auto-block" }, [
       el("h3", {}, [el("span", { text: "미국 봇 자금 · 보유 종목" })]),
       el("div", { class: "auto-grid" }, [
         stat("예산(미국 몫)", fmtKrw(u.budgetKrw)),
         stat("주식에 투입", fmtKrw(investedKrw)),
-        stat("평가손익(보유)", `${u.pnlKrw >= 0 ? "+" : ""}${fmtKrw(u.pnlKrw)}`, dirClass(u.pnlKrw)),
+        stat("매수 여유", fmtKrw(freeKrw)),
         stat("손익(실현 포함)", `${totalPnl >= 0 ? "+" : ""}${fmtKrw(totalPnl)}`, dirClass(totalPnl)),
       ]),
+      el("p", {
+        class: "note",
+        text: `손익 = 보유 평가손익 ${u.pnlKrw >= 0 ? "+" : ""}${fmtKrw(u.pnlKrw)} + 실현손익 ${u.realizedKrw >= 0 ? "+" : ""}${fmtKrw(u.realizedKrw)} (KIS 실측·체결가 기준, 한국 섹션과 같은 계산법).`,
+      }),
       el("div", { class: "pos-list" }, rows),
       el("p", {
         class: "note",
-        text: `보유·평가손익은 KIS 해외 잔고 실측값입니다 (${u.balanceAt ? timeAgo(u.balanceAt) + " 조회" : "조회 전"}, 장중 15분마다 갱신 · 방금 낸 주문은 다음 갱신에 반영). 매수 여유 ${fmtKrw(freeKrw)} · 환율 ${u.fx.toLocaleString("ko-KR")}원 · 손절·익절·정지 규칙은 한국과 동일.`,
+        text: `보유·평가손익은 KIS 해외 잔고 실측값입니다 (${u.balanceAt ? timeAgo(u.balanceAt) + " 조회" : "조회 전"}, 장중 15분마다 갱신 · 방금 낸 주문은 다음 갱신에 반영). 환율 ${u.fx.toLocaleString("ko-KR")}원 · 손절·익절·정지 규칙은 한국과 동일.`,
       }),
     ]);
   }

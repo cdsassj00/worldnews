@@ -296,6 +296,7 @@ export interface AutoPlan {
     positions: { code: string; name: string; qty: number; avgPriceUsd: number; priceUsd: number; pnlPct: number; valueKrw: number }[];
   };
   pnlKrw: number;
+  realizedKrw: number;
   botPnlKrw: number;
   otherPnlKrw: number;
   /** 지금 종목 선정에 쓰는 점수 엔진 — 프리셋 id 또는 "custom" */

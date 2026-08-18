@@ -395,6 +395,8 @@ export interface AutoPlan {
   /** 미국 배분(예약 현금) — 국내 매수 예산에서 제외되는 몫 */
   reserveKrw: number;
   pnlKrw: number;
+  /** 한국 실현손익 누적 */
+  realizedKrw: number;
   /** 봇이 산 종목만의 손익 — 기존 보유분과 섞이지 않게 분리해서 보여준다 */
   botPnlKrw: number;
   /** 계좌에 원래 있던(봇이 사지 않은) 종목의 손익 */
@@ -843,6 +845,8 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
     budgetKrw: Math.round(budget),
     reserveKrw: Math.round(reserveKrw),
     pnlKrw: Math.round(pnl),
+    /** 한국 실현손익 누적(체결가 기준) — 화면에서 보유 평가/실현 분해에 쓴다 */
+    realizedKrw: Math.round(state.realizedPnl ?? 0),
     botPnlKrw: Math.round(botPnl),
     otherPnlKrw: Math.round(pnl - botPnl),
     /* 사용자가 실제로 궁금한 네 숫자: 넣은 돈 / 주식 / 현금 / 수익.
