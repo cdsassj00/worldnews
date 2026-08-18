@@ -786,7 +786,7 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   if (deployed > 0) notes.push(`운용 투입 ${Math.round(deployed).toLocaleString("ko-KR")}원 / 한도 ${cfg.capitalKrw.toLocaleString("ko-KR")}원`);
   if (reserveKrw > 0) notes.push(`미국 배분 ${reserveKrw.toLocaleString("ko-KR")}원은 국내 매수 예산에서 제외합니다(미국 자동매매 예산).`);
   if (usValueKrw > 0) notes.push(`미국 보유분 ≈ ${usValueKrw.toLocaleString("ko-KR")}원을 총평가·투자금에 포함했습니다(미국 봇 원장 기준).`);
-  if (usPendingKrw > 0) notes.push(`미국 매수 대금 ${usPendingKrw.toLocaleString("ko-KR")}원은 결제 대기 중이라 총평가에서 차감했습니다(이중 계상 방지).`);
+  if (usPendingKrw > 0) notes.push(`미국 매수 대금 ${usPendingKrw.toLocaleString("ko-KR")}원은 결제 대기 중입니다 — 이미 미국 주식이 된 돈이라 현금에서 빼고 '주식'에만 넣었습니다.`);
   if (isDryRun(env)) notes.push("ORDER_DRY_RUN=true — 주문은 검증만 하고 전송되지 않습니다.");
 
   /* 봇 성과와 기존 보유분을 분리한다. 계좌 전체 손익만 보면 봇이 잘하고 있어도
@@ -827,7 +827,9 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
     netProfitPct: deposit > 0 ? round((netProfit / deposit) * 100, 2) : 0,
     investedKrw: Math.round((account.connected ? account.stockEval : deployed) + usValueKrw),
     usValueKrw,
-    cashKrw: Math.round(account.connected ? account.cash : 0),
+    /* 현금에서 미국 매수 결제 대기분을 뺀다 — 그 돈은 이미 미국 주식이 되어 '주식'에
+     * 잡혀 있다. 안 빼면 주식+현금이 계좌 총액보다 383만 커 보인다(2026-08-18 실측). */
+    cashKrw: Math.round(Math.max(0, (account.connected ? account.cash : 0) - usPendingKrw)),
     // 목표(+100만)는 봇이 벌어야 하는 돈이다 — 기존 보유분 등락은 목표 진행률에서 뺀다
     targetProgressPct: cfg.targetProfitKrw > 0 ? round((botPnl / cfg.targetProfitKrw) * 100, 1) : 0,
     engine: engineSel.id,
