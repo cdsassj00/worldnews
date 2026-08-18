@@ -20,7 +20,7 @@
  * 때만 일지에 쓰고, 조용한 사이클은 KV(auto:us:last)에만 남긴다.
  */
 import type { Env } from "./env";
-import { appendJournal, entry, getReserveKrw, type JournalEntry } from "./autotrade";
+import { addUsCashflowKrw, appendJournal, entry, getReserveKrw, type JournalEntry } from "./autotrade";
 import { usMarketOpen, usQuantRows } from "./quant";
 import { radarTop } from "./radarscan";
 import { getSparkMany } from "./quotes";
@@ -112,6 +112,9 @@ export interface UsAutoState {
   dayStartPnlUsd?: number;
   positions: Record<string, UsPosition>;
   lastCycleAt: number;
+  /** 마지막 관측 환율·보유 평가액(달러) — 국내 대시보드가 총평가에 합산할 때 쓴다 */
+  lastFx?: number;
+  lastValueUsd?: number;
 }
 
 function emptyUsState(): UsAutoState {
@@ -215,7 +218,10 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
   };
   const finish = async (note: string): Promise<UsCycleResult> => {
     out.note = note;
-    await env.CACHE.put(LAST_KEY, JSON.stringify({ at: Date.now(), ...out }), { expirationTtl: 86_400 }).catch(() => undefined);
+    // 장 마감 스킵으로 직전의 의미 있는 기록(계획·환율·배치금액)을 덮어쓰지 않는다
+    if (out.ran) {
+      await env.CACHE.put(LAST_KEY, JSON.stringify({ at: Date.now(), ...out }), { expirationTtl: 86_400 }).catch(() => undefined);
+    }
     return out;
   };
 
@@ -457,6 +463,8 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
         });
         state.tradesToday += 1;
         applyUsFill(state, o);
+        // 결제 예상 현금흐름 기록 — 국내 봇의 입출금 감지가 이 금액을 미국 결제로 설명한다
+        await addUsCashflowKrw(env, o.side === "buy" ? o.notionalKrw : -o.notionalKrw);
         out.results.push({ code: o.code, side: o.side, ok: true, message: res.message });
         journal.push(
           entry("order", `미국 ${o.side === "buy" ? "매수" : "매도"} ${o.name}(${o.code}) ${o.qty}주 @$${o.price} ≈ ${o.notionalKrw.toLocaleString("ko-KR")}원 — ${o.reason}`, {
@@ -479,6 +487,11 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
   }
 
   state.lastCycleAt = Date.now();
+  state.lastFx = fx;
+  state.lastValueUsd = round(
+    Object.values(state.positions).reduce((s, p) => s + p.qty * (held.get(p.code)?.price || p.avgPrice), 0),
+    2,
+  );
   await saveUsState(env, state);
   await appendJournal(env, journal);
   const noteParts = [

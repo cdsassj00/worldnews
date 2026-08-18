@@ -279,6 +279,8 @@ export interface AutoPlan {
   budgetKrw: number;
   /** 미국 배분(예약 현금) — 국내 매수 예산에서 제외 */
   reserveKrw: number;
+  /** 투자금 중 미국 보유분(미국 봇 원장 × 환율) */
+  usValueKrw: number;
   pnlKrw: number;
   botPnlKrw: number;
   otherPnlKrw: number;

@@ -406,6 +406,8 @@ export interface AutoPlan {
   netProfitPct: number;
   /** 주식에 들어가 있는 돈 / 현금으로 남은 돈 */
   investedKrw: number;
+  /** 그중 미국 보유분(미국 봇 원장 × 환율) */
+  usValueKrw: number;
   cashKrw: number;
   targetProgressPct: number;
   /** 지금 어떤 점수 엔진으로 종목을 고르고 있는가 */
@@ -507,6 +509,28 @@ export async function getEngine(env: Env): Promise<AutoEngine> {
 /** 계획 캐시 키 조각 — 커스텀 가중치도 서로 다른 키를 갖게 한다 */
 export function engineKey(sel: EngineSel): string {
   return sel.id === "custom" ? `w${sel.w.onto}-${sel.w.flow}-${sel.w.chart}` : sel.id;
+}
+
+/* ── 미국 결제 대기 현금흐름 ─────────────────────────────
+ * 미국 주문(통합증거금)은 원화 예수금에서 나중에 결제된다 — 그 순간 "보유 수량은
+ * 그대로인데 현금만 크게 줄어" 입출금 자동 감지가 출금으로 오인한다. 미국 봇이
+ * 주문할 때 예상 현금흐름(매수 +, 매도 −)을 여기 적어 두고, 감지가 그만큼을
+ * 입출금이 아니라 미국 결제로 설명한다. */
+const US_CASHFLOW_KEY = "auto:us:cashflow";
+
+export async function getUsCashflowKrw(env: Env): Promise<number> {
+  const raw = await env.CACHE.get(US_CASHFLOW_KEY).catch(() => null);
+  const v = raw === null ? 0 : Number(raw);
+  return Number.isFinite(v) ? v : 0;
+}
+
+export async function addUsCashflowKrw(env: Env, deltaKrw: number): Promise<void> {
+  const cur = await getUsCashflowKrw(env);
+  await env.CACHE.put(US_CASHFLOW_KEY, String(Math.round(cur + deltaKrw))).catch(() => undefined);
+}
+
+async function setUsCashflowKrw(env: Env, krw: number): Promise<void> {
+  await env.CACHE.put(US_CASHFLOW_KEY, String(Math.round(krw))).catch(() => undefined);
 }
 
 /* ── 미국 배분(예약 현금) — 국내 매수 예산에서 빼 두는 몫. 대시보드 슬라이더로 조절 ── */
@@ -612,8 +636,22 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   /* 예약 현금 — 국내 매수 예산에서 빼 두는 몫 (미국주식 대기 자금). KV 슬라이더 값 우선 */
   const reserveKrw = await getReserveKrw(env);
 
+  /* 미국 보유분(별도 원장) 평가액 — 국내 잔고 조회에는 잡히지 않으므로 총평가·투자금에
+   * 더한다. 안 더하면 미국 매수 대금이 결제되는 날 '수익'이 −400만처럼 보인다.
+   * 값·환율은 미국 사이클이 저장한 최신 관측값(장 마감 중엔 마지막 값)을 쓴다. */
+  let usValueKrw = 0;
+  try {
+    const us = (await env.CACHE.get("auto:us:state", "json")) as
+      | { positions?: Record<string, { qty: number; avgPrice: number }>; lastFx?: number; lastValueUsd?: number }
+      | null;
+    if (us) {
+      const usd = us.lastValueUsd ?? Object.values(us.positions ?? {}).reduce((s, p) => s + p.qty * p.avgPrice, 0);
+      usValueKrw = Math.round(usd * (us.lastFx && us.lastFx > 800 ? us.lastFx : 1400));
+    }
+  } catch { /* 미국 원장이 없으면 0 */ }
+
   const deployed = deployedValue(state, priceOf);
-  const equity = account.connected ? account.totalEval : state.lastEquity || cfg.capitalKrw;
+  const equity = (account.connected ? account.totalEval : state.lastEquity || cfg.capitalKrw) + usValueKrw;
   const baseline = state.baselineEquity || equity;
   const budget = Math.max(0, cfg.capitalKrw - reserveKrw - deployed);
 
@@ -741,7 +779,8 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   if (!orders.length) notes.push("이번 사이클에 조건을 만족하는 매매가 없습니다. 대기합니다.");
   if (skipped.length) notes.push(`자금 한도로 제외: ${skipped.join(" · ")}`);
   if (deployed > 0) notes.push(`운용 투입 ${Math.round(deployed).toLocaleString("ko-KR")}원 / 한도 ${cfg.capitalKrw.toLocaleString("ko-KR")}원`);
-  if (reserveKrw > 0) notes.push(`예약 현금 ${reserveKrw.toLocaleString("ko-KR")}원(미국주식 대기 자금)은 국내 매수 예산에서 제외합니다.`);
+  if (reserveKrw > 0) notes.push(`미국 배분 ${reserveKrw.toLocaleString("ko-KR")}원은 국내 매수 예산에서 제외합니다(미국 자동매매 예산).`);
+  if (usValueKrw > 0) notes.push(`미국 보유분 ≈ ${usValueKrw.toLocaleString("ko-KR")}원을 총평가·투자금에 포함했습니다(미국 봇 원장 기준).`);
   if (isDryRun(env)) notes.push("ORDER_DRY_RUN=true — 주문은 검증만 하고 전송되지 않습니다.");
 
   /* 봇 성과와 기존 보유분을 분리한다. 계좌 전체 손익만 보면 봇이 잘하고 있어도
@@ -780,7 +819,8 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
     depositKrw: Math.round(deposit),
     netProfitKrw: Math.round(netProfit),
     netProfitPct: deposit > 0 ? round((netProfit / deposit) * 100, 2) : 0,
-    investedKrw: Math.round(account.connected ? account.stockEval : deployed),
+    investedKrw: Math.round((account.connected ? account.stockEval : deployed) + usValueKrw),
+    usValueKrw,
     cashKrw: Math.round(account.connected ? account.cash : 0),
     // 목표(+100만)는 봇이 벌어야 하는 돈이다 — 기존 보유분 등락은 목표 진행률에서 뺀다
     targetProgressPct: cfg.targetProfitKrw > 0 ? round((botPnl / cfg.targetProfitKrw) * 100, 1) : 0,
@@ -833,7 +873,20 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
     const sameQty =
       Object.keys(qtyNow).length === Object.keys(state.qtySnapshot).length &&
       Object.entries(qtyNow).every(([k, v]) => state.qtySnapshot![k] === v);
-    const delta = plan.account.cash - state.lastCash;
+    let delta = plan.account.cash - state.lastCash;
+    if (sameQty && Math.abs(delta) >= 300_000) {
+      /* 미국 주문 결제분 먼저 설명한다 — 미국 매수(통합증거금)는 국내 수량 변화 없이
+       * 원화만 빠지므로, 여기서 걸러내지 않으면 출금으로 오인해 넣은 돈을 깎는다. */
+      const usPending = await getUsCashflowKrw(env); // 매수 + / 매도 −  (예상 원화 유출)
+      if (usPending !== 0 && Math.sign(delta) === -Math.sign(usPending)) {
+        const explained = Math.sign(delta) * Math.min(Math.abs(delta), Math.abs(usPending));
+        delta -= explained;
+        await setUsCashflowKrw(env, usPending + explained); // 설명된 만큼 대기분에서 지운다
+        journal.push(
+          entry("cycle", `미국 주문 결제 ${explained < 0 ? "" : "+"}${Math.round(explained).toLocaleString("ko-KR")}원 확인 — 입출금이 아니라 미국 ${explained < 0 ? "매수 대금" : "매도 대금"}입니다.`),
+        );
+      }
+    }
     if (sameQty && Math.abs(delta) >= 300_000) {
       state.totalDepositKrw = Math.max(0, (state.totalDepositKrw ?? 0) + delta);
       state.baselineEquity += delta;
