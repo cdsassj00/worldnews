@@ -35,6 +35,7 @@ import { taCached } from "./ta";
 import { backtestResults } from "./backtest";
 import { briefIndex, briefPage, rssXml, sitemapXml } from "./rss";
 import { getVerdict } from "./verdict";
+import { briefCardSvg, dailyBrief } from "./brief";
 import { liveSensitivity, promoteSensitivity, rollbackSensitivity } from "./senslive";
 
 export { RadarDB } from "./radar";
@@ -609,6 +610,27 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
     assertTradeAuth(env, request);
     return json({ ok: true, state: await resetLedger(env) });
+  }
+
+  if (path === "/api/daily-brief") {
+    // 외부 발행 파이프라인(유튜브 등)용 장 마감 요약 — 공개 데이터만, 5분 캐시
+    const market = (url.searchParams.get("market") ?? "both").toUpperCase();
+    const m = market === "KR" || market === "US" ? (market as "KR" | "US") : "both";
+    const { data } = await cached(env, `brief:${m}`, 300, () => dailyBrief(env, m));
+    return json(data);
+  }
+
+  if (path === "/api/brief-card.svg") {
+    // 온톨로지 경로 카드 1280×720 — 발행 파이프라인이 <img>/캡처로 쓴다
+    const market = url.searchParams.get("market")?.toUpperCase() === "US" ? "US" : "KR";
+    const { data } = await cached(env, `brief:card:${market}`, 300, () => briefCardSvg(env, market));
+    return new Response(data, {
+      headers: {
+        "content-type": "image/svg+xml; charset=utf-8",
+        "cache-control": "public, max-age=300",
+        "access-control-allow-origin": "*",
+      },
+    });
   }
 
   if (path === "/api/backtest") {
