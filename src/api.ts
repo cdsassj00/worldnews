@@ -281,16 +281,16 @@ export interface AutoPlan {
   reserveKrw: number;
   /** 투자금 중 미국 보유분(미국 봇 원장 × 환율) */
   usValueKrw: number;
-  /** 미국 봇 요약 — 대시보드 🇺🇸 섹션 */
+  /** 미국 봇 요약 — 전부 KIS 해외 잔고 스냅샷 실측값 */
   us: {
     enabled: boolean;
     marketOpen: boolean;
     budgetKrw: number;
     valueKrw: number;
-    pendingKrw: number;
+    balanceAt: number;
     fx: number;
-    lastCycleAt: number;
     pnlKrw: number;
+    realizedKrw: number;
     positions: { code: string; name: string; qty: number; avgPriceUsd: number; priceUsd: number; pnlPct: number; valueKrw: number }[];
   };
   pnlKrw: number;

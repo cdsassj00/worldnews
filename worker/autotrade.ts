@@ -409,16 +409,19 @@ export interface AutoPlan {
   /** 그중 미국 보유분(미국 봇 원장 × 환율) */
   usValueKrw: number;
   cashKrw: number;
-  /** 미국 봇 요약 — 대시보드의 🇺🇸 섹션. 원장은 autotrade-us.ts 가 따로 관리한다. */
+  /** 미국 봇 요약 — 값은 전부 KIS 해외 잔고 스냅샷(auto:us:balance) 실측 */
   us: {
     enabled: boolean;
     marketOpen: boolean;
     budgetKrw: number;
     valueKrw: number;
-    pendingKrw: number;
+    /** KIS 잔고 조회 시각 — 이 시점 기준 값임을 화면에 밝힌다 */
+    balanceAt: number;
     fx: number;
-    lastCycleAt: number;
+    /** 보유 평가손익(원) — KIS 제공 */
     pnlKrw: number;
+    /** 봇 실현손익 누적(원) */
+    realizedKrw: number;
     positions: { code: string; name: string; qty: number; avgPriceUsd: number; priceUsd: number; pnlPct: number; valueKrw: number }[];
   };
   targetProgressPct: number;
@@ -651,33 +654,29 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   /* 미국 보유분(별도 원장) 평가액 — 국내 잔고 조회에는 잡히지 않으므로 총평가·투자금에
    * 더한다. 안 더하면 미국 매수 대금이 결제되는 날 '수익'이 −400만처럼 보인다.
    * 값·환율은 미국 사이클이 저장한 최신 관측값(장 마감 중엔 마지막 값)을 쓴다. */
-  let usValueKrw = 0;
-  let usFx = 1400;
-  type UsStateLite = {
-    positions?: Record<string, { code: string; name: string; qty: number; avgPrice: number; lastPrice?: number }>;
-    lastFx?: number;
-    lastValueUsd?: number;
-    lastCycleAt?: number;
+  /* ── 미국 실측 스냅샷 (auto:us:balance — KIS 해외 잔고 그대로) ──────────
+   * 2026-08-18 사용자 보고("수익 -748,587원, 계산이 맞냐")의 교훈: 결제 대기·현금
+   * 흐름을 추정으로 맞추려 하면 한국 D+2 정산·미국 결제·매도 대금이 겹치는 순간
+   * 반드시 어긋난다. 그래서 수익은 아래에서 **보유 평가손익+실현손익의 합**(전부
+   * KIS·체결 실측값)으로만 계산하고, 현금·결제 이동은 손익 계산에서 아예 뺀다. */
+  type UsSnap = {
+    at: number;
+    fx: number;
+    holdings: { symbol: string; name: string; qty: number; avgPrice: number; price: number; pnl: number; evalAmount: number }[];
+    totalEvalUsd: number;
+    holdingsPnlUsd: number;
+    realizedPnlUsd: number;
   };
-  let usState: UsStateLite | null = null;
+  let usSnap: UsSnap | null = null;
   try {
-    usState = (await env.CACHE.get("auto:us:state", "json")) as UsStateLite | null;
-    if (usState) {
-      if (usState.lastFx && usState.lastFx > 800) usFx = usState.lastFx;
-      const usd =
-        usState.lastValueUsd ?? Object.values(usState.positions ?? {}).reduce((s, p) => s + p.qty * p.avgPrice, 0);
-      usValueKrw = Math.round(usd * usFx);
-    }
-  } catch { /* 미국 원장이 없으면 0 */ }
+    usSnap = (await env.CACHE.get("auto:us:balance", "json")) as UsSnap | null;
+  } catch { /* 스냅샷 없으면 미국 0 취급 */ }
+  const usFx = usSnap?.fx && usSnap.fx > 800 ? usSnap.fx : 1400;
+  const usValueKrw = usSnap ? Math.round(usSnap.totalEvalUsd * usFx) : 0;
+  /** 미국 손익(원) = KIS 평가손익 + 봇 실현손익 */
+  const usPnlKrw = usSnap ? Math.round((usSnap.holdingsPnlUsd + (usSnap.realizedPnlUsd || 0)) * usFx) : 0;
 
-  /* 결제 대기 차감 — 미국 매수 대금이 아직 원화 예수금에서 안 빠졌으면(대기 중)
-   * 그 돈이 국내 총평가에 그대로 있으므로, 미국 보유분을 더할 때 같은 금액을 빼야
-   * 이중 계상이 안 된다. 결제가 관측되면 runCycle 이 대기분을 지워 자연히 0이 된다. */
-  const usPendingKrw = await getUsCashflowKrw(env);
   const deployed = deployedValue(state, priceOf);
-  const equity =
-    (account.connected ? account.totalEval : state.lastEquity || cfg.capitalKrw) + usValueKrw - usPendingKrw;
-  const baseline = state.baselineEquity || equity;
   const budget = Math.max(0, cfg.capitalKrw - reserveKrw - deployed);
 
   /* 손익은 "평가액 − 기준선"이 아니라 **보유 종목 평가손익 + 실현손익**으로 잰다.
@@ -685,7 +684,14 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
    * (2026-08-03 입금 400만이 +390만 수익으로, 08-05 정산 이동이 +189만 수익으로 계상).
    * 종목 평가손익은 계좌가 직접 주는 값이라 돈이 들어오고 나가도 흔들리지 않는다. */
   const holdingsPnl = account.connected ? account.holdings.reduce((sum, h) => sum + (h.pnl || 0), 0) : 0;
-  const pnl = account.connected ? holdingsPnl + (state.realizedPnl ?? 0) : equity - baseline;
+  const pnl = account.connected ? holdingsPnl + (state.realizedPnl ?? 0) : state.realizedPnl ?? 0;
+
+  /* 전체 수익(한국+미국) — 전부 실측: 한국 보유 평가손익(KIS) + 한국 실현손익(체결가)
+   * + 미국 평가손익(KIS) + 미국 실현손익(체결가). 현금·결제 이동은 여기 안 들어간다.
+   * '계좌' 표시값도 잔고 합산이 아니라 넣은 돈 + 이 수익으로 만든다 — 결제가 이동
+   * 중인 순간에도 수익이 절대 출렁이지 않는다(2026-08-18 -748,587원 왜곡의 재발 방지). */
+  const netProfit = pnl + usPnlKrw;
+  const equity = Math.round((state.totalDepositKrw ?? 0) + netProfit);
 
   /* 게이트 — 하나라도 막히면 매수는 나가지 않는다 */
   const blocked: string[] = [];
@@ -805,15 +811,13 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   if (skipped.length) notes.push(`자금 한도로 제외: ${skipped.join(" · ")}`);
   if (deployed > 0) notes.push(`운용 투입 ${Math.round(deployed).toLocaleString("ko-KR")}원 / 한도 ${cfg.capitalKrw.toLocaleString("ko-KR")}원`);
   if (reserveKrw > 0) notes.push(`미국 배분 ${reserveKrw.toLocaleString("ko-KR")}원은 국내 매수 예산에서 제외합니다(미국 자동매매 예산).`);
-  if (usValueKrw > 0) notes.push(`미국 보유분 ≈ ${usValueKrw.toLocaleString("ko-KR")}원을 총평가·투자금에 포함했습니다(미국 봇 원장 기준).`);
-  if (usPendingKrw > 0) notes.push(`미국 매수 대금 ${usPendingKrw.toLocaleString("ko-KR")}원은 결제 대기 중입니다 — 이미 미국 주식이 된 돈이라 현금에서 빼고 '주식'에만 넣었습니다.`);
+  if (usSnap) notes.push(`미국 보유분 ${usValueKrw.toLocaleString("ko-KR")}원은 KIS 해외 잔고 실측값입니다(환율 ${usFx.toLocaleString("ko-KR")}원, ${new Date(usSnap.at).toISOString().slice(11, 16)}Z 조회).`);
   if (isDryRun(env)) notes.push("ORDER_DRY_RUN=true — 주문은 검증만 하고 전송되지 않습니다.");
 
   /* 봇 성과와 기존 보유분을 분리한다. 계좌 전체 손익만 보면 봇이 잘하고 있어도
    * 원래 갖고 있던 종목의 등락에 묻혀 판단이 안 된다. 봇 지분은 계좌 보유 수량 중
    * 봇 장부 수량만큼을 비례 배분해 계산한다. */
   const deposit = state.totalDepositKrw ?? 0;
-  const netProfit = account.connected && deposit > 0 ? equity - deposit : 0;
 
   let botPnl = state.realizedPnl ?? 0;
   if (account.connected) {
@@ -840,38 +844,37 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
     botPnlKrw: Math.round(botPnl),
     otherPnlKrw: Math.round(pnl - botPnl),
     /* 사용자가 실제로 궁금한 네 숫자: 넣은 돈 / 주식 / 현금 / 수익.
-     * 수익 = 지금 계좌 평가금액 − 내가 넣은 돈. 여기엔 봇 매매 손익과
-     * 기존 보유 종목 등락이 모두 들어간다(계좌에 일어난 일 전부). */
+     * 수익 = 한국 평가손익(KIS) + 한국 실현손익 + 미국 평가손익(KIS) + 미국 실현손익.
+     * 잔고 합산·결제 추정은 쓰지 않는다 — '계좌'는 넣은 돈 + 수익으로 표시한다. */
     depositKrw: Math.round(deposit),
     netProfitKrw: Math.round(netProfit),
     netProfitPct: deposit > 0 ? round((netProfit / deposit) * 100, 2) : 0,
     investedKrw: Math.round((account.connected ? account.stockEval : deployed) + usValueKrw),
     usValueKrw,
+    /* 미국 봇 요약 — 전부 KIS 해외 잔고 스냅샷(auto:us:balance) 실측값 */
     us: {
       enabled: (env.US_AUTOTRADE_ENABLED ?? "false").toLowerCase() === "true",
       marketOpen: usMarketOpen(),
       budgetKrw: Math.round(reserveKrw),
       valueKrw: usValueKrw,
-      pendingKrw: Math.round(usPendingKrw),
+      balanceAt: usSnap?.at ?? 0,
       fx: usFx,
-      lastCycleAt: usState?.lastCycleAt ?? 0,
-      pnlKrw: Math.round(
-        Object.values(usState?.positions ?? {}).reduce(
-          (s, p) => s + p.qty * ((p.lastPrice ?? p.avgPrice) - p.avgPrice), 0) * usFx,
-      ),
-      positions: Object.values(usState?.positions ?? {}).map((p) => ({
-        code: p.code,
-        name: p.name,
-        qty: p.qty,
-        avgPriceUsd: round(p.avgPrice, 2),
-        priceUsd: round(p.lastPrice ?? p.avgPrice, 2),
-        pnlPct: p.avgPrice ? round((((p.lastPrice ?? p.avgPrice) - p.avgPrice) / p.avgPrice) * 100, 2) : 0,
-        valueKrw: Math.round(p.qty * (p.lastPrice ?? p.avgPrice) * usFx),
+      pnlKrw: usSnap ? Math.round(usSnap.holdingsPnlUsd * usFx) : 0,
+      realizedKrw: usSnap ? Math.round((usSnap.realizedPnlUsd || 0) * usFx) : 0,
+      positions: (usSnap?.holdings ?? []).map((h) => ({
+        code: h.symbol,
+        name: h.name || h.symbol,
+        qty: h.qty,
+        avgPriceUsd: round(h.avgPrice, 2),
+        priceUsd: round(h.price, 2),
+        pnlPct: h.avgPrice ? round(((h.price - h.avgPrice) / h.avgPrice) * 100, 2) : 0,
+        valueKrw: Math.round((h.evalAmount || h.qty * h.price) * usFx),
       })),
     },
-    /* 현금에서 미국 매수 결제 대기분을 뺀다 — 그 돈은 이미 미국 주식이 되어 '주식'에
-     * 잡혀 있다. 안 빼면 주식+현금이 계좌 총액보다 383만 커 보인다(2026-08-18 실측). */
-    cashKrw: Math.round(Math.max(0, (account.connected ? account.cash : 0) - usPendingKrw)),
+    /* 현금은 KIS 국내 주문가능현금 그대로 보여준다 — 결제 이동을 추정으로 빼거나
+     * 더하지 않는다. 주식+현금 단순합이 '계좌'와 잠시 다른 것은 결제(D+1~2) 이동
+     * 중인 돈 때문이며, 수익 계산에는 어떤 영향도 없다(화면 문구로 설명). */
+    cashKrw: Math.round(account.connected ? account.cash : 0),
     // 목표(+100만)는 봇이 벌어야 하는 돈이다 — 기존 보유분 등락은 목표 진행률에서 뺀다
     targetProgressPct: cfg.targetProfitKrw > 0 ? round((botPnl / cfg.targetProfitKrw) * 100, 1) : 0,
     engine: engineSel.id,

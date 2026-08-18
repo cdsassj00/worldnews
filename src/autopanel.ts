@@ -52,6 +52,25 @@ export class AutoPanel {
 
   constructor(deps: AutoPanelDeps) {
     this.deps = deps;
+    /* 실시간 최신화(2026-08-18 사용자 지시) — 화면이 보이는 동안 60초마다 계획을
+     * 다시 받는다. 서버 계획 캐시가 45초라 매번 새 숫자가 온다. 탭이 숨겨져 있거나
+     * 아직 한 번도 로드하지 않았거나 작업 중이면 건너뛴다. */
+    window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      if (!this.plan || this.busy) return;
+      if (!this.deps.root.isConnected || this.deps.root.closest("[hidden]")) return;
+      void this.refresh();
+    }, 60_000);
+  }
+
+  /** 조용한 갱신 — load()와 달리 "불러오는 중" 화면으로 갈아엎지 않는다 */
+  private async refresh(): Promise<void> {
+    try {
+      const [plan, journal] = await Promise.all([api.autoPlan(), api.autoJournal()]);
+      this.plan = plan;
+      this.journal = journal.items;
+      this.render();
+    } catch { /* 다음 주기에 재시도 — 조용한 갱신은 실패를 떠들지 않는다 */ }
   }
 
   async load(): Promise<void> {
@@ -435,16 +454,13 @@ export class AutoPanel {
       el("p", {
         class: "auto-sub",
         text: p.account.connected
-          ? `지금 계좌 ${fmtKrw(p.equity)} = 한국 주식 ${fmtKrw(krStockKrw)} + 미국 주식 ${fmtKrw(p.usValueKrw)} + 현금 ${fmtKrw(p.cashKrw)}`
+          ? `계좌 ${fmtKrw(p.equity)} = 넣은 돈 ${fmtKrw(p.depositKrw)} ${p.netProfitKrw >= 0 ? "+" : "−"} 손익 ${fmtKrw(Math.abs(p.netProfitKrw))}  ·  구성: 한국 주식 ${fmtKrw(krStockKrw)} · 미국 주식 ${fmtKrw(p.usValueKrw)} · 현금 ${fmtKrw(p.cashKrw)}`
           : "계좌 조회 실패로 표시할 수 없습니다",
       }),
       el("p", {
         class: "note",
-        text: `‘수익’은 넣은 돈 대비 지금 계좌 전체(한국+미국)의 증감입니다. 입출금은 사이클마다 자동 감지해 ‘넣은 돈’에 반영됩니다 — 따로 신고할 것이 없습니다.`,
+        text: `‘수익’은 추정 없이 실측값만 더한 것입니다: 한국 보유 평가손익(증권사 제공) + 한국 실현손익(체결가) + 미국 보유 평가손익(증권사 제공) + 미국 실현손익. 매수 대금이 결제(1~2영업일)로 이동하는 동안 ‘구성’ 합계가 계좌와 잠시 다를 수 있지만 수익에는 영향이 없습니다.`,
       }),
-      ...(p.us.pendingKrw > 0
-        ? [el("p", { class: "note", text: `※ 미국 매수 대금 ${fmtKrw(p.us.pendingKrw)}은 결제 대기 중 — 이미 미국 주식이 된 돈이라 현금에서 빼고 표시합니다.` })]
-        : []),
       ...(p.account.reason ? [el("p", { class: "note", text: `※ ${p.account.reason}` })] : []),
     ]);
   }
@@ -512,18 +528,19 @@ export class AutoPanel {
           ]),
         )
       : [el("p", { class: "note", text: "미국 봇이 보유한 종목이 없습니다. 개장(22:30 KST) 후 첫 사이클부터 매수를 검토합니다." })];
+    const totalPnl = u.pnlKrw + u.realizedKrw;
     return el("section", { class: "auto-block" }, [
       el("h3", {}, [el("span", { text: "미국 봇 자금 · 보유 종목" })]),
       el("div", { class: "auto-grid" }, [
         stat("예산(미국 몫)", fmtKrw(u.budgetKrw)),
         stat("주식에 투입", fmtKrw(investedKrw)),
-        stat("매수 여유", fmtKrw(freeKrw)),
-        stat("평가손익", `${u.pnlKrw >= 0 ? "+" : ""}${fmtKrw(u.pnlKrw)}`, dirClass(u.pnlKrw)),
+        stat("평가손익(보유)", `${u.pnlKrw >= 0 ? "+" : ""}${fmtKrw(u.pnlKrw)}`, dirClass(u.pnlKrw)),
+        stat("손익(실현 포함)", `${totalPnl >= 0 ? "+" : ""}${fmtKrw(totalPnl)}`, dirClass(totalPnl)),
       ]),
       el("div", { class: "pos-list" }, rows),
       el("p", {
         class: "note",
-        text: `종목 선정은 온톨로지 미국 점수 상위(문턱 0.35), 통합증거금으로 원화 매수 · 적용 환율 ${u.fx.toLocaleString("ko-KR")}원 · 손절·익절·정지 규칙은 한국과 동일 · 마지막 사이클 ${u.lastCycleAt ? timeAgo(u.lastCycleAt) : "-"}`,
+        text: `보유·평가손익은 KIS 해외 잔고 실측값입니다 (${u.balanceAt ? timeAgo(u.balanceAt) + " 조회" : "조회 전"}, 장중 15분마다 갱신 · 방금 낸 주문은 다음 갱신에 반영). 매수 여유 ${fmtKrw(freeKrw)} · 환율 ${u.fx.toLocaleString("ko-KR")}원 · 손절·익절·정지 규칙은 한국과 동일.`,
       }),
     ]);
   }

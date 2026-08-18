@@ -86,6 +86,8 @@ const MIN_TURNOVER_USD = 3_000_000;
 
 const STATE_KEY = "auto:us:state";
 const LAST_KEY = "auto:us:last";
+/** KIS 해외 잔고 스냅샷 — 대시보드 수익 계산의 유일한 미국 출처(추정 금지, 실측만) */
+const BALANCE_KEY = "auto:us:balance";
 
 /* ── 상태 ─────────────────────────────────────────────── */
 
@@ -502,6 +504,22 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
     2,
   );
   await saveUsState(env, state);
+
+  /* KIS 잔고 스냅샷 — 대시보드는 이 실측값만 본다. 손익도 KIS 가 주는 값(frcr_evlu_pfls)
+   * 그대로다. 우리 장부(avgPrice 추정)로 계산해 만든 왜곡(2026-08-18 사용자 보고
+   * "-748,587원, 계산이 맞냐")의 재발 방지. 방금 낸 주문은 다음 사이클(≤15분)에 잡힌다. */
+  await env.CACHE.put(
+    BALANCE_KEY,
+    JSON.stringify({
+      at: Date.now(),
+      fx,
+      holdings: bal.holdings,
+      totalEvalUsd: round(bal.holdings.reduce((s, h) => s + (h.evalAmount || h.qty * h.price), 0), 2),
+      holdingsPnlUsd: round(bal.holdings.reduce((s, h) => s + (h.pnl || 0), 0), 2),
+      realizedPnlUsd: state.realizedPnlUsd,
+    }),
+    { expirationTtl: 7 * 86_400 },
+  ).catch(() => undefined);
   await appendJournal(env, journal);
   const noteParts = [
     shadow ? "그림자" : "실주문",

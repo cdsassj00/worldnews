@@ -428,7 +428,9 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     // "버튼이 안 눌린다"로 보인다. 메모리 캐시는 아이솔레이트마다 따로라
     // 무효화만으로는 못 막고, 키를 갈라야 확실하다.
     const sel = await getEngineSel(env);
-    const { data } = await cached(env, `auto:plan:${engineKey(sel)}`, 120, () => buildPlan(env));
+    // 45초 캐시 — "실시간 최신화" 지시(2026-08-18). 내부의 전략 5분·계좌 60초 캐시가
+    // 무거운 호출을 이미 흡수하므로 짧게 가도 서브리퀘스트 부담이 없다.
+    const { data } = await cached(env, `auto:plan:${engineKey(sel)}`, 45, () => buildPlan(env));
     return json(data);
   }
 
