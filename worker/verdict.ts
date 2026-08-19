@@ -73,7 +73,7 @@ export interface OntoVerdict {
 const MACRO_KO: Record<string, string> = {
   OIL: "유가", USDKRW: "원/달러", US10Y: "미 10년 금리", SEMI: "반도체 업황",
   KOSPI: "코스피", CHINA: "중국 증시", VIX: "변동성(VIX)", GOLD: "금",
-  DXY: "달러인덱스", COPPER: "구리", NASDAQ: "나스닥", BTC: "비트코인",
+  DXY: "달러인덱스", COPPER: "구리", NASDAQ: "나스닥", BTC: "비트코인", US2Y: "미 단기금리", JPY: "엔/달러",
 };
 
 /** 시장별 위험회피: 변동성 급등 + 시장 베타 하락 */
@@ -130,6 +130,25 @@ function judgeRegime(macro: MacroSignal[], market: VerdictMarket, flow: Investor
   }
   const r = v("US10Y");
   if (Math.abs(r) >= 0.1) lines.push(`금리: 미 10년 ${r > 0 ? "상승" : "하락"} 압력 — ${r > 0 ? "은행·보험 순풍, 성장주(바이오·인터넷·기술) 역풍" : "성장주 밸류에이션 부담 완화"}`);
+  /* 장단기 커브 — 단기(연준 정책 기대)와 장기(성장·물가 기대)의 방향이 갈릴 때가 정보다.
+   * 단기↑·장기↓ = 긴축 우려 속 경기 둔화 헤지(평탄화·역전 압력), 단기↓·장기↑ = 완화 기대 속 경기 회복(스티프닝). */
+  const r2 = v("US2Y");
+  if (Math.abs(r2) >= 0.15 || (Math.abs(r) >= 0.1 && Math.abs(r2) >= 0.1 && Math.sign(r) !== Math.sign(r2))) {
+    const curve =
+      r2 > 0 && r <= 0 ? "단기↑·장기↓ — 긴축 우려 속 경기 둔화 헤지(커브 평탄화 압력, 위험자산 경계)"
+      : r2 < 0 && r >= 0 ? "단기↓·장기↑ — 완화 기대 속 경기 회복(커브 스티프닝, 위험자산 우호)"
+      : r2 > 0 ? "단기 금리 상승 — 연준 긴축 기대 강화" : "단기 금리 하락 — 연준 완화 기대";
+    lines.push(`장단기 커브: ${curve}`);
+  }
+  /* 엔캐리 — 일본 금리의 실전 전파 변수. 엔/달러 급락(엔 강세)은 엔캐리 청산 경계 신호다. */
+  const jp = v("JPY");
+  if (Math.abs(jp) >= 0.15) {
+    lines.push(
+      jp < 0
+        ? `엔화: 엔/달러 급락(엔 강세) — 엔캐리 트레이드 청산 경계, 글로벌 위험자산에 매도 압력`
+        : `엔화: 엔/달러 상승(엔 약세) — 캐리 유지, 위험자산에 우호적이나 일본발 금리 인상 뉴스에 취약`,
+    );
+  }
   const d = v("DXY");
   if (Math.abs(d) >= 0.1) lines.push(`달러: ${d > 0 ? "강세 — 신흥국 자금 이탈·원화 약세 압력" : "약세 — 위험자산에 우호"}`);
   const o = v("OIL"), c = v("COPPER");

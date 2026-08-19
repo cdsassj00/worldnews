@@ -23,7 +23,9 @@ export type MacroId =
   | "DXY" // 달러인덱스 (달러 강세 = 신흥국 자금 이탈)
   | "COPPER" // 구리 (실물 경기 선행 — "닥터 코퍼")
   | "NASDAQ" // 나스닥 (미 기술주 위험선호)
-  | "BTC"; // 비트코인 (글로벌 위험선호·유동성 온도계)
+  | "BTC" // 비트코인 (글로벌 위험선호·유동성 온도계)
+  | "US2Y" // 미 단기금리 (13주 국채 — 연준 정책 기대. 10년과 함께 장단기 커브를 만든다)
+  | "JPY"; // 엔/달러 (하락=엔 강세 — 엔캐리 트레이드 청산 경계)
 
 export interface MacroFactor {
   id: MacroId;
@@ -51,6 +53,13 @@ export const MACRO: MacroFactor[] = [
   { id: "COPPER", nameKo: "구리", symbol: "HG=F", scale: 5, upMeansKo: "실물 경기 회복(닥터 코퍼)" },
   { id: "NASDAQ", nameKo: "나스닥", symbol: "^IXIC", scale: 4, upMeansKo: "미 기술주 위험선호" },
   { id: "BTC", nameKo: "비트코인", symbol: "BTC-USD", scale: 10, upMeansKo: "글로벌 위험선호·유동성" },
+  /* 2026-08-19 추가(사용자 지시 "단기·장기물, 일본 금리도 감안하라") — 역시 관측·인과
+   * 설명용부터. 단기금리는 연준 정책 기대의 온도계라 10년물과 함께 장단기 커브를 만들고,
+   * 엔/달러는 일본 금리의 실전 전파 변수다(BOJ 금리 인상 → 엔 강세 → 엔캐리 청산 →
+   * 글로벌 위험자산 매도 — 2024-08-05 블랙먼데이의 경로). JGB 시세는 야후에 없어
+   * 전파 변수인 환율을 직접 본다. */
+  { id: "US2Y", nameKo: "미 단기금리", symbol: "^IRX", scale: 4, upMeansKo: "연준 긴축 기대 — 성장주 부담, 급등 시 위험자산 전반 압박" },
+  { id: "JPY", nameKo: "엔/달러", symbol: "JPY=X", scale: 2, upMeansKo: "엔 약세(캐리 유지) — 급락(엔 강세)은 엔캐리 청산 경계" },
 ];
 
 /**
@@ -58,7 +67,7 @@ export const MACRO: MacroFactor[] = [
  * 3D 그래프 배치와 설명에 쓴다.
  */
 export const MACRO_CLUSTERS: { nameKo: string; ids: MacroId[] }[] = [
-  { nameKo: "금리·통화", ids: ["US10Y", "DXY", "USDKRW"] },
+  { nameKo: "금리·통화", ids: ["US10Y", "US2Y", "DXY", "USDKRW", "JPY"] },
   { nameKo: "원자재·원가", ids: ["OIL", "COPPER", "GOLD"] },
   { nameKo: "위험선호", ids: ["VIX", "NASDAQ", "BTC", "KOSPI"] },
   { nameKo: "실물·업황", ids: ["CHINA", "SEMI"] },
@@ -297,6 +306,11 @@ export const MACRO_LINKS: { from: MacroId; to: MacroId; sign: 1 | -1; ko: string
   { from: "US10Y", to: "NASDAQ", sign: -1, ko: "금리 상승은 미래 이익의 할인율을 높여 기술주 밸류에이션을 압박합니다" },
   { from: "VIX", to: "NASDAQ", sign: -1, ko: "위험회피 국면에서는 고밸류 기술주가 먼저 팔립니다" },
   { from: "SEMI", to: "NASDAQ", sign: 1, ko: "반도체는 나스닥의 심장 — 업황 지수가 기술주 전반의 방향을 이끕니다" },
+  // 단기금리·엔캐리 사슬 (2026-08-19)
+  { from: "US2Y", to: "NASDAQ", sign: -1, ko: "단기금리는 연준 정책 기대의 온도계 — 급등하면 긴축 우려로 성장주가 먼저 눌립니다" },
+  { from: "US2Y", to: "VIX", sign: 1, ko: "정책 금리 기대가 급변하면 시장 변동성이 커집니다" },
+  { from: "JPY", to: "NASDAQ", sign: 1, ko: "엔/달러 급락(엔 강세)은 엔캐리 트레이드 청산을 부르고, 빌린 엔으로 산 위험자산이 같이 팔립니다" },
+  { from: "JPY", to: "KOSPI", sign: 1, ko: "엔캐리 청산 국면에서는 외국인 자금이 신흥국 증시에서 먼저 빠집니다" },
 ];
 
 /**

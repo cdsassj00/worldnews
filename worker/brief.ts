@@ -27,7 +27,7 @@ type BriefMarket = "KR" | "US";
 const MACRO_KO: Record<string, string> = {
   OIL: "유가", USDKRW: "원/달러", US10Y: "미 10년 금리", SEMI: "반도체 업황",
   KOSPI: "코스피", CHINA: "중국 증시", VIX: "변동성", GOLD: "금",
-  DXY: "달러인덱스", COPPER: "구리", NASDAQ: "나스닥", BTC: "비트코인",
+  DXY: "달러인덱스", COPPER: "구리", NASDAQ: "나스닥", BTC: "비트코인", US2Y: "미 단기금리", JPY: "엔/달러",
 };
 
 const DISCLAIMER =
