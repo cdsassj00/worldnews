@@ -436,7 +436,11 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
   } catch { /* 지수 조회 실패 — 필터 통과 */ }
 
   if (!blocked.length) {
-    const fresh = Date.now() - 6 * 3600_000;
+    /* 신선 창 20시간 — 6시간이면 개장 직후 후보 풀이 말라 매수가 통째로 막힌다
+     * (2026-08-19 실측: 개장 15분 후 풀 20/50. 밤새는 시간당 크론 1번이라 스캔이 못 따라감).
+     * 미국 종목은 장외에는 가격이 안 움직이므로 전일 장중 스캔값도 선별용으로 유효하고,
+     * 실제 지정가는 주문 직전 실시간 시세(usQuote)로 잡으므로 낡은 가격에 사는 일은 없다. */
+    const fresh = Date.now() - 20 * 3600_000;
     const cands = qRows
       .filter((r) => r.scannedAt >= fresh && r.turnover >= MIN_TURNOVER_USD && r.price > 0)
       .map((r) => ({ r, score: ontoByCode.get(r.code) }))
