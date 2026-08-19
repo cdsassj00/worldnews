@@ -229,6 +229,30 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
     dropped,
     previous,
     speech: buildSpeech(market === "US" ? "미국" : "한국", verdict, picks),
+    /** 엔진(분석 방식)별 추천 — 온톨로지·수급·차트·융합 각각 "무엇을 보고 골랐는지"
+     * 근거 문장 포함. 전략실 리그와 같은 점수 함수라 화면·리그와 어긋나지 않는다.
+     * (2026-08-19 유튜브 파이프라인 요청: 엔진별 추천 + 근거) */
+    engines: lab
+      ? lab.strategies.map((st) => ({
+          id: st.id,
+          nameKo: st.nameKo,
+          tagKo: st.tagKo,
+          descKo: st.descKo,
+          live: st.liveNow,
+          leaguePnlPct: st.pnlPct,
+          picks: st.picks.map((p) => ({
+            code: p.code,
+            ticker: market === "US" ? p.code : null,
+            name: p.name,
+            sector: p.sector ?? null,
+            score: p.score,
+            price: p.price,
+            priceLabel: `${p.price.toLocaleString("ko-KR")}${cur}`,
+            changePct: p.changePct,
+            reasons: p.reasons,
+          })),
+        }))
+      : null,
     league: lab
       ? {
           currency: lab.currency,

@@ -684,7 +684,7 @@ export interface LabStrategyView {
   /** 최근 이탈(매도) 종목 */
   exits: QuantTrade[];
   /** 지금 이 전략의 점수 상위 종목 — "이 전략이 지금 고른 종목" 쇼케이스 */
-  picks: { code: string; name: string; sector: string; score: number; price: number; changePct: number }[];
+  picks: { code: string; name: string; sector: string; score: number; price: number; changePct: number; reasons: string[] }[];
   equityCurve: { d: string; e: number }[];
   tradeStats: { total: number; wins: number; winRate: number };
   haltedPermanent: boolean;
@@ -712,21 +712,48 @@ export async function labOverview(env: Env, market: QuantMarket = "KR"): Promise
 
   // 전략별 현재 추천 종목 — 사이클과 같은 점수 함수를 써서 화면과 매매가 어긋나지 않게 한다
   const ontoByCode = new Map<string, number>();
+  // 온톨로지 근거 문장 — 데일리 브리프의 "왜 이 종목인가"에 쓴다
+  const ontoReasons = new Map<string, string[]>();
   try {
     const { radarTop } = await import("./radarscan");
-    const top = await radarTop(env, 500, "desc") as { items?: { code: string; score: number; market: string }[] };
+    const top = (await radarTop(env, 500, "desc")) as {
+      items?: { code: string; score: number; market: string; reasons?: { text: string }[] }[];
+    };
     for (const it of top.items ?? []) {
-      if ((market === "US") === (it.market === "US")) ontoByCode.set(it.code, it.score);
+      if ((market === "US") === (it.market === "US")) {
+        ontoByCode.set(it.code, it.score);
+        ontoReasons.set(it.code, (it.reasons ?? []).slice(0, 2).map((x) => x.text));
+      }
     }
   } catch { /* 추천만 빈다 */ }
   const rowsAll = Object.values(store.rows).filter((r) => rowMarket(r) === market && turnoverOk(r, c.minTurnover));
+  /** 엔진별 근거 — 각 전략이 "무엇을 보고" 이 종목을 골랐는지 실제 계산 값으로 설명한다 */
+  const reasonsFor = (id: LabId, r: QuantRow): string[] => {
+    const quantR = (r.reasons ?? []).slice(0, 2).map((x) => x.text);
+    const ontoR = ontoReasons.get(r.code) ?? [];
+    switch (id) {
+      case "onto": return ontoR.length ? ontoR : ["온톨로지 레이더 점수 상위 (경로 상세는 스캔 후 제공)"];
+      case "quant": return quantR;
+      case "ta": return [`차트 거장 13종 전략 합의 점수 ${r.taScore !== undefined ? (r.taScore >= 0 ? "+" : "") + r.taScore.toFixed(2) : "측정 전"} (이평·MACD·일목·터틀 등)`];
+      case "fusion": {
+        const o = ontoByCode.get(r.code), q = r.scores["breakout"];
+        return [
+          ...(o !== undefined && q !== undefined ? [`온톨로지 ${o >= 0 ? "+" : ""}${o.toFixed(2)} 와 수급 ${q >= 0 ? "+" : ""}${q.toFixed(2)} 가 모두 긍정 — 반반 평균`] : []),
+          ...(ontoR.slice(0, 1)), ...(quantR.slice(0, 1)),
+        ];
+      }
+    }
+  };
   const picksFor = (id: LabId) =>
     rowsAll
       .map((r) => ({ r, score: labScore(id, r, ontoByCode) }))
       .filter((x): x is { r: QuantRow; score: number } => x.score !== undefined)
       .sort((a, b) => b.score - a.score)
       .slice(0, 5)
-      .map(({ r, score }) => ({ code: r.code, name: r.name, sector: r.sector, score: round(score, 3), price: r.price, changePct: r.changePct }));
+      .map(({ r, score }) => ({
+        code: r.code, name: r.name, sector: r.sector, score: round(score, 3), price: r.price, changePct: r.changePct,
+        reasons: reasonsFor(id, r),
+      }));
 
   const strategies: LabStrategyView[] = [];
   for (const st of LAB_STRATEGIES) {
