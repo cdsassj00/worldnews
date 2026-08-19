@@ -83,3 +83,20 @@ GET https://stockontology.cc/api/brief-card.svg?market=KR&ratio=9:16  # 720×128
 ## 4) 주의
 - 계좌·주문·실계좌 손익은 절대 포함되지 않음(공개 데이터만).
 - 수익창출 채널에서 종목추천 반복 발행은 유사투자자문업 신고 대상이 될 수 있음 — 무료·비수익 + 면책 고지 권장.
+
+## 5) 장면(Scene) API — 영상용 화면 (v3 방안 A)
+
+```
+GET /api/scene.svg?market=KR|US&view=overview          # 전체 그래프 (거시→섹터→종목 3층)
+GET /api/scene.svg?market=KR&view=sector:정유화학        # 섹터 하나 강조 + 인과 화살표 + 근거
+GET /api/scene.svg?market=KR&view=stock:010950         # 종목 상세: 합성 점수 분해(0.35/0.45/0.2) + 온톨로지 경로 + 근거  ← 매일 5회용
+GET /api/scene.svg?market=KR&view=league               # 전략실 리그 4엔진 카드
+GET /api/scene.svg?view=backtest                       # 백테스트 성적표 (7전략 × 두 시장, 챔피언 🏆)
+공통 옵션: &animate=1  → 간선 3초 흐름 루프(SMIL) — 브라우저 재생·화면 녹화용. 래스터화 시엔 빼세요.
+```
+
+- **1920×1080 고정, 완성본만 응답** — 대기·ready 플래그 불필요, UI 크롬 없음, 배치 결정론(정렬 데이터 기반).
+- SVG → PNG: `sharp(svg).png()` 또는 `resvg` 한 줄. **브라우저 불필요** (Pretendard 웹폰트만 온라인 필요 — 오프라인이면 시스템 산세리프 폴백).
+- `view=stock:` 은 6자리 한국 코드 또는 미국 티커. 없는 종목/섹터는 404.
+- 캐시 5분 · CORS `*` · 공개 데이터만. **매매 일지(손절 기록) 장면은 제공하지 않습니다** — 실계좌 데이터는 운영자 전용이라 API 로 내보내지 않는 원칙입니다(대표 영상용은 운영자가 직접 캡처).
+- 쇼츠 세로 구도는 기존 `brief-card.svg?ratio=9:16` 사용.

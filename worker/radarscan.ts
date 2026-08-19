@@ -26,12 +26,20 @@ function stub(env: Env) {
 
 const ALL_SEEDS: RadarTicker[] = [...(seedData as RadarTicker[]), ...(usSeedData as RadarTicker[])];
 
+/** 시드 버전 — 종목 수가 그대로여도 섹터 라벨 같은 속성이 바뀌면 올린다.
+ * 재시드는 upsert 라 안전하고, 이 값이 바뀌면 tickers 테이블 속성이 갱신된다.
+ * (2026-08-20: 코스닥 미분류 120종목 섹터 배정 — 수 불변이라 버전으로 강제) */
+const SEED_VERSION = "v2-sectors-2026-08-20";
+
 export async function radarSeedIfNeeded(env: Env): Promise<number> {
   const s = stub(env);
   if (!s) return 0;
+  const seededVer = await env.CACHE.get("radar:seedver").catch(() => null);
   const status = await s.status();
-  if (status.tickers >= ALL_SEEDS.length) return status.tickers;
-  return s.seed(ALL_SEEDS);
+  if (status.tickers >= ALL_SEEDS.length && seededVer === SEED_VERSION) return status.tickers;
+  const n = await s.seed(ALL_SEEDS);
+  await env.CACHE.put("radar:seedver", SEED_VERSION).catch(() => undefined);
+  return n;
 }
 
 /** 거시 신호 (전략과 같은 계산·같은 캐시 경로) */

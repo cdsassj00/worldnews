@@ -36,6 +36,7 @@ import { backtestResults } from "./backtest";
 import { briefIndex, briefPage, rssXml, sitemapXml } from "./rss";
 import { getVerdict } from "./verdict";
 import { briefCardSvg, dailyBrief } from "./brief";
+import { sceneSvg } from "./scenes";
 import { liveSensitivity, promoteSensitivity, rollbackSensitivity } from "./senslive";
 
 export { RadarDB } from "./radar";
@@ -631,6 +632,23 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     const date = url.searchParams.get("date") ?? undefined;
     const { data } = await cached(env, `brief:v2:${m}:${date ?? "today"}`, 300, () => dailyBrief(env, m, date));
     return json(data);
+  }
+
+  if (path === "/api/scene.svg") {
+    // 영상 파이프라인용 장면 렌더 — 공개 데이터만(결론·리그·백테스트), 5분 캐시
+    const market = url.searchParams.get("market")?.toUpperCase() === "US" ? "US" : "KR";
+    const view = url.searchParams.get("view") ?? "overview";
+    const animate = url.searchParams.get("animate") === "1";
+    const { data } = await cached(env, `scene:v1:${market}:${view}:${animate ? 1 : 0}`, 300, () =>
+      sceneSvg(env, market, view, animate),
+    );
+    return new Response(data, {
+      headers: {
+        "content-type": "image/svg+xml; charset=utf-8",
+        "cache-control": "public, max-age=300",
+        "access-control-allow-origin": "*",
+      },
+    });
   }
 
   if (path === "/api/brief-card.svg") {

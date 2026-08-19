@@ -90,7 +90,7 @@ const KR_ONLY_NODES = new Set<MacroId>(["KOSPI", "USDKRW"]);
 /** ② 지금 실제로 작동한 인과 사슬만 문장으로 */
 function activeCausalChains(macro: MacroSignal[], market: VerdictMarket): string[] {
   const byId = new Map(macro.map((m) => [m.id, m]));
-  const out: { text: string; strength: number }[] = [];
+  const out: { text: string; strength: number; krAnchored: boolean }[] = [];
   for (const l of MACRO_LINKS) {
     if (market === "US" && (KR_ONLY_NODES.has(l.from) || KR_ONLY_NODES.has(l.to))) continue;
     const from = byId.get(l.from);
@@ -104,9 +104,24 @@ function activeCausalChains(macro: MacroSignal[], market: VerdictMarket): string
     out.push({
       text: `${MACRO_KO[l.from]} ${from.changePct >= 0 ? "+" : ""}${from.changePct}% → ${MACRO_KO[l.to]} ${to.changePct >= 0 ? "+" : ""}${to.changePct}% — ${l.ko}`,
       strength: Math.abs(fv) + Math.abs(tv),
+      krAnchored: KR_ONLY_NODES.has(l.from) || KR_ONLY_NODES.has(l.to),
     });
   }
-  return out.sort((a, b) => b.strength - a.strength).slice(0, 4).map((x) => x.text);
+  out.sort((a, b) => b.strength - a.strength);
+  /* 한국 브리프의 균형 — 글로벌 사슬(나스닥·금리·VIX)이 강한 날엔 상위 4개가 전부
+   * 글로벌로 채워져 "한국 얘기가 한 줄도 없는 한국 브리프"가 된다(2026-08-20 파이프라인
+   * 보고). 국내 닻(코스피·원/달러) 사슬이 작동 중이면 최소 2개는 반드시 섞는다. */
+  if (market === "KR") {
+    const kr = out.filter((x) => x.krAnchored);
+    const globalOnly = out.filter((x) => !x.krAnchored);
+    const picked = [...kr.slice(0, 2), ...globalOnly];
+    const rest = out.filter((x) => !picked.slice(0, 4).includes(x));
+    return [...picked.slice(0, 4), ...rest]
+      .slice(0, 4)
+      .sort((a, b) => b.strength - a.strength)
+      .map((x) => x.text);
+  }
+  return out.slice(0, 4).map((x) => x.text);
 }
 
 /** ③ 국면 판정 — 축별 상태를 종합해 사람이 읽는 문장으로 */

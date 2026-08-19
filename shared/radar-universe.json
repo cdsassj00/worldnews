@@ -124,7 +124,7 @@
   "symbol": "001440.KS",
   "name": "대한전선",
   "market": "KOSPI",
-  "sector": null,
+  "sector": "전력설비",
   "src": "k200:9"
  },
  {
@@ -356,7 +356,7 @@
   "symbol": "006260.KS",
   "name": "LS",
   "market": "KOSPI",
-  "sector": null,
+  "sector": "전력설비",
   "src": "k200:9"
  },
  {
@@ -612,7 +612,7 @@
   "symbol": "012750.KS",
   "name": "에스원",
   "market": "KOSPI",
-  "sector": null,
+  "sector": "인터넷",
   "src": "k200:9"
  },
  {
@@ -908,7 +908,7 @@
   "symbol": "047050.KS",
   "name": "포스코인터내셔널",
   "market": "KOSPI",
-  "sector": null,
+  "sector": "철강",
   "src": "k200:9"
  },
  {
@@ -916,7 +916,7 @@
   "symbol": "047810.KS",
   "name": "한국항공우주",
   "market": "KOSPI",
-  "sector": null,
+  "sector": "방산",
   "src": "k200:9"
  },
  {
@@ -996,7 +996,7 @@
   "symbol": "066970.KS",
   "name": "엘앤에프",
   "market": "KOSPI",
-  "sector": null,
+  "sector": "2차전지",
   "src": "k200:9"
  },
  {
@@ -1508,7 +1508,7 @@
   "symbol": "361610.KS",
   "name": "SK아이이테크놀로지",
   "market": "KOSPI",
-  "sector": null,
+  "sector": "2차전지",
   "src": "k200:9"
  },
  {
@@ -1556,7 +1556,7 @@
   "symbol": "443060.KS",
   "name": "HD현대마린솔루션",
   "market": "KOSPI",
-  "sector": null,
+  "sector": "조선",
   "src": "k200:9"
  },
  {
@@ -1564,7 +1564,7 @@
   "symbol": "450080.KS",
   "name": "에코프로머티",
   "market": "KOSPI",
-  "sector": null,
+  "sector": "2차전지",
   "src": "k200:9"
  },
  {
@@ -1604,7 +1604,7 @@
   "symbol": "000250.KQ",
   "name": "삼천당제약",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -1612,7 +1612,7 @@
   "symbol": "0009K0.KQ",
   "name": "에임드바이오",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -1620,7 +1620,7 @@
   "symbol": "003380.KQ",
   "name": "하림지주",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "유통소비",
   "src": "kq150"
  },
  {
@@ -1628,7 +1628,7 @@
   "symbol": "005290.KQ",
   "name": "동진쎄미켐",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -1644,7 +1644,7 @@
   "symbol": "007390.KQ",
   "name": "네이처셀",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -1652,7 +1652,7 @@
   "symbol": "009520.KQ",
   "name": "포스코엠텍",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "철강",
   "src": "kq150"
  },
  {
@@ -1660,7 +1660,7 @@
   "symbol": "014620.KQ",
   "name": "성광벤드",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "조선",
   "src": "kq150"
  },
  {
@@ -1668,7 +1668,7 @@
   "symbol": "015750.KQ",
   "name": "성우하이텍",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "자동차",
   "src": "kq150"
  },
  {
@@ -1676,7 +1676,7 @@
   "symbol": "018290.KQ",
   "name": "브이티",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "유통소비",
   "src": "kq150"
  },
  {
@@ -1700,7 +1700,7 @@
   "symbol": "025980.KQ",
   "name": "아난티",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "유통소비",
   "src": "kq150"
  },
  {
@@ -1708,7 +1708,7 @@
   "symbol": "028300.KQ",
   "name": "HLB",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -1716,7 +1716,7 @@
   "symbol": "030520.KQ",
   "name": "한컴",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "인터넷",
   "src": "kq150"
  },
  {
@@ -1724,7 +1724,7 @@
   "symbol": "030530.KQ",
   "name": "원익홀딩스",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -1732,7 +1732,7 @@
   "symbol": "031980.KQ",
   "name": "피에스케이홀딩스",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -1740,7 +1740,7 @@
   "symbol": "032190.KQ",
   "name": "다우데이타",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "인터넷",
   "src": "kq150"
  },
  {
@@ -1764,7 +1764,7 @@
   "symbol": "033100.KQ",
   "name": "제룡전기",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "전력설비",
   "src": "kq150"
  },
  {
@@ -1772,7 +1772,7 @@
   "symbol": "033500.KQ",
   "name": "동성화인텍",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "조선",
   "src": "kq150"
  },
  {
@@ -1780,7 +1780,7 @@
   "symbol": "035760.KQ",
   "name": "CJ ENM",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "게임엔터",
   "src": "kq150"
  },
  {
@@ -1796,7 +1796,7 @@
   "symbol": "036540.KQ",
   "name": "SFA반도체",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -1804,7 +1804,7 @@
   "symbol": "036620.KQ",
   "name": "감성코퍼레이션",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "유통소비",
   "src": "kq150"
  },
  {
@@ -1812,7 +1812,7 @@
   "symbol": "036810.KQ",
   "name": "에프에스티",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -1820,7 +1820,7 @@
   "symbol": "036830.KQ",
   "name": "솔브레인홀딩스",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -1828,7 +1828,7 @@
   "symbol": "036930.KQ",
   "name": "주성엔지니어링",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -1836,7 +1836,7 @@
   "symbol": "038500.KQ",
   "name": "삼표시멘트",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "건설",
   "src": "kq150"
  },
  {
@@ -1844,7 +1844,7 @@
   "symbol": "039030.KQ",
   "name": "이오테크닉스",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -1852,7 +1852,7 @@
   "symbol": "039200.KQ",
   "name": "오스코텍",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -1876,7 +1876,7 @@
   "symbol": "042000.KQ",
   "name": "카페24",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "인터넷",
   "src": "kq150"
  },
  {
@@ -1892,7 +1892,7 @@
   "symbol": "048410.KQ",
   "name": "현대바이오",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -1908,7 +1908,7 @@
   "symbol": "052400.KQ",
   "name": "코나아이",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "인터넷",
   "src": "kq150"
  },
  {
@@ -1916,7 +1916,7 @@
   "symbol": "053800.KQ",
   "name": "안랩",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "인터넷",
   "src": "kq150"
  },
  {
@@ -1956,7 +1956,7 @@
   "symbol": "060250.KQ",
   "name": "NHN KCP",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "인터넷",
   "src": "kq150"
  },
  {
@@ -1964,7 +1964,7 @@
   "symbol": "060280.KQ",
   "name": "큐렉소",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -1972,7 +1972,7 @@
   "symbol": "060370.KQ",
   "name": "LS마린솔루션",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "조선",
   "src": "kq150"
  },
  {
@@ -1980,7 +1980,7 @@
   "symbol": "064760.KQ",
   "name": "티씨케이",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -1996,7 +1996,7 @@
   "symbol": "067160.KQ",
   "name": "SOOP",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "게임엔터",
   "src": "kq150"
  },
  {
@@ -2004,7 +2004,7 @@
   "symbol": "067310.KQ",
   "name": "하나마이크론",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2012,7 +2012,7 @@
   "symbol": "068760.KQ",
   "name": "셀트리온제약",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2020,7 +2020,7 @@
   "symbol": "069080.KQ",
   "name": "웹젠",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "게임엔터",
   "src": "kq150"
  },
  {
@@ -2028,7 +2028,7 @@
   "symbol": "074600.KQ",
   "name": "원익QnC",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2036,7 +2036,7 @@
   "symbol": "078340.KQ",
   "name": "컴투스",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "게임엔터",
   "src": "kq150"
  },
  {
@@ -2044,7 +2044,7 @@
   "symbol": "078600.KQ",
   "name": "대주전자재료",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "2차전지",
   "src": "kq150"
  },
  {
@@ -2052,7 +2052,7 @@
   "symbol": "080220.KQ",
   "name": "제주반도체",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2060,7 +2060,7 @@
   "symbol": "082270.KQ",
   "name": "젬백스",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2068,7 +2068,7 @@
   "symbol": "082920.KQ",
   "name": "비츠로셀",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "방산",
   "src": "kq150"
  },
  {
@@ -2076,7 +2076,7 @@
   "symbol": "083650.KQ",
   "name": "비에이치아이",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "전력설비",
   "src": "kq150"
  },
  {
@@ -2084,7 +2084,7 @@
   "symbol": "084370.KQ",
   "name": "유진테크",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2092,7 +2092,7 @@
   "symbol": "085660.KQ",
   "name": "차바이오텍",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2108,7 +2108,7 @@
   "symbol": "087010.KQ",
   "name": "펩트론",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2116,7 +2116,7 @@
   "symbol": "089030.KQ",
   "name": "테크윙",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2148,7 +2148,7 @@
   "symbol": "095340.KQ",
   "name": "ISC",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2156,7 +2156,7 @@
   "symbol": "095610.KQ",
   "name": "테스",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2164,7 +2164,7 @@
   "symbol": "095660.KQ",
   "name": "네오위즈",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "게임엔터",
   "src": "kq150"
  },
  {
@@ -2172,7 +2172,7 @@
   "symbol": "096530.KQ",
   "name": "씨젠",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2188,7 +2188,7 @@
   "symbol": "099320.KQ",
   "name": "쎄트렉아이",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "방산",
   "src": "kq150"
  },
  {
@@ -2204,7 +2204,7 @@
   "symbol": "101490.KQ",
   "name": "에스앤에스텍",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2212,7 +2212,7 @@
   "symbol": "101730.KQ",
   "name": "위메이드맥스",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "게임엔터",
   "src": "kq150"
  },
  {
@@ -2228,7 +2228,7 @@
   "symbol": "112040.KQ",
   "name": "위메이드",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "게임엔터",
   "src": "kq150"
  },
  {
@@ -2236,7 +2236,7 @@
   "symbol": "121600.KQ",
   "name": "나노신소재",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "2차전지",
   "src": "kq150"
  },
  {
@@ -2244,7 +2244,7 @@
   "symbol": "122870.KQ",
   "name": "와이지엔터테인먼트",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "게임엔터",
   "src": "kq150"
  },
  {
@@ -2268,7 +2268,7 @@
   "symbol": "131290.KQ",
   "name": "티에스이",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2276,7 +2276,7 @@
   "symbol": "131970.KQ",
   "name": "두산테스나",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2284,7 +2284,7 @@
   "symbol": "137400.KQ",
   "name": "피엔티",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "2차전지",
   "src": "kq150"
  },
  {
@@ -2300,7 +2300,7 @@
   "symbol": "141080.KQ",
   "name": "리가켐바이오",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2308,7 +2308,7 @@
   "symbol": "145020.KQ",
   "name": "휴젤",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2324,7 +2324,7 @@
   "symbol": "166090.KQ",
   "name": "하나머티리얼즈",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2348,7 +2348,7 @@
   "symbol": "183300.KQ",
   "name": "코미코",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2364,7 +2364,7 @@
   "symbol": "194480.KQ",
   "name": "데브시스터즈",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "게임엔터",
   "src": "kq150"
  },
  {
@@ -2372,7 +2372,7 @@
   "symbol": "195940.KQ",
   "name": "HK이노엔",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2404,7 +2404,7 @@
   "symbol": "213420.KQ",
   "name": "덕산네오룩스",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2412,7 +2412,7 @@
   "symbol": "214150.KQ",
   "name": "클래시스",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2420,7 +2420,7 @@
   "symbol": "214370.KQ",
   "name": "케어젠",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2428,7 +2428,7 @@
   "symbol": "214430.KQ",
   "name": "아이쓰리시스템",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "방산",
   "src": "kq150"
  },
  {
@@ -2436,7 +2436,7 @@
   "symbol": "214450.KQ",
   "name": "파마리서치",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2444,7 +2444,7 @@
   "symbol": "215200.KQ",
   "name": "메가스터디교육",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "인터넷",
   "src": "kq150"
  },
  {
@@ -2452,7 +2452,7 @@
   "symbol": "218410.KQ",
   "name": "RFHIC",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "방산",
   "src": "kq150"
  },
  {
@@ -2468,7 +2468,7 @@
   "symbol": "222800.KQ",
   "name": "심텍",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2476,7 +2476,7 @@
   "symbol": "225570.KQ",
   "name": "넥슨게임즈",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "게임엔터",
   "src": "kq150"
  },
  {
@@ -2484,7 +2484,7 @@
   "symbol": "226950.KQ",
   "name": "올릭스",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2492,7 +2492,7 @@
   "symbol": "232140.KQ",
   "name": "와이씨",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2500,7 +2500,7 @@
   "symbol": "237690.KQ",
   "name": "에스티팜",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2508,7 +2508,7 @@
   "symbol": "240810.KQ",
   "name": "원익IPS",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2516,7 +2516,7 @@
   "symbol": "241710.KQ",
   "name": "코스메카코리아",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "유통소비",
   "src": "kq150"
  },
  {
@@ -2532,7 +2532,7 @@
   "symbol": "251970.KQ",
   "name": "펌텍코리아",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "유통소비",
   "src": "kq150"
  },
  {
@@ -2540,7 +2540,7 @@
   "symbol": "253450.KQ",
   "name": "스튜디오드래곤",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "게임엔터",
   "src": "kq150"
  },
  {
@@ -2548,7 +2548,7 @@
   "symbol": "253590.KQ",
   "name": "네오셈",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2556,7 +2556,7 @@
   "symbol": "257720.KQ",
   "name": "실리콘투",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "유통소비",
   "src": "kq150"
  },
  {
@@ -2572,7 +2572,7 @@
   "symbol": "272290.KQ",
   "name": "이녹스첨단소재",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2588,7 +2588,7 @@
   "symbol": "278280.KQ",
   "name": "천보",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "2차전지",
   "src": "kq150"
  },
  {
@@ -2596,7 +2596,7 @@
   "symbol": "281740.KQ",
   "name": "레이크머티리얼즈",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2604,7 +2604,7 @@
   "symbol": "290650.KQ",
   "name": "엘앤씨바이오",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2612,7 +2612,7 @@
   "symbol": "293490.KQ",
   "name": "카카오게임즈",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "게임엔터",
   "src": "kq150"
  },
  {
@@ -2628,7 +2628,7 @@
   "symbol": "298380.KQ",
   "name": "에이비엘바이오",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2636,7 +2636,7 @@
   "symbol": "310210.KQ",
   "name": "보로노이",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2652,7 +2652,7 @@
   "symbol": "319660.KQ",
   "name": "피에스케이",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2660,7 +2660,7 @@
   "symbol": "323280.KQ",
   "name": "태성",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "전력설비",
   "src": "kq150"
  },
  {
@@ -2668,7 +2668,7 @@
   "symbol": "328130.KQ",
   "name": "루닛",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2676,7 +2676,7 @@
   "symbol": "347850.KQ",
   "name": "디앤디파마텍",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2684,7 +2684,7 @@
   "symbol": "348210.KQ",
   "name": "넥스틴",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2692,7 +2692,7 @@
   "symbol": "348370.KQ",
   "name": "엔켐",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "2차전지",
   "src": "kq150"
  },
  {
@@ -2700,7 +2700,7 @@
   "symbol": "352480.KQ",
   "name": "씨앤씨인터내셔널",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "유통소비",
   "src": "kq150"
  },
  {
@@ -2708,7 +2708,7 @@
   "symbol": "357780.KQ",
   "name": "솔브레인",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2716,7 +2716,7 @@
   "symbol": "358570.KQ",
   "name": "지아이이노베이션",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2724,7 +2724,7 @@
   "symbol": "376300.KQ",
   "name": "디어유",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "게임엔터",
   "src": "kq150"
  },
  {
@@ -2740,7 +2740,7 @@
   "symbol": "399720.KQ",
   "name": "가온칩스",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2748,7 +2748,7 @@
   "symbol": "403870.KQ",
   "name": "HPSP",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2756,7 +2756,7 @@
   "symbol": "417200.KQ",
   "name": "LS머트리얼즈",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "전력설비",
   "src": "kq150"
  },
  {
@@ -2764,7 +2764,7 @@
   "symbol": "420770.KQ",
   "name": "기가비스",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "반도체",
   "src": "kq150"
  },
  {
@@ -2772,7 +2772,7 @@
   "symbol": "437730.KQ",
   "name": "삼현",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "자동차",
   "src": "kq150"
  },
  {
@@ -2780,7 +2780,7 @@
   "symbol": "445680.KQ",
   "name": "큐리옥스바이오시스템즈",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  },
  {
@@ -2788,7 +2788,7 @@
   "symbol": "466100.KQ",
   "name": "클로봇",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "인터넷",
   "src": "kq150"
  },
  {
@@ -2796,7 +2796,7 @@
   "symbol": "475830.KQ",
   "name": "오름테라퓨틱",
   "market": "KOSDAQ",
-  "sector": null,
+  "sector": "바이오",
   "src": "kq150"
  }
 ]
