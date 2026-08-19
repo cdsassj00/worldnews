@@ -1,20 +1,26 @@
 /**
  * 데일리 브리프 — 외부 발행 파이프라인(유튜브 자동발행 등)용 공개 API.
  *
- *   /api/daily-brief?market=KR|US|both   장 마감 요약 JSON (대본 재료)
- *   /api/brief-card.svg?market=KR|US     온톨로지 경로 카드 1280×720 (썸네일·본문 이미지)
+ *   /api/daily-brief?market=KR|US|both[&date=YYYY-MM-DD]  장 마감 요약 JSON (대본 재료)
+ *   /api/brief-card.svg?market=KR|US[&ratio=9:16]         온톨로지 경로 카드 (썸네일·본문 이미지)
  *
  * 원칙
  *  - 공개 데이터만 담는다(결론·리그·백테스트). 계좌·주문·실계좌 손익은 절대 넣지 않는다.
- *  - 필드 계약을 지킨다 — 외부 파이프라인이 구독하므로 이름을 바꾸면 안 깨질 수 없다.
- *    필드 추가는 자유, 삭제·개명은 금지.
- *  - 이미지는 서버가 SVG 로 직접 그린다. 3D 화면 스크린샷은 서버에서 재현이 불안정하고,
- *    같은 데이터로 그린 2D 인과 다이어그램이 더 읽기 쉽다.
+ *  - 필드 계약을 지킨다 — 추가는 자유, 삭제·개명은 금지 (docs/DAILY-BRIEF-API.md).
+ *  - 어제 추천은 오늘 채점해서 공개한다(previous 블록). 기준은 응답에 문장으로 명시한다.
+ *
+ * 2026-08-19 유튜브 파이프라인 요청서 반영:
+ *  1-1 미국 causal 분리(verdict.ts) · 1-2 섹터 라벨 교정(radar-universe.json)
+ *  1-3 picks[].reasons · 2-1 previous(어제 채점) · 2-2 date 파라미터(과거는 보관본, 없으면 404)
+ *  2-3 basis · 2-4 isNew/daysInList/dropped · 2-5 speech · 2-6 ticker · 3 폰트·9:16
  */
 import type { Env } from "./env";
 import { getVerdict, type OntoVerdict } from "./verdict";
-import { labOverview } from "./quant";
+import { labOverview, usMarketOpen } from "./quant";
+import { marketPhase } from "./autotrade";
+import { radarTop } from "./radarscan";
 import { backtestResults } from "./backtest";
+import { ApiError, round } from "./util";
 
 type BriefMarket = "KR" | "US";
 
@@ -27,20 +33,155 @@ const MACRO_KO: Record<string, string> = {
 const DISCLAIMER =
   "본 내용은 운영자 개인 계좌 운용 기록의 공개이며 투자 자문·권유가 아닙니다. 시뮬레이션·백테스트는 과거 데이터 기반으로 미래 수익을 보장하지 않습니다. 투자 판단과 책임은 이용자 본인에게 있습니다.";
 
+const BASIS_NOTE =
+  "종목 시세·점수는 레이더 최근 스캔값(장중 최대 약 1시간 전), 거시 신호는 호출 시점 기준입니다. 어제 채점(previous)의 기준가는 어제 마지막 브리프 생성 시점의 시세, 비교가는 이번 응답 생성 시점의 시세입니다 — 유리한 기준을 고르지 않았습니다.";
+
 function kstDate(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
-/* ── JSON 브리프 ─────────────────────────────────────── */
+/** 스냅샷 기준 상태 — 장중이면 intraday, 아니면 KST 시각으로 전/후 판별 */
+function basisOf(market: BriefMarket): "prev_close" | "intraday" | "post_close" {
+  if (market === "KR") {
+    const ph = marketPhase();
+    if (ph.open) return "intraday";
+    const h = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Seoul", hour: "2-digit", hour12: false }).format(new Date()));
+    return h < 9 ? "prev_close" : "post_close";
+  }
+  if (usMarketOpen()) return "intraday";
+  const hNY = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "America/New_York", hour: "2-digit", hour12: false }).format(new Date()));
+  return hNY < 9 ? "prev_close" : "post_close";
+}
 
-async function marketBrief(env: Env, market: BriefMarket) {
-  const [verdict, lab] = await Promise.all([
+/* ── 발행 이력 (어제 채점·연속일·과거 조회의 근거) ────────── */
+
+const histKey = (market: BriefMarket, date: string) => `brief:hist:${market}:${date}`;
+const HIST_TTL = 45 * 86_400;
+
+interface StoredBrief {
+  date: string;
+  market: BriefMarket;
+  generatedAt: number;
+  basis: string;
+  picks: { code: string; name: string; sector: string | null; score: number; price: number }[];
+  /** 과거 조회(?date=)용 전체 본문 */
+  full: unknown;
+}
+
+async function loadHist(env: Env, market: BriefMarket, date: string): Promise<StoredBrief | null> {
+  return (await env.CACHE.get(histKey(market, date), "json").catch(() => null)) as StoredBrief | null;
+}
+
+/** 오늘보다 앞선 가장 최근 보관본 — 주말·공휴일을 건너뛰기 위해 최대 7일 거슬러 본다 */
+async function latestHistBefore(env: Env, market: BriefMarket, today: string): Promise<StoredBrief | null> {
+  const base = new Date(`${today}T00:00:00Z`);
+  for (let i = 1; i <= 7; i++) {
+    const d = new Date(base.getTime() - i * 86_400_000).toISOString().slice(0, 10);
+    const hit = await loadHist(env, market, d);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/* ── 나레이션(TTS) 문장 ─────────────────────────────── */
+
+/** 표시용 문자열의 기호를 소리 내어 읽을 수 있게 정리 */
+function speakable(s: string): string {
+  return s
+    .replace(/([+-]?\d+(?:\.\d+)?)%/g, (_, n: string) => `${n.replace("+", "플러스 ").replace("-", "마이너스 ")}퍼센트`)
+    .replace(/([+-])(\d+(?:\.\d+)?)/g, (_, sign: string, n: string) => `${sign === "+" ? "플러스" : "마이너스"} ${n}`)
+    .replace(/\s*→\s*/g, ", 그 결과 ")
+    .replace(/\s*·\s*/g, ", ")
+    .replace(/\s*—\s*/g, ". ")
+    .replace(/[()]/g, " ")
+    .replace(/\s+([,.])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function buildSpeech(marketKo: string, v: OntoVerdict, picks: { name: string; sector: string | null; score: number; reasons: string[] }[]) {
+  const regimeKo = v.regime.label.replace("—", ",");
+  return {
+    opening: `오늘 ${marketKo} 시장은 ${speakable(regimeKo)}입니다.`,
+    causal: v.causal.map((c) => speakable(c) + "."),
+    picks: picks.map((p, i) => {
+      const why = p.reasons[0] ? ` ${speakable(p.reasons[0])}.` : "";
+      return `${["첫", "두", "세", "네", "다섯"][i] ?? i + 1} 번째는 ${p.name}입니다. ${p.sector ?? "미분류"} 업종이고 종합 점수는 ${p.score.toFixed(2)}점입니다.${why}`;
+    }),
+    closing: "이 내용은 자동매매 시스템의 기록 공개이며 투자 자문이나 권유가 아닙니다. 투자 판단과 책임은 여러분 각자에게 있습니다.",
+  };
+}
+
+/* ── 시장 브리프 ─────────────────────────────────────── */
+
+async function marketBrief(env: Env, market: BriefMarket, today: string) {
+  const [verdict, lab, prevStored] = await Promise.all([
     getVerdict(env, market),
     labOverview(env, market).catch(() => null),
+    latestHistBefore(env, market, today),
   ]);
   const cur = market === "US" ? "$" : "원";
-  const pick = (s: OntoVerdict["stocks"]["recommend"][number]) => ({
+
+  /* 어제 채점 — 현재가는 레이더의 최신 스캔값으로 조회 */
+  let previous: {
+    date: string;
+    basisNote: string;
+    picks: { code: string; name: string; recPrice: number; nowPrice: number | null; changePct: number | null }[];
+    hitRate: number | null;
+    avgChangePct: number | null;
+  } | null = null;
+  const priceByCode = new Map<string, number>();
+  try {
+    const top = (await radarTop(env, 600, "desc", undefined, market === "US" ? "US" : undefined)) as {
+      items?: { code: string; market: string; price: number }[];
+    };
+    for (const it of top.items ?? []) {
+      if ((market === "US") === (it.market === "US")) priceByCode.set(it.code, it.price);
+    }
+  } catch { /* 채점만 빈다 */ }
+  if (prevStored?.picks.length) {
+    const graded = prevStored.picks.map((p) => {
+      const now = priceByCode.get(p.code) ?? null;
+      const chg = now && p.price ? round(((now - p.price) / p.price) * 100, 2) : null;
+      return { code: p.code, name: p.name, recPrice: p.price, nowPrice: now, changePct: chg };
+    });
+    const scored = graded.filter((g) => g.changePct !== null) as { changePct: number }[];
+    previous = {
+      date: prevStored.date,
+      basisNote: "기준가 = 추천일 마지막 브리프 생성 시점의 시세 · 비교가 = 이번 응답 생성 시점의 레이더 시세",
+      picks: graded,
+      hitRate: scored.length ? round(scored.filter((g) => g.changePct > 0).length / scored.length, 2) : null,
+      avgChangePct: scored.length ? round(scored.reduce((s, g) => s + g.changePct, 0) / scored.length, 2) : null,
+    };
+  }
+
+  /* 신규/연속일 — 이력 체인을 한 번만 걸어(최대 5거래일) 연속 등장일을 센다 */
+  const prevCodes = new Set(prevStored?.picks.map((p) => p.code) ?? []);
+  const chain: StoredBrief[] = [];
+  if (prevStored) {
+    chain.push(prevStored);
+    let cursor = prevStored.date;
+    for (let i = 0; i < 4; i++) {
+      const st = await latestHistBefore(env, market, cursor);
+      if (!st) break;
+      chain.push(st);
+      cursor = st.date;
+    }
+  }
+  const daysIn = (code: string): number => {
+    let days = 1;
+    for (const st of chain) {
+      if (!st.picks.some((p) => p.code === code)) break;
+      days++;
+    }
+    return days;
+  };
+
+  const rawPicks = verdict.stocks.recommend.slice(0, 5);
+  const picks = rawPicks.map((s) => ({
     code: s.code,
+    /** 미국은 거래소 티커 그대로, 한국은 6자리 종목코드라 별도 티커 없음 */
+    ticker: market === "US" ? s.code : null,
     name: s.name,
     sector: s.sector,
     score: s.score,
@@ -48,82 +189,138 @@ async function marketBrief(env: Env, market: BriefMarket) {
     priceLabel: `${s.price.toLocaleString("ko-KR")}${cur}`,
     changePct: s.changePct,
     reason: s.reason,
-  });
-  return {
+    reasons: s.reasons ?? [],
+    isNew: prevStored ? !prevCodes.has(s.code) : true,
+    daysInList: prevStored && prevCodes.has(s.code) ? daysIn(s.code) : 1,
+  }));
+  const todayCodes = new Set(picks.map((p) => p.code));
+  const dropped = (prevStored?.picks ?? [])
+    .filter((p) => !todayCodes.has(p.code))
+    .map((p) => ({
+      code: p.code,
+      name: p.name,
+      reason: priceByCode.has(p.code) ? "오늘 점수가 상위권에서 밀렸습니다" : "오늘 후보 집계에 없습니다",
+    }));
+
+  const brief = {
     market,
     marketKo: market === "US" ? "미국" : "한국",
+    basis: basisOf(market),
+    basisNote: BASIS_NOTE,
     regime: verdict.regime,
     causal: verdict.causal,
     sectors: {
       recommend: verdict.sectors.recommend.map((s) => ({ sector: s.sector, score: s.score, reasons: s.reasons })),
       avoid: verdict.sectors.avoid.map((s) => ({ sector: s.sector, score: s.score, reasons: s.reasons })),
     },
-    picks: verdict.stocks.recommend.slice(0, 5).map(pick),
-    avoid: verdict.stocks.avoid.slice(0, 3).map(pick),
+    picks,
+    avoid: verdict.stocks.avoid.slice(0, 3).map((s) => ({
+      code: s.code,
+      ticker: market === "US" ? s.code : null,
+      name: s.name,
+      sector: s.sector,
+      score: s.score,
+      price: s.price,
+      priceLabel: `${s.price.toLocaleString("ko-KR")}${cur}`,
+      changePct: s.changePct,
+      reason: s.reason,
+      reasons: s.reasons ?? [],
+    })),
+    dropped,
+    previous,
+    speech: buildSpeech(market === "US" ? "미국" : "한국", verdict, picks),
     league: lab
       ? {
           currency: lab.currency,
           strategies: lab.strategies.map((st) => ({
-            nameKo: st.nameKo,
-            tagKo: st.tagKo,
-            live: st.liveNow,
-            pnlPct: st.pnlPct,
-            equity: st.equity,
+            nameKo: st.nameKo, tagKo: st.tagKo, live: st.liveNow, pnlPct: st.pnlPct, equity: st.equity,
           })),
         }
       : null,
+    /** 밀리초 epoch */
     dataAsOf: verdict.dataAsOf,
     generatedAt: verdict.generatedAt,
   };
+
+  /* 오늘 이력 저장 — 같은 날짜는 마지막 계산으로 덮어쓴다(내일 채점의 기준가가 된다) */
+  await env.CACHE.put(
+    histKey(market, today),
+    JSON.stringify({
+      date: today, market, generatedAt: Date.now(), basis: brief.basis,
+      picks: rawPicks.map((s) => ({ code: s.code, name: s.name, sector: s.sector, score: s.score, price: s.price })),
+      full: brief,
+    } satisfies StoredBrief),
+    { expirationTtl: HIST_TTL },
+  ).catch(() => undefined);
+
+  return brief;
 }
 
-/**
- * 데일리 브리프 — 필드 계약은 docs 로 외부에 공유된다. 삭제·개명 금지.
- */
-export async function dailyBrief(env: Env, market: "KR" | "US" | "both") {
+/* ── 공개 응답 ───────────────────────────────────────── */
+
+export async function dailyBrief(env: Env, market: "KR" | "US" | "both", date?: string) {
+  const today = kstDate();
+
+  /* 과거 날짜 — 보관본을 그대로 돌려주고, 없으면 404 로 명확히 거절한다
+   * (조용히 오늘 것을 주는 게 가장 위험하다 — 2026-08-19 파이프라인 보고 2-2) */
+  if (date && date !== today) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new ApiError(400, "bad_date", { hint: "date=YYYY-MM-DD" });
+    const markets: BriefMarket[] = market === "both" ? ["KR", "US"] : [market];
+    const stored = await Promise.all(markets.map((m) => loadHist(env, m, date)));
+    const briefs = stored.filter(Boolean).map((s) => s!.full);
+    if (!briefs.length) throw new ApiError(404, "no_archive_for_date", { date, hint: "보관은 최초 발행일부터 45일" });
+    return { version: 1, date, archived: true, site: "https://stockontology.cc", briefs, disclaimer: DISCLAIMER };
+  }
+
   const markets: BriefMarket[] = market === "both" ? ["KR", "US"] : [market];
-  const briefs = await Promise.all(markets.map((m) => marketBrief(env, m)));
+  const briefs = await Promise.all(markets.map((m) => marketBrief(env, m, today)));
   const bt = backtestResults() as { measuredAt?: string } | null;
   const kr = briefs.find((b) => b.market === "KR");
-  const first = briefs[0];
-  const titleBase = kr ?? first;
+  const titleBase = kr ?? briefs[0];
   return {
     version: 1,
-    date: kstDate(),
+    date: today,
+    archived: false,
     site: "https://stockontology.cc",
-    /** 영상 제목·태그 제안 — 파이프라인이 그대로 쓰거나 가공한다 */
     video: {
-      titleSuggestion: `${kstDate()} 온톨로지 데일리 — ${titleBase.regime.label}${titleBase.picks[0] ? ` · ${titleBase.picks[0].name} 외 ${Math.max(0, titleBase.picks.length - 1)}종목` : ""}`,
+      titleSuggestion: `${today} 온톨로지 데일리 — ${titleBase.regime.label}${titleBase.picks[0] ? ` · ${titleBase.picks[0].name} 외 ${Math.max(0, titleBase.picks.length - 1)}종목` : ""}`,
       hashtags: ["#온톨로지", "#주식자동매매", "#AI투자", "#매크로", ...(titleBase.picks.slice(0, 3).map((p) => `#${p.name.replace(/\s+/g, "")}`))],
     },
     images: markets.map((m) => ({
       market: m,
-      /** 1280×720 온톨로지 경로 카드 — <img> 로 쓰거나 브라우저로 렌더 후 캡처 */
       cardSvg: `https://stockontology.cc/api/brief-card.svg?market=${m}`,
+      cardSvgShorts: `https://stockontology.cc/api/brief-card.svg?market=${m}&ratio=9:16`,
     })),
     briefs,
+    /** 백테스트 재측정은 매 거래일 16:40 KST — 오전 응답에서는 전 거래일 값인 게 정상 */
     backtestMeasuredAt: bt?.measuredAt ?? null,
     disclaimer: DISCLAIMER,
   };
 }
 
-/* ── 온톨로지 경로 카드 (1280×720 SVG) ─────────────────── */
+/* ── 온톨로지 경로 카드 (SVG) ─────────────────────────── */
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const fmtSigned = (v: number, d = 2) => `${v >= 0 ? "+" : ""}${v.toFixed(d)}`;
+/** 래스터화 환경에 Pretendard 가 없어도 같은 글꼴로 굳게 웹폰트를 명시한다 */
+const FONT_IMPORT = `<style>@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css');</style>`;
+const FONT = `font-family="'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif"`;
+const GOLD = "#d9a441", UP = "#e0524a", DOWN = "#3b82f6", FG = "#e2e8f0", DIM = "#94a3b8";
 
-/**
- * 거시 → 섹터 → 종목 인과 경로를 2D 로 그린 발행용 카드.
- * 사이트 3D 무대와 같은 데이터(getVerdict)라 내용이 어긋나지 않는다.
- */
-export async function briefCardSvg(env: Env, market: BriefMarket): Promise<string> {
+export async function briefCardSvg(env: Env, market: BriefMarket, ratio: "16:9" | "9:16" = "16:9"): Promise<string> {
   const v = await getVerdict(env, market);
-  const W = 1280, H = 720;
-  const GOLD = "#d9a441", UP = "#e0524a", DOWN = "#3b82f6", FG = "#e2e8f0", DIM = "#94a3b8";
-  const toneColor = v.regime.tone === "risk-on" ? UP : v.regime.tone === "risk-off" ? DOWN : GOLD;
-  const font = `font-family="'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif"`;
+  return ratio === "9:16" ? cardPortrait(v, market) : cardLandscape(v, market);
+}
 
-  // 왼쪽 다이어그램: 추천 섹터 상위 2개와 그 거시 기여, 각 섹터의 추천 종목
+function cardHeader(v: OntoVerdict, market: BriefMarket, W: number, titleSize: number) {
+  const toneColor = v.regime.tone === "risk-on" ? UP : v.regime.tone === "risk-off" ? DOWN : GOLD;
+  const mkLabel = market === "US" ? "미국 시장" : "한국 시장";
+  return { toneColor, mkLabel, dateStr: kstDate(), W, titleSize };
+}
+
+function cardLandscape(v: OntoVerdict, market: BriefMarket): string {
+  const W = 1280, H = 720;
+  const { toneColor, mkLabel, dateStr } = cardHeader(v, market, W, 42);
   const sectors = v.sectors.recommend.slice(0, 2);
   const stocksBySector = (sec: string) => v.stocks.recommend.filter((s) => s.sector === sec).slice(0, 2);
   const macroIds = [...new Set(sectors.flatMap((s) => s.edges.slice(0, 3).map((e) => e.macroId)))].slice(0, 4);
@@ -132,11 +329,10 @@ export async function briefCardSvg(env: Env, market: BriefMarket): Promise<strin
   const nodeW = 250, nodeH = 54;
   const diaTop = 190, diaH = 430;
   const yFor = (i: number, n: number) => diaTop + diaH / 2 - (n * (nodeH + 26)) / 2 + i * (nodeH + 26) + nodeH / 2;
-
   const macroY = new Map(macroIds.map((id, i) => [id, yFor(i, macroIds.length)]));
   const sectorY = new Map(sectors.map((s, i) => [s.sector, yFor(i, sectors.length)]));
-  const tickers = sectors.flatMap((s) => stocksBySector(s.sector).map((t) => ({ t, sector: s.sector })));
-  const tickerY = new Map(tickers.map((x, i) => [x.t.code, yFor(i, Math.max(1, tickers.length))]));
+  const tickers = sectors.flatMap((s) => stocksBySector(s.sector));
+  const tickerY = new Map(tickers.map((x, i) => [x.code, yFor(i, Math.max(1, tickers.length))]));
 
   let edges = "";
   for (const s of sectors) {
@@ -148,9 +344,9 @@ export async function briefCardSvg(env: Env, market: BriefMarket): Promise<strin
       const w = 1.5 + Math.min(6, Math.abs(e.contribution) * 9);
       const x1 = colX.macro + nodeW, x2 = colX.sector;
       edges += `<path d="M${x1},${my} C${x1 + 60},${my} ${x2 - 60},${sy} ${x2},${sy}" fill="none" stroke="${cls}" stroke-width="${w.toFixed(1)}" opacity="0.75"/>`;
-      edges += `<text x="${(x1 + x2) / 2}" y="${(my + sy) / 2 - 8}" text-anchor="middle" fill="${cls}" font-size="15" font-weight="700" ${font}>${fmtSigned(e.contribution)}</text>`;
+      edges += `<text x="${(x1 + x2) / 2}" y="${(my + sy) / 2 - 8}" text-anchor="middle" fill="${cls}" font-size="15" font-weight="700" ${FONT}>${fmtSigned(e.contribution)}</text>`;
     }
-    for (const { t } of stocksBySector(s.sector).map((t) => ({ t }))) {
+    for (const t of stocksBySector(s.sector)) {
       const ty = tickerY.get(t.code)!;
       const x1 = colX.sector + nodeW, x2 = colX.ticker;
       edges += `<path d="M${x1},${sy} C${x1 + 50},${sy} ${x2 - 50},${ty} ${x2},${ty}" fill="none" stroke="${GOLD}" stroke-width="2.5" opacity="0.7"/>`;
@@ -159,51 +355,93 @@ export async function briefCardSvg(env: Env, market: BriefMarket): Promise<strin
 
   const node = (x: number, y: number, line1: string, line2: string, accent: string) =>
     `<g><rect x="${x}" y="${y - nodeH / 2}" width="${nodeW}" height="${nodeH}" rx="10" fill="rgba(15,23,42,0.9)" stroke="${accent}" stroke-width="1.5"/>` +
-    `<text x="${x + 14}" y="${y - 6}" fill="${FG}" font-size="19" font-weight="800" ${font}>${esc(line1)}</text>` +
-    `<text x="${x + 14}" y="${y + 17}" fill="${DIM}" font-size="14" ${font}>${esc(line2)}</text></g>`;
+    `<text x="${x + 14}" y="${y - 6}" fill="${FG}" font-size="19" font-weight="800" ${FONT}>${esc(line1)}</text>` +
+    `<text x="${x + 14}" y="${y + 17}" fill="${DIM}" font-size="14" ${FONT}>${esc(line2)}</text></g>`;
 
   let nodes = "";
   for (const [id, y] of macroY) nodes += node(colX.macro, y, MACRO_KO[id] ?? id, "거시요인", DIM);
   for (const s of sectors) nodes += node(colX.sector, sectorY.get(s.sector)!, s.sector, `섹터 점수 ${fmtSigned(s.score)}`, GOLD);
-  for (const { t } of tickers) {
-    nodes += node(colX.ticker, tickerY.get(t.code)!, t.name, `점수 ${fmtSigned(t.score)} · ${fmtSigned(t.changePct, 1)}%`, t.score >= 0 ? UP : DOWN);
-  }
+  for (const t of tickers) nodes += node(colX.ticker, tickerY.get(t.code)!, t.name, `점수 ${fmtSigned(t.score)} · ${fmtSigned(t.changePct, 1)}%`, t.score >= 0 ? UP : DOWN);
 
-  // 오른쪽: 추천 TOP5 / 회피
   const listX = 990;
   const rows = v.stocks.recommend.slice(0, 5);
   const avoid = v.stocks.avoid.slice(0, 2);
-  let list = `<text x="${listX}" y="${diaTop + 6}" fill="${GOLD}" font-size="18" font-weight="900" ${font}>오늘의 온톨로지 추천</text>`;
+  let list = `<text x="${listX}" y="${diaTop + 6}" fill="${GOLD}" font-size="18" font-weight="900" ${FONT}>오늘의 온톨로지 추천</text>`;
   rows.forEach((s, i) => {
     const y = diaTop + 46 + i * 58;
-    list += `<text x="${listX}" y="${y}" fill="${FG}" font-size="21" font-weight="800" ${font}>${i + 1}. ${esc(s.name)}</text>`;
-    list += `<text x="${listX}" y="${y + 22}" fill="${DIM}" font-size="14" ${font}>${esc(s.sector ?? "")} · 점수 ${fmtSigned(s.score)} · ${fmtSigned(s.changePct, 1)}%</text>`;
+    list += `<text x="${listX}" y="${y}" fill="${FG}" font-size="21" font-weight="800" ${FONT}>${i + 1}. ${esc(s.name)}</text>`;
+    list += `<text x="${listX}" y="${y + 22}" fill="${DIM}" font-size="14" ${FONT}>${esc(s.sector ?? "")} · 점수 ${fmtSigned(s.score)} · ${fmtSigned(s.changePct, 1)}%</text>`;
   });
   if (avoid.length) {
     const y0 = diaTop + 46 + rows.length * 58 + 14;
-    list += `<text x="${listX}" y="${y0}" fill="${DOWN}" font-size="16" font-weight="900" ${font}>피할 곳</text>`;
+    list += `<text x="${listX}" y="${y0}" fill="${DOWN}" font-size="16" font-weight="900" ${FONT}>피할 곳</text>`;
     avoid.forEach((s, i) => {
-      list += `<text x="${listX}" y="${y0 + 26 + i * 24}" fill="${DIM}" font-size="15" ${font}>${esc(s.name)} (${fmtSigned(s.score)})</text>`;
+      list += `<text x="${listX}" y="${y0 + 26 + i * 24}" fill="${DIM}" font-size="15" ${FONT}>${esc(s.name)} (${fmtSigned(s.score)})</text>`;
     });
   }
 
-  const dateStr = kstDate();
-  const mkLabel = market === "US" ? "미국 시장" : "한국 시장";
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-  <defs>
-    <radialGradient id="bg" cx="50%" cy="30%" r="90%">
-      <stop offset="0%" stop-color="#0b1530"/><stop offset="100%" stop-color="#040814"/>
-    </radialGradient>
-  </defs>
+  ${FONT_IMPORT}
+  <defs><radialGradient id="bg" cx="50%" cy="30%" r="90%"><stop offset="0%" stop-color="#0b1530"/><stop offset="100%" stop-color="#040814"/></radialGradient></defs>
   <rect width="${W}" height="${H}" fill="url(#bg)"/>
-  <text x="60" y="72" fill="${GOLD}" font-size="22" font-weight="900" letter-spacing="4" ${font}>STOCKONTOLOGY · 온톨로지 데일리</text>
-  <text x="60" y="126" fill="${FG}" font-size="42" font-weight="900" ${font}>${dateStr} ${mkLabel} — <tspan fill="${toneColor}">${esc(v.regime.label)}</tspan></text>
-  <text x="60" y="158" fill="${DIM}" font-size="17" ${font}>${esc((v.causal[0] ?? v.regime.lines[0] ?? "").slice(0, 78))}</text>
-  <text x="${colX.macro}" y="${diaTop + 2}" fill="${DIM}" font-size="14" letter-spacing="2" ${font}>거시요인</text>
-  <text x="${colX.sector}" y="${diaTop + 2}" fill="${DIM}" font-size="14" letter-spacing="2" ${font}>섹터</text>
-  <text x="${colX.ticker}" y="${diaTop + 2}" fill="${DIM}" font-size="14" letter-spacing="2" ${font}>종목</text>
+  <text x="60" y="72" fill="${GOLD}" font-size="22" font-weight="900" letter-spacing="4" ${FONT}>STOCKONTOLOGY · 온톨로지 데일리</text>
+  <text x="60" y="126" fill="${FG}" font-size="42" font-weight="900" ${FONT}>${dateStr} ${mkLabel} — <tspan fill="${toneColor}">${esc(v.regime.label)}</tspan></text>
+  <text x="60" y="158" fill="${DIM}" font-size="17" ${FONT}>${esc((v.causal[0] ?? v.regime.lines[0] ?? "").slice(0, 78))}</text>
+  <text x="${colX.macro}" y="${diaTop + 2}" fill="${DIM}" font-size="14" letter-spacing="2" ${FONT}>거시요인</text>
+  <text x="${colX.sector}" y="${diaTop + 2}" fill="${DIM}" font-size="14" letter-spacing="2" ${FONT}>섹터</text>
+  <text x="${colX.ticker}" y="${diaTop + 2}" fill="${DIM}" font-size="14" letter-spacing="2" ${FONT}>종목</text>
   ${edges}${nodes}${list}
-  <text x="60" y="${H - 36}" fill="${DIM}" font-size="13" ${font}>${esc(DISCLAIMER.slice(0, 90))}…</text>
-  <text x="${W - 60}" y="${H - 36}" text-anchor="end" fill="${GOLD}" font-size="15" font-weight="700" ${font}>stockontology.cc</text>
+  <text x="60" y="${H - 36}" fill="${DIM}" font-size="13" ${FONT}>${esc(DISCLAIMER.slice(0, 90))}…</text>
+  <text x="${W - 60}" y="${H - 36}" text-anchor="end" fill="${GOLD}" font-size="15" font-weight="700" ${FONT}>stockontology.cc</text>
+</svg>`;
+}
+
+/** 쇼츠용 9:16 (720×1280) — 다이어그램 대신 국면 + 추천 리스트를 크게 */
+function cardPortrait(v: OntoVerdict, market: BriefMarket): string {
+  const W = 720, H = 1280;
+  const { toneColor, mkLabel, dateStr } = cardHeader(v, market, W, 40);
+  const rows = v.stocks.recommend.slice(0, 5);
+  const avoid = v.stocks.avoid.slice(0, 2);
+  const secs = v.sectors.recommend.slice(0, 2);
+
+  let body = "";
+  let y = 330;
+  body += `<text x="56" y="${y}" fill="${GOLD}" font-size="24" font-weight="900" ${FONT}>순풍 섹터</text>`;
+  y += 44;
+  for (const s of secs) {
+    body += `<text x="56" y="${y}" fill="${FG}" font-size="28" font-weight="800" ${FONT}>${esc(s.sector)} <tspan fill="${UP}" font-size="22">${fmtSigned(s.score)}</tspan></text>`;
+    y += 34;
+    if (s.reasons[0]) { body += `<text x="56" y="${y}" fill="${DIM}" font-size="17" ${FONT}>${esc(s.reasons[0].slice(0, 42))}</text>`; y += 40; }
+  }
+  y += 20;
+  body += `<text x="56" y="${y}" fill="${GOLD}" font-size="24" font-weight="900" ${FONT}>오늘의 온톨로지 추천</text>`;
+  y += 50;
+  rows.forEach((s, i) => {
+    body += `<rect x="44" y="${y - 34}" width="${W - 88}" height="82" rx="14" fill="rgba(15,23,42,0.9)" stroke="${s.score >= 0 ? UP : DOWN}" stroke-width="1.5"/>`;
+    body += `<text x="64" y="${y}" fill="${FG}" font-size="30" font-weight="900" ${FONT}>${i + 1}. ${esc(s.name)}</text>`;
+    body += `<text x="64" y="${y + 30}" fill="${DIM}" font-size="18" ${FONT}>${esc(s.sector ?? "미분류")} · 점수 ${fmtSigned(s.score)} · ${fmtSigned(s.changePct, 1)}%</text>`;
+    y += 100;
+  });
+  if (avoid.length) {
+    y += 8;
+    body += `<text x="56" y="${y}" fill="${DOWN}" font-size="22" font-weight="900" ${FONT}>피할 곳</text>`;
+    y += 34;
+    for (const s of avoid) {
+      body += `<text x="56" y="${y}" fill="${DIM}" font-size="19" ${FONT}>${esc(s.name)} (${fmtSigned(s.score)})</text>`;
+      y += 30;
+    }
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  ${FONT_IMPORT}
+  <defs><radialGradient id="bg" cx="50%" cy="20%" r="110%"><stop offset="0%" stop-color="#0b1530"/><stop offset="100%" stop-color="#040814"/></radialGradient></defs>
+  <rect width="${W}" height="${H}" fill="url(#bg)"/>
+  <text x="56" y="96" fill="${GOLD}" font-size="20" font-weight="900" letter-spacing="3" ${FONT}>STOCKONTOLOGY</text>
+  <text x="56" y="132" fill="${DIM}" font-size="18" ${FONT}>온톨로지 데일리 · ${dateStr}</text>
+  <text x="56" y="198" fill="${FG}" font-size="40" font-weight="900" ${FONT}>${mkLabel}</text>
+  <text x="56" y="252" fill="${toneColor}" font-size="30" font-weight="900" ${FONT}>${esc(v.regime.label)}</text>
+  ${body}
+  <text x="56" y="${H - 60}" fill="${DIM}" font-size="14" ${FONT}>${esc(DISCLAIMER.slice(0, 46))}…</text>
+  <text x="56" y="${H - 36}" fill="${GOLD}" font-size="16" font-weight="700" ${FONT}>stockontology.cc</text>
 </svg>`;
 }

@@ -293,6 +293,10 @@ export const MACRO_LINKS: { from: MacroId; to: MacroId; sign: 1 | -1; ko: string
   { from: "NASDAQ", to: "KOSPI", sign: 1, ko: "간밤 미 기술주의 위험선호가 다음 날 국내 증시로 전이됩니다" },
   { from: "NASDAQ", to: "SEMI", sign: 1, ko: "반도체지수는 나스닥 기술주 흐름과 강하게 동행합니다" },
   { from: "VIX", to: "BTC", sign: -1, ko: "위험회피 국면에서는 코인도 위험자산으로 같이 팔립니다" },
+  // 미국 시장용 사슬 — 미국 브리프의 causal 이 코스피·원화를 설명하던 버그(2026-08-19) 보강
+  { from: "US10Y", to: "NASDAQ", sign: -1, ko: "금리 상승은 미래 이익의 할인율을 높여 기술주 밸류에이션을 압박합니다" },
+  { from: "VIX", to: "NASDAQ", sign: -1, ko: "위험회피 국면에서는 고밸류 기술주가 먼저 팔립니다" },
+  { from: "SEMI", to: "NASDAQ", sign: 1, ko: "반도체는 나스닥의 심장 — 업황 지수가 기술주 전반의 방향을 이끕니다" },
 ];
 
 /**

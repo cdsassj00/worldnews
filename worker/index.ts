@@ -616,14 +616,16 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     // 외부 발행 파이프라인(유튜브 등)용 장 마감 요약 — 공개 데이터만, 5분 캐시
     const market = (url.searchParams.get("market") ?? "both").toUpperCase();
     const m = market === "KR" || market === "US" ? (market as "KR" | "US") : "both";
-    const { data } = await cached(env, `brief:${m}`, 300, () => dailyBrief(env, m));
+    const date = url.searchParams.get("date") ?? undefined;
+    const { data } = await cached(env, `brief:v2:${m}:${date ?? "today"}`, 300, () => dailyBrief(env, m, date));
     return json(data);
   }
 
   if (path === "/api/brief-card.svg") {
-    // 온톨로지 경로 카드 1280×720 — 발행 파이프라인이 <img>/캡처로 쓴다
+    // 온톨로지 경로 카드 — 16:9(기본) / 9:16(쇼츠). 발행 파이프라인이 <img>/캡처로 쓴다
     const market = url.searchParams.get("market")?.toUpperCase() === "US" ? "US" : "KR";
-    const { data } = await cached(env, `brief:card:${market}`, 300, () => briefCardSvg(env, market));
+    const ratio = url.searchParams.get("ratio") === "9:16" ? "9:16" : "16:9";
+    const { data } = await cached(env, `brief:card:v2:${market}:${ratio}`, 300, () => briefCardSvg(env, market, ratio));
     return new Response(data, {
       headers: {
         "content-type": "image/svg+xml; charset=utf-8",

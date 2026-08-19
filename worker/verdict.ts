@@ -49,6 +49,8 @@ export interface StockVerdict {
   price: number;
   changePct: number;
   reason: string;
+  /** 종목별 실제 근거 — 온톨로지/가격/뉴스 축의 기여 문장 (레이더 계산 그대로) */
+  reasons: string[];
 }
 
 export interface OntoVerdict {
@@ -81,11 +83,16 @@ function riskOffFor(macro: MacroSignal[], market: VerdictMarket): number {
   return round(Math.min(1, Math.max(0, get("VIX") * 0.6 - beta * 0.6)), 2);
 }
 
+/** 한국 시장에만 의미 있는 노드 — 미국 브리프의 인과 사슬에서는 제외한다.
+ * (2026-08-19 유튜브 파이프라인 보고: 미국 causal 이 코스피·원/달러를 설명하고 있었다) */
+const KR_ONLY_NODES = new Set<MacroId>(["KOSPI", "USDKRW"]);
+
 /** ② 지금 실제로 작동한 인과 사슬만 문장으로 */
-function activeCausalChains(macro: MacroSignal[]): string[] {
+function activeCausalChains(macro: MacroSignal[], market: VerdictMarket): string[] {
   const byId = new Map(macro.map((m) => [m.id, m]));
   const out: { text: string; strength: number }[] = [];
   for (const l of MACRO_LINKS) {
+    if (market === "US" && (KR_ONLY_NODES.has(l.from) || KR_ONLY_NODES.has(l.to))) continue;
     const from = byId.get(l.from);
     const to = byId.get(l.to);
     if (!from || !to) continue;
@@ -184,6 +191,8 @@ async function stockVerdicts(env: Env, market: VerdictMarket, sectors: { recomme
   const recSectors = new Set(sectors.recommend.map((s) => s.sector));
   const toStock = (r: (typeof topRes.items)[number], reason: string): StockVerdict => ({
     code: r.code, name: r.name, sector: r.sector, score: r.score, price: r.price, changePct: r.changePct, reason,
+    // "왜 하필 이 종목인가" — 같은 상용구 반복 대신 레이더가 계산한 축별 기여를 그대로 (2026-08-19 파이프라인 요청 1-3)
+    reasons: (r.reasons ?? []).slice(0, 3).map((x) => x.text),
   });
   const recommend = topRes.items
     .filter((r) => inMarket(r.market) && r.score >= 0.1)
@@ -200,7 +209,7 @@ async function buildVerdict(env: Env, market: VerdictMarket): Promise<OntoVerdic
   const { data: strat } = await cached(env, "auto:strategy", 300, () => runStrategy(env));
   const flow = market === "KR" ? await getInvestorFlow(env).catch(() => null) : null;
   const regime = judgeRegime(strat.macro, market, flow);
-  const causal = activeCausalChains(strat.macro);
+  const causal = activeCausalChains(strat.macro, market);
   const { table: krTable } = await liveSensitivity(env);
   const sectors = sectorVerdicts(strat.macro, market, krTable);
   const stocks = await stockVerdicts(env, market, sectors);
@@ -219,6 +228,7 @@ async function buildVerdict(env: Env, market: VerdictMarket): Promise<OntoVerdic
 
 /** 5분 캐시 — 전략 캐시와 보조를 맞춘다 */
 export async function getVerdict(env: Env, market: VerdictMarket): Promise<OntoVerdict> {
-  const { data } = await cached(env, `verdict:v1:${market}`, 300, () => buildVerdict(env, market));
+  // v2: 종목별 reasons 추가 + 미국 causal 분리 (2026-08-19) — 키를 갈아 옛 모양 캐시를 무효화
+  const { data } = await cached(env, `verdict:v2:${market}`, 300, () => buildVerdict(env, market));
   return data;
 }
