@@ -416,6 +416,9 @@ export interface AutoPlan {
   /** 미국 봇 요약 — 값은 전부 KIS 해외 잔고 스냅샷(auto:us:balance) 실측 */
   us: {
     enabled: boolean;
+    /** 미국 봇의 매매 엔진 — 한국(engine)과 별개 */
+    engine: string;
+    engineName: string;
     marketOpen: boolean;
     budgetKrw: number;
     valueKrw: number;
@@ -675,6 +678,8 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   try {
     usSnap = (await env.CACHE.get("auto:us:balance", "json")) as UsSnap | null;
   } catch { /* 스냅샷 없으면 미국 0 취급 */ }
+  const usEngineRaw = (await env.CACHE.get("auto:us:engine").catch(() => null)) ?? env.US_ENGINE ?? "onto";
+  const usEngineId = ["onto", "quant", "ta", "fusion"].includes(usEngineRaw) ? usEngineRaw : "onto";
   const usFx = usSnap?.fx && usSnap.fx > 800 ? usSnap.fx : 1400;
   const usValueKrw = usSnap ? Math.round(usSnap.totalEvalUsd * usFx) : 0;
   /** 미국 손익(원) = KIS 평가손익 + 봇 실현손익 */
@@ -857,9 +862,12 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
     netProfitPct: deposit > 0 ? round((netProfit / deposit) * 100, 2) : 0,
     investedKrw: Math.round((account.connected ? account.stockEval : deployed) + usValueKrw),
     usValueKrw,
-    /* 미국 봇 요약 — 전부 KIS 해외 잔고 스냅샷(auto:us:balance) 실측값 */
+    /* 미국 봇 요약 — 전부 KIS 해외 잔고 스냅샷(auto:us:balance) 실측값.
+     * 엔진은 KV 직접 읽기 — autotrade-us 를 import 하면 순환 참조가 된다. */
     us: {
       enabled: (env.US_AUTOTRADE_ENABLED ?? "false").toLowerCase() === "true",
+      engine: usEngineId,
+      engineName: ({ onto: "온톨로지", quant: "수급", ta: "차트", fusion: "융합" } as Record<string, string>)[usEngineId] ?? usEngineId,
       marketOpen: usMarketOpen(),
       budgetKrw: Math.round(reserveKrw),
       valueKrw: usValueKrw,

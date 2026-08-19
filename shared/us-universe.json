@@ -830,5 +830,413 @@
   "market": "US",
   "sector": "필수소비",
   "src": "sp100"
+ },
+ {
+  "code": "ADI",
+  "symbol": "ADI",
+  "name": "Analog Devices",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp150"
+ },
+ {
+  "code": "NXPI",
+  "symbol": "NXPI",
+  "name": "NXP Semiconductors",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp150"
+ },
+ {
+  "code": "MRVL",
+  "symbol": "MRVL",
+  "name": "Marvell Technology",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp150"
+ },
+ {
+  "code": "ON",
+  "symbol": "ON",
+  "name": "ON Semiconductor",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp150"
+ },
+ {
+  "code": "MCHP",
+  "symbol": "MCHP",
+  "name": "Microchip Technology",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp150"
+ },
+ {
+  "code": "SNPS",
+  "symbol": "SNPS",
+  "name": "Synopsys",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp150"
+ },
+ {
+  "code": "CDNS",
+  "symbol": "CDNS",
+  "name": "Cadence Design",
+  "market": "US",
+  "sector": "반도체US",
+  "src": "sp150"
+ },
+ {
+  "code": "PANW",
+  "symbol": "PANW",
+  "name": "Palo Alto Networks",
+  "market": "US",
+  "sector": "기술",
+  "src": "sp150"
+ },
+ {
+  "code": "CRWD",
+  "symbol": "CRWD",
+  "name": "CrowdStrike",
+  "market": "US",
+  "sector": "기술",
+  "src": "sp150"
+ },
+ {
+  "code": "ANET",
+  "symbol": "ANET",
+  "name": "Arista Networks",
+  "market": "US",
+  "sector": "기술",
+  "src": "sp150"
+ },
+ {
+  "code": "ADSK",
+  "symbol": "ADSK",
+  "name": "Autodesk",
+  "market": "US",
+  "sector": "기술",
+  "src": "sp150"
+ },
+ {
+  "code": "ADP",
+  "symbol": "ADP",
+  "name": "ADP",
+  "market": "US",
+  "sector": "기술",
+  "src": "sp150"
+ },
+ {
+  "code": "EA",
+  "symbol": "EA",
+  "name": "Electronic Arts",
+  "market": "US",
+  "sector": "커뮤니케이션",
+  "src": "sp150"
+ },
+ {
+  "code": "TTWO",
+  "symbol": "TTWO",
+  "name": "Take-Two Interactive",
+  "market": "US",
+  "sector": "커뮤니케이션",
+  "src": "sp150"
+ },
+ {
+  "code": "CHTR",
+  "symbol": "CHTR",
+  "name": "Charter Communications",
+  "market": "US",
+  "sector": "커뮤니케이션",
+  "src": "sp150"
+ },
+ {
+  "code": "PGR",
+  "symbol": "PGR",
+  "name": "Progressive",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp150"
+ },
+ {
+  "code": "CB",
+  "symbol": "CB",
+  "name": "Chubb",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp150"
+ },
+ {
+  "code": "MMC",
+  "symbol": "MMC",
+  "name": "Marsh & McLennan",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp150"
+ },
+ {
+  "code": "ICE",
+  "symbol": "ICE",
+  "name": "Intercontinental Exchange",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp150"
+ },
+ {
+  "code": "CME",
+  "symbol": "CME",
+  "name": "CME Group",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp150"
+ },
+ {
+  "code": "PNC",
+  "symbol": "PNC",
+  "name": "PNC Financial",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp150"
+ },
+ {
+  "code": "USB",
+  "symbol": "USB",
+  "name": "U.S. Bancorp",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp150"
+ },
+ {
+  "code": "PYPL",
+  "symbol": "PYPL",
+  "name": "PayPal",
+  "market": "US",
+  "sector": "금융US",
+  "src": "sp150"
+ },
+ {
+  "code": "VRTX",
+  "symbol": "VRTX",
+  "name": "Vertex Pharmaceuticals",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp150"
+ },
+ {
+  "code": "REGN",
+  "symbol": "REGN",
+  "name": "Regeneron",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp150"
+ },
+ {
+  "code": "ZTS",
+  "symbol": "ZTS",
+  "name": "Zoetis",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp150"
+ },
+ {
+  "code": "SYK",
+  "symbol": "SYK",
+  "name": "Stryker",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp150"
+ },
+ {
+  "code": "BSX",
+  "symbol": "BSX",
+  "name": "Boston Scientific",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp150"
+ },
+ {
+  "code": "ELV",
+  "symbol": "ELV",
+  "name": "Elevance Health",
+  "market": "US",
+  "sector": "헬스케어",
+  "src": "sp150"
+ },
+ {
+  "code": "PSX",
+  "symbol": "PSX",
+  "name": "Phillips 66",
+  "market": "US",
+  "sector": "에너지",
+  "src": "sp150"
+ },
+ {
+  "code": "VLO",
+  "symbol": "VLO",
+  "name": "Valero Energy",
+  "market": "US",
+  "sector": "에너지",
+  "src": "sp150"
+ },
+ {
+  "code": "MPC",
+  "symbol": "MPC",
+  "name": "Marathon Petroleum",
+  "market": "US",
+  "sector": "에너지",
+  "src": "sp150"
+ },
+ {
+  "code": "KMI",
+  "symbol": "KMI",
+  "name": "Kinder Morgan",
+  "market": "US",
+  "sector": "에너지",
+  "src": "sp150"
+ },
+ {
+  "code": "EMR",
+  "symbol": "EMR",
+  "name": "Emerson Electric",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp150"
+ },
+ {
+  "code": "ITW",
+  "symbol": "ITW",
+  "name": "Illinois Tool Works",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp150"
+ },
+ {
+  "code": "PH",
+  "symbol": "PH",
+  "name": "Parker Hannifin",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp150"
+ },
+ {
+  "code": "GD",
+  "symbol": "GD",
+  "name": "General Dynamics",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp150"
+ },
+ {
+  "code": "NOC",
+  "symbol": "NOC",
+  "name": "Northrop Grumman",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp150"
+ },
+ {
+  "code": "CSX",
+  "symbol": "CSX",
+  "name": "CSX",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp150"
+ },
+ {
+  "code": "FDX",
+  "symbol": "FDX",
+  "name": "FedEx",
+  "market": "US",
+  "sector": "산업재",
+  "src": "sp150"
+ },
+ {
+  "code": "TJX",
+  "symbol": "TJX",
+  "name": "TJX Companies",
+  "market": "US",
+  "sector": "경기소비",
+  "src": "sp150"
+ },
+ {
+  "code": "CMG",
+  "symbol": "CMG",
+  "name": "Chipotle",
+  "market": "US",
+  "sector": "경기소비",
+  "src": "sp150"
+ },
+ {
+  "code": "MAR",
+  "symbol": "MAR",
+  "name": "Marriott",
+  "market": "US",
+  "sector": "경기소비",
+  "src": "sp150"
+ },
+ {
+  "code": "GM",
+  "symbol": "GM",
+  "name": "General Motors",
+  "market": "US",
+  "sector": "경기소비",
+  "src": "sp150"
+ },
+ {
+  "code": "MDLZ",
+  "symbol": "MDLZ",
+  "name": "Mondelez",
+  "market": "US",
+  "sector": "필수소비",
+  "src": "sp150"
+ },
+ {
+  "code": "CL",
+  "symbol": "CL",
+  "name": "Colgate-Palmolive",
+  "market": "US",
+  "sector": "필수소비",
+  "src": "sp150"
+ },
+ {
+  "code": "KMB",
+  "symbol": "KMB",
+  "name": "Kimberly-Clark",
+  "market": "US",
+  "sector": "필수소비",
+  "src": "sp150"
+ },
+ {
+  "code": "SRE",
+  "symbol": "SRE",
+  "name": "Sempra",
+  "market": "US",
+  "sector": "유틸리티US",
+  "src": "sp150"
+ },
+ {
+  "code": "AEP",
+  "symbol": "AEP",
+  "name": "American Electric Power",
+  "market": "US",
+  "sector": "유틸리티US",
+  "src": "sp150"
+ },
+ {
+  "code": "APD",
+  "symbol": "APD",
+  "name": "Air Products",
+  "market": "US",
+  "sector": "소재",
+  "src": "sp150"
+ },
+ {
+  "code": "EQIX",
+  "symbol": "EQIX",
+  "name": "Equinix",
+  "market": "US",
+  "sector": "부동산",
+  "src": "sp150"
  }
 ]

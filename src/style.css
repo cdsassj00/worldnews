@@ -903,6 +903,10 @@ details.acc.card:not([open]) > summary { margin: 0; }
 .reserve-status { font-size: 11.5px; color: var(--fg-faint); white-space: nowrap; }
 .reserve-status.ok { color: #4ade80; }
 .reserve-status.err { color: #f87171; }
+/* 미국 엔진 선택 줄 — 한국 엔진 카드와 달리 가벼운 칩 4개 */
+.us-engine-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 2px 0 10px; }
+.us-engine-row .k { font-size: 12px; color: var(--fg-faint); white-space: nowrap; }
+.radar-tabs.us-engine { margin: 0; display: inline-flex; }
 
 /* 언어 전환 국기 버튼 + 구글 번역 위젯 UI 숨김 */
 /* 언어 전환 — 국기 이모지는 작아서 안 보인다는 피드백(2026-08-17)에 따라

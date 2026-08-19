@@ -159,7 +159,7 @@ export class AutoPanel {
       ]),
       this.marketGroup("us", "🇺🇸 미국 봇", [
         el("span", { class: `gate-pill ${p.us.enabled ? "on" : "off"}`, text: p.us.enabled ? "가동" : "꺼짐" }),
-        el("span", { class: "mg-sub", text: `전략 온톨로지(한국과 동일 규칙) · ${p.us.marketOpen ? "정규장 진행중" : "장 마감 (개장 22:30 KST)"}` }),
+        el("span", { class: "mg-sub", text: `전략 ${p.us.engineName} (한국과 독립) · ${p.us.marketOpen ? "정규장 진행중" : "장 마감 (개장 22:30 KST)"}` }),
       ], [
         this.usBlock(p),
       ]),
@@ -542,9 +542,24 @@ export class AutoPanel {
         )
       : [el("p", { class: "note", text: "미국 봇이 보유한 종목이 없습니다. 개장(22:30 KST) 후 첫 사이클부터 매수를 검토합니다." })];
     const totalPnl = u.pnlKrw + u.realizedKrw;
+    /* 미국 엔진 선택 칩 — 한국 엔진과 완전 별개(2026-08-19 사용자 지시 "미국 별도 세팅") */
+    const engineStatus = el("span", { class: "reserve-status", text: "" });
+    const engineRow = el("div", { class: "radar-tabs us-engine" },
+      [["onto", "온톨로지"], ["quant", "수급"], ["ta", "차트"], ["fusion", "융합"]].map(([id, name]) => {
+        const btn = el("button", { class: `radar-tab ${u.engine === id ? "active" : ""}`, type: "button", text: name });
+        btn.addEventListener("click", () => {
+          if (u.engine === id) return;
+          engineStatus.textContent = `${name} 엔진으로 전환 중…`;
+          void api.usSetEngine(id)
+            .then(() => { engineStatus.textContent = `전환됨 — 다음 사이클부터 ${name} 점수로 매매합니다`; engineStatus.className = "reserve-status ok"; void this.load(); })
+            .catch((e) => { engineStatus.textContent = `실패: ${e instanceof Error ? e.message : e}`; engineStatus.className = "reserve-status err"; });
+        });
+        return btn;
+      }));
     // 타일 구성은 한국 섹션과 완전히 동일 — 예산 / 투입 / 여유 / 손익(실현 포함)
     return el("section", { class: "auto-block" }, [
       el("h3", {}, [el("span", { text: "미국 봇 자금 · 보유 종목" })]),
+      el("div", { class: "us-engine-row" }, [el("span", { class: "k", text: "미국 엔진" }), engineRow, engineStatus]),
       el("div", { class: "auto-grid" }, [
         stat("예산(미국 몫)", fmtKrw(u.budgetKrw)),
         stat("주식에 투입", fmtKrw(investedKrw)),

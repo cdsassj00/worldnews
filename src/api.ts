@@ -286,6 +286,8 @@ export interface AutoPlan {
   /** 미국 봇 요약 — 전부 KIS 해외 잔고 스냅샷 실측값 */
   us: {
     enabled: boolean;
+    engine: string;
+    engineName: string;
     marketOpen: boolean;
     budgetKrw: number;
     valueKrw: number;
@@ -773,6 +775,8 @@ export const api = {
   autoSetReserve: (reserveKrw: number) =>
     request<{ ok: true; reserveKrw: number }>("/api/auto/reserve", { method: "POST", auth: true, body: JSON.stringify({ reserveKrw }) }),
   autoReset: () => request<{ ok: true }>("/api/auto/reset", { method: "POST", auth: true, body: "{}" }),
+  usSetEngine: (engine: string) =>
+    request<{ ok: true; engine: string }>("/api/auto/us/engine", { method: "POST", auth: true, body: JSON.stringify({ engine }) }),
 
   backtest: () => request<BacktestResults>("/api/backtest"),
   labOverview: (market: "KR" | "US" = "KR") => request<LabOverview>(`/api/lab/overview?market=${market}`),

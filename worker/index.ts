@@ -26,7 +26,7 @@ import {
   overseasReadiness,
 } from "./kis";
 import { adjustForDeposit, autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle, getEngine, getEngineSel, setEngine, setReserveKrw, engineKey, AUTO_ENGINES } from "./autotrade";
-import { usAutoStatus, usRunCycle } from "./autotrade-us";
+import { getUsEngine, setUsEngine, US_ENGINES, usAutoStatus, usRunCycle } from "./autotrade-us";
 import { runStrategy } from "./strategy";
 import { tickerNewsStatus } from "./tickernews";
 import { radarFind, radarOpps, radarScanChunk, radarSeedIfNeeded, radarStatus, radarTop } from "./radarscan";
@@ -583,6 +583,18 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     assertTradeAuth(env, request);
     const body = (await request.json().catch(() => ({}))) as { shadow?: boolean; force?: boolean };
     return json(await usRunCycle(env, { shadow: body.shadow !== false, force: body.force === true }));
+  }
+
+  if (path === "/api/auto/us/engine") {
+    // 미국 봇 엔진 — 한국(auto:engine)과 완전 별개. 바꾸면 즉시 한 사이클 돈다.
+    assertTradeAuth(env, request);
+    if (request.method === "POST") {
+      const body = (await request.json().catch(() => ({}))) as { engine?: string };
+      const e = await setUsEngine(env, String(body.engine ?? ""));
+      ctx.waitUntil(usRunCycle(env).catch(() => undefined));
+      return json({ ok: true, engine: e, engines: US_ENGINES, note: "미국 엔진 변경 — 장중이면 즉시 사이클을 실행합니다." });
+    }
+    return json({ engine: await getUsEngine(env), engines: US_ENGINES });
   }
 
   if (path === "/api/auto/us/status") {

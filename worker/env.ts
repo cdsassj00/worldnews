@@ -62,6 +62,20 @@ export interface Env {
 
   // AI 분석
   US_AUTOTRADE_ENABLED?: string; // 미국 자동매매 — 백테스트 통과 전까지 "false"
+  /* 미국 봇 독립 세팅(2026-08-19) — 비우면 한국(AUTO_*) 값을 그대로 따른다.
+   * 값을 넣는 순간부터 미국만 따로 움직인다. 엔진 선택은 KV auto:us:engine. */
+  US_STOP_LOSS_PCT?: string;
+  US_TAKE_PROFIT_PCT?: string;
+  US_DAILY_LOSS_HALT_PCT?: string;
+  US_MAX_DRAWDOWN_PCT?: string;
+  US_MAX_POSITION_PCT?: string;
+  US_MAX_POSITIONS?: string;
+  US_MAX_ORDERS_PER_CYCLE?: string;
+  US_MAX_TRADES_PER_DAY?: string;
+  US_MIN_ORDER_KRW?: string;
+  US_BUY_SCORE?: string;
+  US_MIN_POOL?: string;
+  US_ENGINE?: string; // onto | quant | ta | fusion (KV 미설정 시 폴백)
   GEMINI_API_KEY?: string; // 있으면 Gemini 를 1순위로 사용 (시크릿, aistudio.google.com/apikey)
   GEMINI_MODEL?: string; // 기본 gemini-2.5-flash
   OPENROUTER_API_KEY?: string; // 있으면 OpenRouter 를 1순위 AI 제공자로 (시크릿)

@@ -58,24 +58,54 @@ export interface UsAutoConfig {
 }
 
 export function usAutoConfig(env: Env): UsAutoConfig {
+  /* 독립 세팅(2026-08-19 사용자 지시 "미국은 별도로 세팅 안 되냐") — US_* 가 있으면
+   * 그 값, 없으면 한국(AUTO_*) 값을 따른다. 안전장치의 존재 자체는 공유하되 숫자는
+   * 시장별로 다르게 줄 수 있다. */
+  const n2 = (us: string | undefined, kr: string | undefined, def: number) => num(us, num(kr, def));
   return {
     enabled: (env.US_AUTOTRADE_ENABLED ?? "false").toLowerCase() === "true",
-    // % 한도는 국내 봇과 같은 환경변수를 쓴다 — 안전장치를 시장마다 따로 두면 하나는 반드시 빠진다
-    stopLossPct: num(env.AUTO_STOP_LOSS_PCT, 5),
-    takeProfitPct: num(env.AUTO_TAKE_PROFIT_PCT, 15),
-    dailyLossHaltPct: num(env.AUTO_DAILY_LOSS_HALT_PCT, 5),
-    maxDrawdownPct: num(env.AUTO_MAX_DRAWDOWN_PCT, 20),
-    maxPositionPct: num(env.AUTO_MAX_POSITION_PCT, 30),
+    stopLossPct: n2(env.US_STOP_LOSS_PCT, env.AUTO_STOP_LOSS_PCT, 5),
+    takeProfitPct: n2(env.US_TAKE_PROFIT_PCT, env.AUTO_TAKE_PROFIT_PCT, 15),
+    dailyLossHaltPct: n2(env.US_DAILY_LOSS_HALT_PCT, env.AUTO_DAILY_LOSS_HALT_PCT, 5),
+    maxDrawdownPct: n2(env.US_MAX_DRAWDOWN_PCT, env.AUTO_MAX_DRAWDOWN_PCT, 20),
+    maxPositionPct: n2(env.US_MAX_POSITION_PCT, env.AUTO_MAX_POSITION_PCT, 30),
     // 400만원 × 30% ≈ 종목당 $870 — 4종목이면 예산이 찬다
-    maxPositions: 4,
+    maxPositions: num(env.US_MAX_POSITIONS, 4),
     // 사이클당 3건 — 미국 크론은 레이더·수급 스캔과 예산(50)을 나눠 쓴다
-    maxOrdersPerCycle: 3,
-    // 한국과 같은 값(999 = 사실상 무제한, 2026-08-18 사용자 지시 "끊임없이 매매")
-    maxTradesPerDay: num(env.AUTO_MAX_TRADES_PER_DAY, 6),
-    minOrderKrw: num(env.AUTO_MIN_ORDER_KRW, 150_000),
-    buyScore: 0.35,
-    minPool: 50,
+    maxOrdersPerCycle: num(env.US_MAX_ORDERS_PER_CYCLE, 3),
+    maxTradesPerDay: n2(env.US_MAX_TRADES_PER_DAY, env.AUTO_MAX_TRADES_PER_DAY, 6),
+    minOrderKrw: n2(env.US_MIN_ORDER_KRW, env.AUTO_MIN_ORDER_KRW, 150_000),
+    buyScore: num(env.US_BUY_SCORE, 0.35),
+    minPool: num(env.US_MIN_POOL, 50),
   };
+}
+
+/* ── 미국 엔진 선택 — 한국(auto:engine)과 완전 별개 ─────────
+ * onto   = 온톨로지 레이더 점수 (기본)
+ * quant  = 수급(돌파 프로파일) 점수
+ * ta     = 차트 거장 13종 합의 점수
+ * fusion = 온톨로지·수급 반반
+ * 재배포 없이 바꾸도록 KV 에 두고, /api/auto/us/engine 으로 조작한다. */
+export type UsEngine = "onto" | "quant" | "ta" | "fusion";
+export const US_ENGINES: { id: UsEngine; nameKo: string }[] = [
+  { id: "onto", nameKo: "온톨로지" },
+  { id: "quant", nameKo: "수급" },
+  { id: "ta", nameKo: "차트" },
+  { id: "fusion", nameKo: "융합" },
+];
+const US_ENGINE_KEY = "auto:us:engine";
+
+export async function getUsEngine(env: Env): Promise<UsEngine> {
+  const v = ((await env.CACHE.get(US_ENGINE_KEY).catch(() => null)) ?? env.US_ENGINE ?? "onto") as string;
+  return (US_ENGINES.some((e) => e.id === v) ? v : "onto") as UsEngine;
+}
+
+export async function setUsEngine(env: Env, engine: string): Promise<UsEngine> {
+  if (!US_ENGINES.some((e) => e.id === engine)) {
+    throw new ApiError(400, "bad_engine", { allowed: US_ENGINES.map((e) => e.id) });
+  }
+  await env.CACHE.put(US_ENGINE_KEY, engine);
+  return engine as UsEngine;
 }
 
 /** 지정가 슬리피지 허용폭 — 국내 봇과 동일 */
@@ -369,6 +399,22 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
     for (const it of top.items ?? []) if (it.market === "US") ontoByCode.set(it.code, it.score);
   } catch { /* 이번 사이클 매수만 쉰다 */ }
   const qRows = await usQuantRows(env).catch(() => []);
+  /* 엔진별 점수 — 한국 봇과 무관하게 미국만의 엔진(auto:us:engine)을 쓴다 */
+  const engine = await getUsEngine(env);
+  const engineName = US_ENGINES.find((e) => e.id === engine)!.nameKo;
+  const rowByCode = new Map(qRows.map((r) => [r.code, r]));
+  const scoreOf = (code: string): number | undefined => {
+    const o = ontoByCode.get(code);
+    const r = rowByCode.get(code);
+    const q = r?.scores?.["breakout"];
+    const t = r?.taScore;
+    switch (engine) {
+      case "onto": return o;
+      case "quant": return q;
+      case "ta": return t;
+      case "fusion": return o !== undefined && q !== undefined ? round((o + q) / 2, 3) : undefined;
+    }
+  };
 
   /* 6) 청산 판단 — 손절·익절·신호이탈. 정지 상태에서도 실행한다(정지는 신규 매수만 막는다). */
   for (const pos of Object.values(state.positions)) {
@@ -377,11 +423,11 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
     if (qty <= 0) continue;
     const price = h?.price || pos.avgPrice;
     const pnlPct = pos.avgPrice ? ((price - pos.avgPrice) / pos.avgPrice) * 100 : 0;
-    const onto = ontoByCode.get(pos.code);
+    const sc = scoreOf(pos.code);
     let why = "";
     if (pnlPct <= -cfg.stopLossPct) why = `손절 (${round(pnlPct, 1)}% ≤ -${cfg.stopLossPct}%)`;
     else if (pnlPct >= cfg.takeProfitPct) why = `익절 (${round(pnlPct, 1)}% ≥ +${cfg.takeProfitPct}%)`;
-    else if (onto !== undefined && onto <= SELL_SCORE) why = `신호 이탈 (온톨로지 ${onto})`;
+    else if (sc !== undefined && sc <= SELL_SCORE) why = `신호 이탈 (${engineName} ${sc})`;
     if (!why) continue;
     const limit = Math.max(0.01, round(price * (1 - SLIPPAGE), 2));
     out.orders.push({
@@ -389,7 +435,7 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
       excd: "NAS", // 실제 거래소는 주문 직전에 usQuote 로 확정한다
       qty, price: limit,
       notionalUsd: round(limit * qty, 2), notionalKrw: Math.round(limit * qty * fx),
-      score: onto ?? 0, reason: why,
+      score: sc ?? 0, reason: why,
     });
   }
 
@@ -443,7 +489,7 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
     const fresh = Date.now() - 20 * 3600_000;
     const cands = qRows
       .filter((r) => r.scannedAt >= fresh && r.turnover >= MIN_TURNOVER_USD && r.price > 0)
-      .map((r) => ({ r, score: ontoByCode.get(r.code) }))
+      .map((r) => ({ r, score: scoreOf(r.code) }))
       .filter((x): x is { r: (typeof qRows)[number]; score: number } => x.score !== undefined)
       .sort((a, b) => b.score - a.score);
     if (cands.length < cfg.minPool) {
@@ -485,7 +531,7 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
         out.orders.push({
           side: "buy", code: r.code, name: r.name, excd, qty, price: limit,
           notionalUsd: round(notionalUsd, 2), notionalKrw: Math.round(notionalUsd * fx),
-          score, reason: pos ? `추가 매수 (온톨로지 ${score})` : `신규 진입 (온톨로지 ${score})`,
+          score, reason: pos ? `추가 매수 (${engineName} ${score})` : `신규 진입 (${engineName} ${score})`,
         });
       }
     }

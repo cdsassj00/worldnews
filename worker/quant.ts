@@ -53,8 +53,9 @@ const rowMarket = (r: { market?: string }): QuantMarket => (r.market === "US" ? 
 const turnoverOk = (r: { market?: string; turnover: number }, minKrw: number) =>
   rowMarket(r) === "US" ? r.turnover >= 3_000_000 : r.turnover >= minKrw;
 
-/** 한 크론에서 훑는 종목 수 — 자동매매·레이더와 예산(50)을 나눠 쓴다 */
-const CHUNK = 12;
+/** 한 크론에서 훑는 종목 수 — 자동매매·레이더와 예산(50)을 나눠 쓴다.
+ * 2026-08-19 미국 유니버스 104→155 확장에 맞춰 12→16 (한 바퀴 275종목 ≈ 17크론 ≈ 4.3시간) */
+const CHUNK = 16;
 
 /* ── 설정 ─────────────────────────────── */
 
