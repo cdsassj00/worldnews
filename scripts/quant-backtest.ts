@@ -133,6 +133,9 @@ const SCENARIOS: QScenario[] = [
   { name: "QI blend·저회전+시장필터",    engine: "blend", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
   { name: "QJ chart·저회전+시장필터",    engine: "chart", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
   { name: "QK onto·저회전+시장필터",     engine: "onto",  ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
+  { name: "QKF2 onto·1일20%",          engine: "ontofast20", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
+  { name: "QKF3 onto·1일35%",          engine: "ontofast35", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
+  { name: "QKF5 onto·1일50%",          engine: "ontofast50", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
   /* ⑥ 돌파·역추세 엔진 (밴드 상단을 감점하지 않는 판) */
   { name: "QL 돌파",                  engine: "breakout", ...BASE },
   { name: "QM 돌파·저회전+시장필터",     engine: "breakout", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
@@ -209,7 +212,7 @@ async function buildDataset(): Promise<Dataset> {
   process.stderr.write(`점수 계산 — ${calendar[startIdx]} ~ ${calendar.at(-1)} …\n`);
   // hybrid = 온톨로지(거시 인과) 와 퀀트(수급·차트) 를 반반 섞은 점수.
   // ta = 차트 거장 전략 13종(이평교차·MACD·일목·터틀 등)의 합의 점수 — 전략실 3호의 검증판.
-  const engines = [...QUANT_PROFILES.map((p) => p.id), "onto", "hybrid", "ta", "onto_ta", "quant_ta", "all3"];
+  const engines = [...QUANT_PROFILES.map((p) => p.id), "onto", "hybrid", "ta", "onto_ta", "quant_ta", "all3", "ontofast20", "ontofast35", "ontofast50"];
   const daily = new Map<string, Map<string, Cand[]>>();
   const have = uni.filter((u) => bars.has(u.symbol.toUpperCase()));
 
@@ -220,12 +223,20 @@ async function buildDataset(): Promise<Dataset> {
 
     // 거시 신호 — 온톨로지 대조군에만 쓴다
     const macro: MacroSignal[] = [];
+    const macroF20: MacroSignal[] = [];
+    const macroF35: MacroSignal[] = [];
+    const macroF50: MacroSignal[] = [];
     for (const f of MACRO as MacroFactor[]) {
       const sym = f.symbol.toUpperCase();
       const i = idxAsOf(sym, today);
       const b = bars.get(sym);
       if (i < 6 || !b) continue;
-      macro.push(macroSignal(f, sliceHistory(b, i)));
+      const hist = sliceHistory(b, i);
+      macro.push(macroSignal(f, hist));
+      // 1일 급변 블렌드 변형 — 5일 창이 폭락을 가리는 문제(2026-08-20 실계좌 실측)의 개선 후보
+      macroF20.push(macroSignal(f, hist, 0.2));
+      macroF35.push(macroSignal(f, hist, 0.35));
+      macroF50.push(macroSignal(f, hist, 0.5));
     }
 
     const byEngine = new Map<string, Cand[]>();
@@ -267,6 +278,11 @@ async function buildDataset(): Promise<Dataset> {
         // 온톨로지 트랙과 같은 합성식 (뉴스 축 0)
         const ontoScore = composite(onto.score, priceSignal(hist).score, 0);
         byEngine.get("onto")!.push({ ...common, score: ontoScore });
+        const ps = priceSignal(hist).score;
+        for (const [eng, mArr] of [["ontofast20", macroF20], ["ontofast35", macroF35], ["ontofast50", macroF50]] as const) {
+          const o2 = propagate(fake, mArr as MacroSignal[], IS_US ? (US_SENSITIVITY as Record<string, Partial<Record<MacroId, number>>>) : SENSITIVITY);
+          byEngine.get(eng)!.push({ ...common, score: composite(o2.score, ps, 0) });
+        }
         // 하이브리드 — 온톨로지 결론과 수급·차트 점수를 반반.
         byEngine.get("hybrid")!.push({ ...common, score: (ontoScore + qs) / 2 });
         // 온톨로지+차트 / 삼합 — 세 분석의 나머지 조합

@@ -97,25 +97,40 @@ export function atr14(s: PriceHistory): number {
 /* ── 1) 거시 신호 ─────────────────────────────── */
 
 /** 종가 배열 하나를 거시 신호 한 건으로 변환 (5일 변화율 ÷ 기준폭) */
-export function macroSignal(factor: MacroFactor, history: PriceHistory): MacroSignal {
+/**
+ * 거시 신호. fastBlend > 0 이면 5일 신호에 1일 신호를 그 비율로 섞는다.
+ *
+ * 2026-08-20 도입 배경(실계좌 실손실): 코스피가 하루 -5.8% 폭락한 날에도 5일 합계
+ * (+9%)가 폭락을 가려 위험회피 0·위험선호 판정이 나왔고, 다음날 추천이 대거 틀렸다.
+ * 1일 축을 섞으면 급변이 신호에 당일 반영된다. 1일 정규화 스케일은 5일 스케일의
+ * 45% — 하루에 5일 창의 절반 가까이 움직였으면 동급 강도로 본다.
+ */
+export function macroSignal(factor: MacroFactor, history: PriceHistory, fastBlend = 0): MacroSignal {
   const change = pctChange(history.closes, 5);
+  const v5 = clamp(change / factor.scale, -1, 1);
+  let value = v5;
+  if (fastBlend > 0 && history.closes.length >= 2) {
+    const c1 = pctChange(history.closes, 1);
+    const v1 = clamp(c1 / (factor.scale * 0.45), -1, 1);
+    value = (1 - fastBlend) * v5 + fastBlend * v1;
+  }
   return {
     id: factor.id,
     nameKo: factor.nameKo,
     changePct: round(change, 2),
-    value: round(clamp(change / factor.scale, -1, 1), 3),
+    value: round(clamp(value, -1, 1), 3),
     price: history.price,
     upMeansKo: factor.upMeansKo,
   };
 }
 
 /** 심볼 → 히스토리 조회 함수를 받아 거시 신호 전체를 만든다 */
-export function macroSignals(lookup: (symbol: string) => PriceHistory | undefined): MacroSignal[] {
+export function macroSignals(lookup: (symbol: string) => PriceHistory | undefined, fastBlend = 0): MacroSignal[] {
   const out: MacroSignal[] = [];
   for (const factor of MACRO) {
     const h = lookup(factor.symbol);
     if (!h || h.closes.length < 6) continue;
-    out.push(macroSignal(factor, h));
+    out.push(macroSignal(factor, h, fastBlend));
   }
   return out;
 }
