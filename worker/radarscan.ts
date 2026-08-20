@@ -12,7 +12,7 @@ import seedData from "../shared/radar-universe.json";
 import usSeedData from "../shared/us-universe.json";
 import { MACRO, US_SENSITIVITY, type SectorId, type UniverseTicker } from "../shared/ontology";
 import { liveSensitivity } from "./senslive";
-import { composite, macroSignals, pctChange, priceSignal, propagate, round } from "../shared/scoring";
+import { composite, macroSignals, pctChange, priceSignal, propagate, round, shockFastBlend } from "../shared/scoring";
 import { getSparkMany, loadSparkFresh } from "./quotes";
 import { getMacroNewsAdjust } from "./macronews";
 import type { RadarScoreRow, RadarTicker } from "./radar";
@@ -49,23 +49,32 @@ async function macroForRadar(env: Env) {
     getMacroNewsAdjust(env).catch(() => null),
   ]);
   const bySymbol = new Map(spark.map((x) => [x.symbol.toUpperCase(), { price: x.price, closes: x.closes, highs: [], lows: [], volumes: [] }]));
-  const macro = macroSignals((sym) => bySymbol.get(sym.toUpperCase()));
-  if (mnews?.adjustments.length) {
+  /* 적응형 1일 블렌드(2026-08-20 실계좌 실손실 → 백테스트 QKA30 검증 후 적용):
+   * 시장지수가 급변 국면이면 거시 신호에 1일 축을 50% 섞어 폭락·급반등이 당일
+   * 점수에 반영되게 한다. 시장별 지수로 따로 판정한다(한국 ^KS11 / 미국 ^IXIC). */
+  const fbKR = shockFastBlend(bySymbol.get("^KS11")?.closes ?? []);
+  const fbUS = shockFastBlend(bySymbol.get("^IXIC")?.closes ?? []);
+  const macro = macroSignals((sym) => bySymbol.get(sym.toUpperCase()), fbKR);
+  const macroUS = fbUS === fbKR ? macro : macroSignals((sym) => bySymbol.get(sym.toUpperCase()), fbUS);
+  const applyNews = (arr: typeof macro) => {
+    if (!mnews?.adjustments.length) return;
     const byId = new Map(mnews.adjustments.map((a) => [a.id, a]));
-    for (const m of macro) {
+    for (const m of arr) {
       const adj = byId.get(m.id);
       if (adj) {
         m.newsImpact = adj.impact;
         m.newsReason = adj.reasonKo;
       }
     }
-  }
+  };
+  applyNews(macro);
+  if (macroUS !== macro) applyNews(macroUS);
   // 상대 강세(종목 20일 수익률 − 시장 20일 수익률) 기준선 — 시장별로 다르다.
   const mom20 = (sym: string) => {
     const b = bySymbol.get(sym);
     return b && b.closes.length >= 21 ? pctChange(b.closes, 20) : null;
   };
-  return { macro, baseline: { KR: mom20("^KS11"), US: mom20("^IXIC") } };
+  return { macro, macroUS, baseline: { KR: mom20("^KS11"), US: mom20("^IXIC") } };
 }
 
 export interface RadarScanResult {
@@ -79,7 +88,7 @@ export async function radarScanChunk(env: Env): Promise<RadarScanResult> {
   if (!s) return { scanned: 0, cursor: 0, skippedNoData: 0 };
 
   await radarSeedIfNeeded(env);
-  const [{ rows, cursor }, { macro, baseline }, { table: krTable }] = await Promise.all([
+  const [{ rows, cursor }, { macro, macroUS, baseline }, { table: krTable }] = await Promise.all([
     s.nextChunk(CHUNK),
     macroForRadar(env),
     liveSensitivity(env),
@@ -108,7 +117,7 @@ export async function radarScanChunk(env: Env): Promise<RadarScanResult> {
     if (t.sector) {
       const fake: UniverseTicker = { code: t.code, symbol: t.symbol, nameKo: t.name, sectors: { [t.sector as SectorId]: 1 }, aliases: [] };
       // 시장별 민감도 표 — 미국은 정적, 한국은 승격본(MLOps)이 있으면 그것
-      onto = propagate(fake, macro, t.market === "US" ? US_SENSITIVITY : krTable);
+      onto = propagate(fake, t.market === "US" ? macroUS : macro, t.market === "US" ? US_SENSITIVITY : krTable);
     }
 
     out.push({

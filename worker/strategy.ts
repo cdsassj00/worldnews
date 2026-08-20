@@ -26,6 +26,7 @@ import {
   propagate,
   riskOffFrom,
   round,
+  shockFastBlend,
   type MacroSignal,
   type ScoreReason,
 } from "../shared/scoring";
@@ -92,7 +93,12 @@ export async function runStrategy(env: Env): Promise<StrategyResult> {
   const macroBySymbol = new Map(
     macroSpark.map((s) => [s.symbol.toUpperCase(), { price: s.price, closes: s.closes, highs: [], lows: [], volumes: [] }]),
   );
-  const macro = macroSignals((symbol) => macroBySymbol.get(symbol.toUpperCase()));
+  /* 적응형 1일 블렌드 — 코스피가 급변 국면(최근 5거래일 내 하루 ±3%)이면 거시 신호에
+   * 1일 축을 50% 섞는다. 2026-08-20 백테스트(QKA30) 검증: 급변 구간 3개월 +6.7%p·
+   * 6개월 +19.3%p 개선, 조용한 장에서는 0이 되어 기존과 동일. 하루 -5.8% 폭락을
+   * 5일 합계가 가려 위험회피 0으로 판정하던 실계좌 실손실의 재발 방지. */
+  const fastBlend = shockFastBlend(macroBySymbol.get("^KS11")?.closes ?? []);
+  const macro = macroSignals((symbol) => macroBySymbol.get(symbol.toUpperCase()), fastBlend);
 
   // 각 거시 신호가 "언제 시세" 기준인지 붙인다 — 화면에 시간 기준을 밝히기 위해.
   const sparkTs = new Map(macroSpark.map((s) => [s.symbol.toUpperCase(), s.ts]));

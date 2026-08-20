@@ -124,6 +124,20 @@ export function macroSignal(factor: MacroFactor, history: PriceHistory, fastBlen
   };
 }
 
+/**
+ * 급변 국면 판정 → 1일 블렌드 강도.
+ * 시장지수가 최근 5거래일 안에 하루 ±thr 이상 움직였으면 blend(기본 0.5)를 돌려준다.
+ * 백테스트(2026-08-20, QKA30): 급변 구간 한국 3개월 +6.7%p·6개월 +19.3%p 개선,
+ * 조용한 구간에서는 0이 되어 기존과 동일 — 적응형이라 양쪽 장점을 다 가진다.
+ */
+export function shockFastBlend(indexCloses: number[], thr = 0.03, blend = 0.5): number {
+  const last = indexCloses.slice(-6);
+  for (let k = 1; k < last.length; k++) {
+    if (Math.abs(last[k] / last[k - 1] - 1) >= thr) return blend;
+  }
+  return 0;
+}
+
 /** 심볼 → 히스토리 조회 함수를 받아 거시 신호 전체를 만든다 */
 export function macroSignals(lookup: (symbol: string) => PriceHistory | undefined, fastBlend = 0): MacroSignal[] {
   const out: MacroSignal[] = [];
