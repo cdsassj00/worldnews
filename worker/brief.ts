@@ -131,12 +131,17 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
     avgChangePct: number | null;
   } | null = null;
   const priceByCode = new Map<string, number>();
+  /** 이 시장 레이더 행의 가장 최신 갱신 시각 — 외부 구독자의 신선도 검사용 */
+  let dataAsOf = 0;
   try {
     const top = (await radarTop(env, 600, "desc", undefined, market === "US" ? "US" : undefined)) as {
-      items?: { code: string; market: string; price: number }[];
+      items?: { code: string; market: string; price: number; updatedAt?: number }[];
     };
     for (const it of top.items ?? []) {
-      if ((market === "US") === (it.market === "US")) priceByCode.set(it.code, it.price);
+      if ((market === "US") === (it.market === "US")) {
+        priceByCode.set(it.code, it.price);
+        if (it.updatedAt && it.updatedAt > dataAsOf) dataAsOf = it.updatedAt;
+      }
     }
   } catch { /* 채점만 빈다 */ }
   if (prevStored?.picks.length) {
@@ -243,6 +248,15 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
     marketKo: market === "US" ? "미국" : "한국",
     basis: basisOf(market),
     basisNote: BASIS_NOTE,
+    /* 신선도(2026-08-20, 유튜브 파이프라인 요청) — 발행 전 검사용.
+     * generatedAt: 이 응답을 계산한 시각(항상 지금).
+     * dataAsOf: 이 시장 레이더 시세의 가장 최신 갱신 시각 — 시세 수집이 멈췄으면 여기가 늙는다.
+     * 권장 검사: date === 오늘(KST) && basis !== "intraday" && dataAgeMinutes < 720.
+     * basis 는 시장별로 다르게 나온다 — 한국 저녁(17시 이후) 기준 KR=post_close,
+     * US=prev_close(그날 아침 5시 KST 마감분이 최신이므로 이것이 정상이다). */
+    generatedAt: Date.now(),
+    dataAsOf: dataAsOf || null,
+    dataAgeMinutes: dataAsOf ? Math.round((Date.now() - dataAsOf) / 60000) : null,
     regime: verdict.regime,
     causal: verdict.causal,
     sectors: {
