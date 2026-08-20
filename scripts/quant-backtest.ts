@@ -136,6 +136,8 @@ const SCENARIOS: QScenario[] = [
   { name: "QKF2 onto·1일20%",          engine: "ontofast20", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
   { name: "QKF3 onto·1일35%",          engine: "ontofast35", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
   { name: "QKF5 onto·1일50%",          engine: "ontofast50", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
+  { name: "QKA25 onto·적응블렌드2.5",   engine: "ontoadapt25", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
+  { name: "QKA30 onto·적응블렌드3.0",   engine: "ontoadapt30", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
   /* ⑥ 돌파·역추세 엔진 (밴드 상단을 감점하지 않는 판) */
   { name: "QL 돌파",                  engine: "breakout", ...BASE },
   { name: "QM 돌파·저회전+시장필터",     engine: "breakout", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
@@ -212,7 +214,7 @@ async function buildDataset(): Promise<Dataset> {
   process.stderr.write(`점수 계산 — ${calendar[startIdx]} ~ ${calendar.at(-1)} …\n`);
   // hybrid = 온톨로지(거시 인과) 와 퀀트(수급·차트) 를 반반 섞은 점수.
   // ta = 차트 거장 전략 13종(이평교차·MACD·일목·터틀 등)의 합의 점수 — 전략실 3호의 검증판.
-  const engines = [...QUANT_PROFILES.map((p) => p.id), "onto", "hybrid", "ta", "onto_ta", "quant_ta", "all3", "ontofast20", "ontofast35", "ontofast50"];
+  const engines = [...QUANT_PROFILES.map((p) => p.id), "onto", "hybrid", "ta", "onto_ta", "quant_ta", "all3", "ontofast20", "ontofast35", "ontofast50", "ontoadapt25", "ontoadapt30"];
   const daily = new Map<string, Map<string, Cand[]>>();
   const have = uni.filter((u) => bars.has(u.symbol.toUpperCase()));
 
@@ -279,6 +281,15 @@ async function buildDataset(): Promise<Dataset> {
         const ontoScore = composite(onto.score, priceSignal(hist).score, 0);
         byEngine.get("onto")!.push({ ...common, score: ontoScore });
         const ps = priceSignal(hist).score;
+        // 적응형 — 지수가 최근 5거래일 안에 하루 ±문턱%를 넘은 "급변 국면"에만 1일 블렌드를 켠다
+        const last6 = marketCloses.slice(-6);
+        let maxAbs1d = 0;
+        for (let k = 1; k < last6.length; k++) maxAbs1d = Math.max(maxAbs1d, Math.abs(last6[k] / last6[k - 1] - 1));
+        for (const [eng, thr] of [["ontoadapt25", 0.025], ["ontoadapt30", 0.03]] as const) {
+          const mA = maxAbs1d >= thr ? macroF50 : macro;
+          const oA = propagate(fake, mA as MacroSignal[], IS_US ? (US_SENSITIVITY as Record<string, Partial<Record<MacroId, number>>>) : SENSITIVITY);
+          byEngine.get(eng)!.push({ ...common, score: composite(oA.score, ps, 0) });
+        }
         for (const [eng, mArr] of [["ontofast20", macroF20], ["ontofast35", macroF35], ["ontofast50", macroF50]] as const) {
           const o2 = propagate(fake, mArr as MacroSignal[], IS_US ? (US_SENSITIVITY as Record<string, Partial<Record<MacroId, number>>>) : SENSITIVITY);
           byEngine.get(eng)!.push({ ...common, score: composite(o2.score, ps, 0) });
