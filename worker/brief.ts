@@ -202,6 +202,42 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
       reason: priceByCode.has(p.code) ? "오늘 점수가 상위권에서 밀렸습니다" : "오늘 후보 집계에 없습니다",
     }));
 
+  /* ── 서사(narrative) — "종목이 매일 비슷해 보인다"는 질문에 답하는 블록(2026-08-20).
+   * 온톨로지는 국면 추종이라 국면이 유지되는 동안 같은 섹터 클러스터가 이어지는 게
+   * 정상이다. 그 지속/전환을 숫자와 문장으로 만들어 영상이 그대로 말할 수 있게 한다. */
+  type FullLite = { regime?: { tone?: string; label?: string }; sectors?: { recommend?: { sector: string }[] } };
+  const prevFull = prevStored?.full as FullLite | undefined;
+  const tone = verdict.regime.tone;
+  let streakDays = 1;
+  for (const st of [prevStored, ...chain.slice(1)]) {
+    if (!st || (st.full as FullLite | undefined)?.regime?.tone !== tone) break;
+    streakDays++;
+  }
+  const todaySectors = verdict.sectors.recommend.map((s) => s.sector);
+  const prevSectors = prevFull?.sectors?.recommend?.map((s) => s.sector) ?? [];
+  const kept = todaySectors.filter((s) => prevSectors.includes(s));
+  const entered = todaySectors.filter((s) => !prevSectors.includes(s));
+  const left = prevSectors.filter((s) => !todaySectors.includes(s));
+  const turnover = picks.filter((p) => p.isNew).length;
+  const regimeChanged = Boolean(prevFull?.regime?.tone && prevFull.regime.tone !== tone);
+  const summaryKo = regimeChanged
+    ? `국면이 바뀌었습니다 — ${prevFull?.regime?.label ?? "이전 국면"}에서 ${verdict.regime.label}(으)로. ${left.length ? `${left.join("·")} 섹터에서 나와 ` : ""}${entered.length ? `${entered.join("·")} 섹터로 이동했습니다. ` : ""}온톨로지가 갈아타는 날입니다.`
+    : `${verdict.regime.label.split("—")[0].trim()}이 ${streakDays}일째 이어지고 있습니다. 추천 섹터는 ${kept.length ? `${kept.join("·")}이(가) 유지되고` : "오늘 새로 구성되고"}${entered.length ? ` ${entered.join("·")}이(가) 새로 들어왔으며` : ""}, 종목은 5개 중 ${turnover}개가 교체됐습니다${turnover > 0 && kept.length ? " — 같은 순풍 안에서 더 좋은 종목으로 로테이션한 것입니다" : ""}.`;
+  const narrative = {
+    regime: {
+      tone,
+      label: verdict.regime.label,
+      streakDays,
+      changed: regimeChanged,
+      prevLabel: prevFull?.regime?.label ?? null,
+    },
+    sectors: { kept, entered, left },
+    pickTurnover: { changed: turnover, total: picks.length },
+    summaryKo,
+    meaningKo:
+      "온톨로지는 국면 추종 전략입니다 — 국면이 유지되는 동안 같은 섹터 클러스터가 이어지는 것은 정상이며(평균 보유 6~13일), 이 방식의 가치는 국면이 꺾이는 날 남보다 먼저 갈아타는 데 있습니다.",
+  };
+
   const brief = {
     market,
     marketKo: market === "US" ? "미국" : "한국",
@@ -228,7 +264,12 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
     })),
     dropped,
     previous,
-    speech: buildSpeech(market === "US" ? "미국" : "한국", verdict, picks),
+    narrative,
+    speech: {
+      ...buildSpeech(market === "US" ? "미국" : "한국", verdict, picks),
+      /** 국면 지속/전환 서사 — 오프닝 바로 뒤에 읽기 좋은 완성 문장 */
+      narrative: summaryKo,
+    },
     /** 엔진(분석 방식)별 추천 — 온톨로지·수급·차트·융합 각각 "무엇을 보고 골랐는지"
      * 근거 문장 포함. 전략실 리그와 같은 점수 함수라 화면·리그와 어긋나지 않는다.
      * (2026-08-19 유튜브 파이프라인 요청: 엔진별 추천 + 근거) */
