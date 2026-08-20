@@ -37,6 +37,7 @@ const TRID: Record<string, { prod: string; vts: string }> = {
   "domestic.sell": { prod: "TTTC0801U", vts: "VTTC0801U" },
   "domestic.cancel": { prod: "TTTC0803U", vts: "VTTC0803U" },
   "domestic.balance": { prod: "TTTC8434R", vts: "VTTC8434R" },
+  "domestic.psamount": { prod: "TTTC8908R", vts: "VTTC8908R" },
   "domestic.price": { prod: "FHKST01010100", vts: "FHKST01010100" },
   "overseas.price": { prod: "HHDFS00000300", vts: "HHDFS00000300" },
   "overseas.balance": { prod: "TTTS3012R", vts: "VTTS3012R" },
@@ -610,6 +611,35 @@ export async function overseasBalance(env: Env, cfg: KisConfig, excd: OrderMarke
  * 원화 예수금 기준으로 주문가능금액·수량이 잡힌다. "환전 없이 살 수 있나"의
  * 결정적 판정은 예수금이 아니라 이 값이다.
  */
+/**
+ * 국내주식 매수가능조회 — 예수금(dnca_tot_amt)이나 D+2 정산액(prvs_rcdl_excc_amt)은
+ * 통합증거금 미국 주문의 결제 예정액을 빼지 않아 실제보다 크게 나올 수 있다.
+ * "지금 이 종목을 몇 주 살 수 있나"의 결정적 판정은 이 조회의 미수없는 수량이다.
+ * (2026-08-19 S-Oil 매수가 APBK0952 로 수십 회 거절된 원인)
+ */
+export async function domesticPsamount(env: Env, cfg: KisConfig, code: string, price: number) {
+  const out = await kisCall(env, cfg, {
+    method: "GET",
+    path: "/uapi/domestic-stock/v1/trading/inquire-psbl-order",
+    trId: trId(env, "domestic.psamount", cfg.isPaper),
+    query: {
+      CANO: cfg.cano,
+      ACNT_PRDT_CD: cfg.acntPrdtCd,
+      PDNO: code,
+      ORD_UNPR: String(price),
+      ORD_DVSN: "00",
+      CMA_EVLU_AMT_ICLD_YN: "N",
+      OVRS_ICLD_YN: "N",
+    },
+  });
+  const o = (out["output"] ?? {}) as Record<string, string>;
+  return {
+    /** 미수 없이(현금만으로) 살 수 있는 금액·수량 — 봇은 이것만 쓴다 */
+    orderableCash: num(o["nrcvb_buy_amt"] || o["ord_psbl_cash"]),
+    maxQty: num(o["nrcvb_buy_qty"] || o["max_buy_qty"]),
+  };
+}
+
 export async function overseasPsamount(env: Env, cfg: KisConfig, excd: string, symb: string, price: number) {
   const out = await kisCall(env, cfg, {
     method: "GET",

@@ -26,6 +26,7 @@ import { runStrategy, type StrategyResult, type TickerScore } from "./strategy";
 import { quantRank, usMarketOpen } from "./quant";
 import {
   domesticBalance,
+  domesticPsamount,
   isDryRun,
   kisConfig,
   kisConfigured,
@@ -1107,6 +1108,22 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
         break;
       }
       try {
+        /* 매수는 전송 직전에 매수가능조회로 수량을 한 번 더 누른다.
+         * 예수금 기반 cashLeft 는 통합증거금 미국 결제 예정액을 모르기 때문에
+         * 그대로 보내면 APBK0952(주문가능금액 초과)로 사이클마다 거절이 반복된다. */
+        if (o.side === "buy" && !isDryRun(env)) {
+          const ps = await domesticPsamount(env, kisConfig(env), o.code, o.price).catch(() => null);
+          if (ps && ps.maxQty < o.qty) {
+            if (ps.maxQty < 1) {
+              journal.push(entry("skip", `${o.nameKo} 매수 보류 — 주문가능금액 부족(가능 0주, 미국 결제 대기 등). 다음 사이클에 재평가`));
+              results.push({ code: o.code, side: o.side, ok: false, message: "주문가능수량 0" });
+              continue;
+            }
+            journal.push(entry("cycle", `${o.nameKo} 매수 ${o.qty}→${ps.maxQty}주 축소 — 주문가능금액 기준`));
+            o.qty = ps.maxQty;
+            o.notionalKrw = Math.round(o.price * o.qty);
+          }
+        }
         const res = await placeOrder(env, kisConfig(env), {
           market: "KRX",
           code: o.code,
