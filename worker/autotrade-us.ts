@@ -171,7 +171,17 @@ function emptyUsState(): UsAutoState {
 export async function loadUsState(env: Env): Promise<UsAutoState> {
   const raw = (await env.CACHE.get(STATE_KEY, "json").catch(() => null)) as UsAutoState | null;
   if (!raw) return emptyUsState();
-  return { ...emptyUsState(), ...raw, positions: raw.positions ?? {} };
+  const s = { ...emptyUsState(), ...raw, positions: raw.positions ?? {} };
+  /* 사고 복구(2026-08-20): num("")=0 버그로 정지 한도가 전부 0%가 되어
+   * "당일/고점 -0% (한도 -0%)" 가짜 정지가 걸렸다. 한도 0%는 이제 불가능하므로
+   * 이 사유의 정지는 읽는 시점에 스스로 푼다 — KV 쓰기 한도가 소진돼 저장이
+   * 실패해도 매 사이클 메모리에서 풀리므로 매매가 막히지 않는다. */
+  if (s.haltReason.includes("한도 -0%")) {
+    s.haltedPermanent = false;
+    s.haltedDay = "";
+    s.haltReason = "";
+  }
+  return s;
 }
 
 async function saveUsState(env: Env, s: UsAutoState): Promise<void> {
@@ -444,13 +454,14 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
   if (state.dayStartPnlUsd === undefined) state.dayStartPnlUsd = out.pnlUsd;
   const baseUsd = Math.max(1, budgetUsd);
   const ddPct = ((state.peakPnlUsd - out.pnlUsd) / baseUsd) * 100;
-  if (ddPct >= cfg.maxDrawdownPct && !state.haltedPermanent) {
+  // 한도 0 이하는 설정 오류 — 그걸로 정지를 걸지는 않는다 (2026-08-20 -0% 사고 재발 방지)
+  if (cfg.maxDrawdownPct > 0 && ddPct >= cfg.maxDrawdownPct && !state.haltedPermanent) {
     state.haltedPermanent = true;
     state.haltReason = `고점 손익 대비 -${round(ddPct, 1)}% (예산 대비, 한도 -${cfg.maxDrawdownPct}%)`;
     journal.push(entry("halt", `미국 — 영구 정지: ${state.haltReason}. 사람이 확인 후 해제해야 합니다.`));
   }
   const dayLossPct = ((state.dayStartPnlUsd - out.pnlUsd) / baseUsd) * 100;
-  if (dayLossPct >= cfg.dailyLossHaltPct && state.haltedDay !== today) {
+  if (cfg.dailyLossHaltPct > 0 && dayLossPct >= cfg.dailyLossHaltPct && state.haltedDay !== today) {
     state.haltedDay = today;
     state.haltReason = `당일 -${round(dayLossPct, 1)}% (예산 대비, 한도 -${cfg.dailyLossHaltPct}%)`;
     journal.push(entry("halt", `미국 — 당일 정지: ${state.haltReason}. 다음 거래일 자동 해제됩니다.`));

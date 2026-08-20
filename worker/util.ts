@@ -164,7 +164,12 @@ export async function fetchWithTimeout(url: string, init?: RequestInit, timeoutM
 }
 
 export function num(v: unknown, fallback = 0): number {
-  const n = typeof v === "number" ? v : Number(String(v ?? "").replace(/,/g, ""));
+  /* 값이 아예 없으면(undefined/null/빈 문자열) 반드시 fallback 을 준다.
+   * Number("") 은 0이라, 이 분기가 없으면 num(undefined, 5) 가 5가 아닌 0을
+   * 돌려준다 — 2026-08-20 미국 봇의 손절·익절·정지 한도가 전부 0%로 무너져
+   * "당일 -0% (한도 -0%)" 정지가 발생한 실제 사고의 원인이다. */
+  if (v === undefined || v === null || v === "") return fallback;
+  const n = typeof v === "number" ? v : Number(String(v).replace(/,/g, ""));
   return Number.isFinite(n) ? n : fallback;
 }
 
