@@ -490,6 +490,7 @@ function humanize(code: string, detail: unknown): string {
     ai_bad_json: "AI 응답을 해석하지 못했습니다. 다시 시도해 주세요.",
     ai_refused: "모델이 이 내용에 대한 응답을 거부했습니다.",
     analysis_unsupported: "이 국가는 시장 데이터가 없어 AI 분석을 만들지 않습니다.",
+    kv_write_limit: "설정 저장 한도(무료 요금제 1,000회/일) 소진 — 오전 9시(KST) 리셋 후 다시 시도하세요.",
   };
   return table[code] ?? `요청 실패 (${code})`;
 }

@@ -361,7 +361,7 @@ export class AutoPanel {
       el("p", { class: "note", text: p.engineNote }),
       el("p", {
         class: "note",
-        text: "프리셋 성적은 3개월/6개월/1년 백테스트 수익률(저회전+시장국면 필터 규칙, 2026-08-16 재측정)입니다. 바꾸는 즉시 한 사이클이 돌아 장중이면 실주문까지 나갑니다. 주문·손절·한도 같은 안전장치는 조합과 무관하게 동일하게 작동합니다.",
+        text: `프리셋 성적은 3개월/6개월/1년 백테스트 수익률(저회전+시장국면 필터 규칙${this.bt ? `, ${this.bt.measuredAt} 재측정` : ""})입니다. 바꾸는 즉시 한 사이클이 돌아 장중이면 실주문까지 나갑니다. 주문·손절·한도 같은 안전장치는 조합과 무관하게 동일하게 작동합니다.`,
       }),
     ]);
   }
@@ -542,24 +542,36 @@ export class AutoPanel {
         )
       : [el("p", { class: "note", text: "미국 봇이 보유한 종목이 없습니다. 개장(22:30 KST) 후 첫 사이클부터 매수를 검토합니다." })];
     const totalPnl = u.pnlKrw + u.realizedKrw;
-    /* 미국 엔진 선택 칩 — 한국 엔진과 완전 별개(2026-08-19 사용자 지시 "미국 별도 세팅") */
+    /* 미국 엔진 선택 — 한국 엔진과 완전 별개(2026-08-19 사용자 지시 "미국 별도 세팅").
+     * 한국과 같은 카드 모양 + 백테스트 성적을 붙인다(2026-08-21 사용자 지시 "왜 다르게 생겼냐").
+     * 미국 봇 점수라 미국 성적만 보여 준다. 융합(세 점수 평균)은 별도 시나리오가 없어
+     * 규칙이 가장 가까운 삼합(34·33·33) 측정치를 근사로 붙인다. */
     const engineStatus = el("span", { class: "reserve-status", text: "" });
-    const engineRow = el("div", { class: "radar-tabs us-engine" },
-      [["onto", "온톨로지"], ["quant", "수급"], ["ta", "차트"], ["fusion", "융합"]].map(([id, name]) => {
-        const btn = el("button", { class: `radar-tab ${u.engine === id ? "active" : ""}`, type: "button", text: name });
+    const usPerf = (btId: string) => this.perfLine(btId, "US");
+    const engineRow = el("div", { class: "engine-picker" },
+      [["onto", "온톨로지", "onto"], ["quant", "수급", "quant"], ["ta", "차트", "ta"], ["fusion", "융합", "all3"]].map(([id, name, btId]) => {
+        const active = u.engine === id;
+        const btn = el("button", { type: "button", class: `engine-btn${active ? " active" : ""}`, "aria-pressed": active ? "true" : "false" }, [
+          el("span", { class: "engine-name", text: name }),
+          el("span", { class: "engine-perf", text: usPerf(btId) + (id === "fusion" ? " (삼합 근사)" : "") }),
+        ]);
         btn.addEventListener("click", () => {
           if (u.engine === id) return;
+          engineRow.querySelectorAll(".engine-btn").forEach((n) => n.classList.remove("active"));
+          btn.classList.add("active");
           engineStatus.textContent = `${name} 엔진으로 전환 중…`;
+          engineStatus.className = "reserve-status";
           void api.usSetEngine(id)
             .then(() => { engineStatus.textContent = `전환됨 — 다음 사이클부터 ${name} 점수로 매매합니다`; engineStatus.className = "reserve-status ok"; void this.load(); })
-            .catch((e) => { engineStatus.textContent = `실패: ${e instanceof Error ? e.message : e}`; engineStatus.className = "reserve-status err"; });
+            .catch((e) => { engineStatus.textContent = `실패: ${e instanceof Error ? e.message : e}`; engineStatus.className = "reserve-status err"; void this.load(); });
         });
         return btn;
       }));
     // 타일 구성은 한국 섹션과 완전히 동일 — 예산 / 투입 / 여유 / 손익(실현 포함)
     return el("section", { class: "auto-block" }, [
       el("h3", {}, [el("span", { text: "미국 봇 자금 · 보유 종목" })]),
-      el("div", { class: "us-engine-row" }, [el("span", { class: "k", text: "미국 엔진" }), engineRow, engineStatus]),
+      el("div", { class: "us-engine-row" }, [el("span", { class: "k", text: "미국 엔진 — 성적은 미국 백테스트 3·6·12개월" }), engineStatus]),
+      engineRow,
       el("div", { class: "auto-grid" }, [
         stat("예산(미국 몫)", fmtKrw(u.budgetKrw)),
         stat("주식에 투입", fmtKrw(investedKrw)),

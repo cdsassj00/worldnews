@@ -104,7 +104,9 @@ export async function setUsEngine(env: Env, engine: string): Promise<UsEngine> {
   if (!US_ENGINES.some((e) => e.id === engine)) {
     throw new ApiError(400, "bad_engine", { allowed: US_ENGINES.map((e) => e.id) });
   }
-  await env.CACHE.put(US_ENGINE_KEY, engine);
+  await env.CACHE.put(US_ENGINE_KEY, engine).catch(() => {
+    throw new ApiError(503, "kv_write_limit", { hint: "설정 저장 실패 — Cloudflare 저장(KV) 하루 쓰기 한도가 소진됐습니다. 오전 9시(KST) 리셋 후 다시 시도하세요." });
+  });
   return engine as UsEngine;
 }
 

@@ -567,7 +567,9 @@ export async function getReserveKrw(env: Env): Promise<number> {
 
 export async function setReserveKrw(env: Env, krw: number): Promise<number> {
   const v = Math.round(Math.max(0, Math.min(50_000_000, Number(krw) || 0)));
-  await env.CACHE.put(RESERVE_KEY, String(v));
+  await env.CACHE.put(RESERVE_KEY, String(v)).catch(() => {
+    throw new ApiError(503, "kv_write_limit", { hint: "설정 저장 실패 — Cloudflare 저장(KV) 하루 쓰기 한도가 소진됐습니다. 오전 9시(KST) 리셋 후 다시 시도하세요." });
+  });
   return v;
 }
 
@@ -580,7 +582,10 @@ export async function setEngine(env: Env, input: { engine?: string; weights?: Pa
     if (!preset) throw new ApiError(400, "bad_engine", { engine: input.engine, allowed: AUTO_ENGINES.map((e) => e.id) });
     sel = preset;
   }
-  await env.CACHE.put(ENGINE_KEY, sel.id === "custom" ? `w:${sel.w.onto},${sel.w.flow},${sel.w.chart}` : sel.id);
+  await env.CACHE.put(ENGINE_KEY, sel.id === "custom" ? `w:${sel.w.onto},${sel.w.flow},${sel.w.chart}` : sel.id).catch(() => {
+    // 무료 요금제 KV 쓰기 한도(1,000회/일, 00:00 UTC 리셋) 소진이 대표 원인
+    throw new ApiError(503, "kv_write_limit", { hint: "설정 저장 실패 — Cloudflare 저장(KV) 하루 쓰기 한도가 소진됐습니다. 오전 9시(KST) 리셋 후 다시 시도하세요." });
+  });
   return sel;
 }
 

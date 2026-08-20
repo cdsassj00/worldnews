@@ -117,7 +117,12 @@ export async function cached<T>(
     const effectiveTtl = ttlFor ? ttlFor(data) : ttlSeconds;
     const entry: CacheEntry<T> = { data, fetchedAt: now, ttl: effectiveTtl };
     memSet(key, entry);
-    if (effectiveTtl >= KV_WRITE_MIN_TTL) {
+    /* 내용이 그대로면 KV에 다시 쓰지 않는다 — 무료 요금제 쓰기 한도(1,000회/일)가
+     * 야간·주말의 "같은 시세 재기록"으로 소진되는 것을 막는다(2026-08-21 실측:
+     * 한도 소진으로 엔진 변경까지 실패). 대신 다음 호출도 로더를 다시 타는데,
+     * 장 마감 중 데이터는 어차피 같고 fetch 예산은 KV 쓰기보다 훨씬 넉넉하다. */
+    const sameAsKv = kv && JSON.stringify(kv.data) === JSON.stringify(data);
+    if (effectiveTtl >= KV_WRITE_MIN_TTL && !sameAsKv) {
       await env.CACHE.put(
         key,
         JSON.stringify(entry),
