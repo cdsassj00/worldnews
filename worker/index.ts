@@ -792,6 +792,7 @@ export default {
     // 미국장 15분 크론은 미국 실계좌 사이클(usRunCycle) + 리그·스캔 — 한국 실계좌
     // 봇(runCycle)까지 돌리면 밤새 "그림자 실행" 기록이 15분마다 쌓여 일지(120줄)를
     // 잡음으로 채운다(2026-08-18 실측). 한국 크론은 반대로 runCycle 만 돈다.
+    const usWindow = h >= 13 && h <= 21;
     const usCron = event.cron === "*/15 13-21 * * 1-5";
     const skipTrade = usCron || (event.cron === "0 * * * *" && marketWindow);
 
@@ -805,6 +806,30 @@ export default {
         JSON.stringify({ at: Date.now(), cron: event.cron, usCron, skipTrade, h, utcMin: now.getUTCMinutes() }),
       ).catch(() => undefined),
     );
+    // usCron 전용 심박 — 이 키만 보면 "15분 미국 크론이 최근에 실제로 돌았는지"를 딴 크론과 안 섞고 판별할 수 있다.
+    if (usCron) ctx.waitUntil(env.CACHE.put("diag:us:15min:heartbeat", String(Date.now())).catch(() => undefined));
+
+    /* 2026-08-21 자동 보완 장치 — 오늘 미국 전용 15분 크론이 개장 후 2시간 반 넘게
+     * 한 번도 발화하지 않은 게 확인됐다(클라우드플레어 쪽 크론 전달 문제로 추정,
+     * 코드·배포는 정상). 사용자가 자리에 없어 수동 실행도 못 하는 상황이라, 이미
+     * 살아있는 걸로 확인된 매시간 크론이 대신 깨우게 한다.
+     * 안전장치: 15분 크론의 심박이 20분 이내로 최근이면(=정상 작동 중이면) 절대
+     * 끼어들지 않는다 — 두 크론이 겹쳐 같은 매도가 두 번 나가는 중복 주문을 막기
+     * 위해서다(2026-08-18 실측으로 skipTrade 를 만든 바로 그 문제). 15분 크론이
+     * 다시 살아나면 이 보완 장치는 자동으로 조용해진다. */
+    let usFallback = false;
+    if (!usCron && event.cron === "0 * * * *" && usWindow) {
+      const hb = await env.CACHE.get("diag:us:15min:heartbeat").catch(() => null);
+      const lastSeen = hb ? Number(hb) : 0;
+      if (Date.now() - lastSeen > 20 * 60 * 1000) {
+        usFallback = true;
+        ctx.waitUntil(
+          appendJournal(env, [
+            entry("cycle", `미국 — 15분 크론 미발화 감지(마지막 심박 ${lastSeen ? new Date(lastSeen).toISOString() : "없음"}), 매시간 크론이 대신 사이클을 실행합니다.`),
+          ]).catch(() => undefined),
+        );
+      }
+    }
 
     // 반드시 순차로: 두 작업이 같은 인보케이션의 서브리퀘스트 한도(50)를 나눠 쓴다.
     // 주문(runCycle/usRunCycle)이 예산을 먼저 쓰고, 레이더는 남은 예산으로 돈다(실패해도 다음 크론이 재시도).
@@ -819,7 +844,7 @@ export default {
       );
     };
     ctx.waitUntil(
-      (usCron
+      (usCron || usFallback
         ? usRunCycle(env).then(() => undefined).catch(logCycleFailure("미국"))
         : skipTrade
           ? Promise.resolve()
