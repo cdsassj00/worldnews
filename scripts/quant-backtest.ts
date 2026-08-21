@@ -94,6 +94,8 @@ export interface QScenario {
   /** 교체 매매 문턱 (0 이면 끔) */
   rotateGap: number;
   maxPositions: number;
+  /** 한 섹터에 동시에 들 수 있는 종목 수. 0 이면 제한 없음 */
+  sectorCap?: number;
   /**
    * 시장 국면 필터 — 코스피가 N일 이동평균 아래면 **신규 매수를 아예 하지 않는다**.
    * 추세추종은 방향 없는 시장에서 손절만 반복하며 비용으로 죽는다. 0 이면 끔.
@@ -138,6 +140,11 @@ const SCENARIOS: QScenario[] = [
   { name: "QKF5 onto·1일50%",          engine: "ontofast50", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
   { name: "QKA25 onto·적응블렌드2.5",   engine: "ontoadapt25", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
   { name: "QKA30 onto·적응블렌드3.0",   engine: "ontoadapt30", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
+  /* 섹터 분산 — 2026-08-21 실매매 학습 루프에서 규정한 패턴("픽이 한 섹터에 몰리면
+   * 그 섹터가 꺾이는 날 전 종목이 동시에 진다")을 고치는 후보. QK 와 나머지 조건은 같다. */
+  { name: "QKC2 onto·섹터당 2종목",     engine: "onto", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20, sectorCap: 2 },
+  { name: "QKC3 onto·섹터당 3종목",     engine: "onto", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20, sectorCap: 3 },
+  { name: "QKC2S7 onto·섹터2+손절7",   engine: "onto", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 7, timeStopDays: 0, rotateGap: 0, marketMaDays: 20, sectorCap: 2 },
   /* ⑥ 돌파·역추세 엔진 (밴드 상단을 감점하지 않는 판) */
   { name: "QL 돌파",                  engine: "breakout", ...BASE },
   { name: "QM 돌파·저회전+시장필터",     engine: "breakout", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
@@ -167,6 +174,8 @@ interface UniRow { code: string; symbol: string; name: string; market: string; s
 interface Cand {
   code: string; symbol: string; name: string;
   score: number; price: number; atr: number; turnover: number;
+  /** 섹터 분산 규칙(sectorCap)용 — 미분류는 빈 문자열 */
+  sector: string;
 }
 
 interface Dataset {
@@ -257,7 +266,7 @@ async function buildDataset(): Promise<Dataset> {
       const q = quantSignal({ hist, market: marketCloses }, QUANT_PROFILES[0]);
       if (q.turnover < MIN_TURNOVER) continue;
       const parts: QuantParts = q.parts;
-      const common = { code: u.code, symbol: sym, name: u.name, price: hist.price, atr: q.atr, turnover: q.turnover };
+      const common = { code: u.code, symbol: sym, name: u.name, price: hist.price, atr: q.atr, turnover: q.turnover, sector: u.sector ?? "" };
 
       for (const p of QUANT_PROFILES) {
         byEngine.get(p.id)!.push({ ...common, score: p.id === QUANT_PROFILES[0].id ? q.score : scoreFromParts(parts, p) });
@@ -315,6 +324,7 @@ async function buildDataset(): Promise<Dataset> {
 interface Position {
   code: string; name: string; symbol: string;
   qty: number; avgPrice: number; openedOn: string; openedIdx: number; peakPrice: number;
+  sector: string;
 }
 
 interface Trade { code: string; name: string; qty: number; buyDate: string; sellDate: string; pnl: number; pnlPct: number; reason: string; holdDays: number }
@@ -439,6 +449,15 @@ function simulate(ds: Dataset, cfg: QScenario): SimResult {
       if (r.score < cfg.buyScore) break;
       const existing = positions.get(r.code);
       if (!existing && positions.size >= cfg.maxPositions) continue;
+      /* 섹터 분산 — 신규 진입만 막는다(이미 든 종목의 추가 매수는 그대로).
+       * 온톨로지는 국면 추종이라 한 섹터가 순풍이면 상위가 그 섹터로 도배된다.
+       * 그러면 섹터가 꺾이는 날 전 종목이 동시에 진다(2026-08-21 실측: 미국 픽이
+       * 3일 연속 에너지 5/5, 적중률 80%→20%). */
+      if (!existing && cfg.sectorCap && r.sector) {
+        let same = 0;
+        for (const p of positions.values()) if (p.sector === r.sector) same++;
+        if (same >= cfg.sectorCap) continue;
+      }
       const oi = idxAsOf(r.symbol, tomorrow);
       const b = bars.get(r.symbol);
       if (oi < 0 || !b) continue;
@@ -459,7 +478,7 @@ function simulate(ds: Dataset, cfg: QScenario): SimResult {
         existing.avgPrice = (existing.avgPrice * existing.qty + fill * qty) / total;
         existing.qty = total;
       } else {
-        positions.set(r.code, { code: r.code, name: r.name, symbol: r.symbol, qty, avgPrice: fill, openedOn: tomorrow, openedIdx: d + 1, peakPrice: fill });
+        positions.set(r.code, { code: r.code, name: r.name, symbol: r.symbol, qty, avgPrice: fill, openedOn: tomorrow, openedIdx: d + 1, peakPrice: fill, sector: r.sector });
       }
       buys++;
     }
@@ -514,7 +533,11 @@ async function main() {
   console.log("─".repeat(78));
 
   const results: SimResult[] = [];
+  /* BT_SCEN="QK,QKC2" 처럼 주면 해당 접두어의 시나리오만 돌린다.
+   * 데이터 수집은 그대로지만 시뮬레이션 시간을 줄여 후보 규칙을 빠르게 대조할 때 쓴다. */
+  const only = (process.env.BT_SCEN ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   for (const cfg of SCENARIOS) {
+    if (only.length && !only.some((p) => cfg.name.startsWith(p + " ") || cfg.name === p)) continue;
     const r = simulate(ds, cfg);
     results.push(r);
     const s = stats(r);
