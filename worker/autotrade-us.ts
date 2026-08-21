@@ -308,6 +308,8 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
     if (out.ran) {
       await env.CACHE.put(LAST_KEY, JSON.stringify({ at: Date.now(), ...out }), { expirationTtl: 86_400 }).catch(() => undefined);
     }
+    // 2026-08-21 진단용 — 스킵으로 끝나도 "왜 스킵했는지"는 남긴다(원인 좁혀지면 제거).
+    await env.CACHE.put("diag:us:finish", JSON.stringify({ at: Date.now(), note, ran: out.ran })).catch(() => undefined);
     return out;
   };
 

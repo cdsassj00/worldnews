@@ -795,6 +795,17 @@ export default {
     const usCron = event.cron === "*/15 13-21 * * 1-5";
     const skipTrade = usCron || (event.cron === "0 * * * *" && marketWindow);
 
+    /* 2026-08-21 진단용 심박 — 미국 봇이 침묵으로 멈춰 원인을 못 좁혔다.
+     * 실패 로그도 안 남는다는 건 usRunCycle 자체가 호출되지 않거나, 호출은 되지만
+     * "장 마감"으로 조용히 스킵하는 경로 둘 다일 수 있어 구분이 안 됐다. 그래서
+     * 크론이 호출될 때마다 무조건(분기 전에) 기록한다 — 원인이 좁혀지면 지운다. */
+    ctx.waitUntil(
+      env.CACHE.put(
+        "diag:cron:last",
+        JSON.stringify({ at: Date.now(), cron: event.cron, usCron, skipTrade, h, utcMin: now.getUTCMinutes() }),
+      ).catch(() => undefined),
+    );
+
     // 반드시 순차로: 두 작업이 같은 인보케이션의 서브리퀘스트 한도(50)를 나눠 쓴다.
     // 주문(runCycle/usRunCycle)이 예산을 먼저 쓰고, 레이더는 남은 예산으로 돈다(실패해도 다음 크론이 재시도).
     /* 2026-08-21: 미국 봇이 개장 후 두 시간 가까이 아무 기록 없이 멈춰 있었는데
