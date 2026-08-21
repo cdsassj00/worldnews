@@ -25,7 +25,7 @@ import {
   type OrderMarket,
   overseasReadiness,
 } from "./kis";
-import { adjustForDeposit, autoStatus, buildPlan, getJournal, loadState, resetLedger, resumeAuto, runCycle, getEngine, getEngineSel, setEngine, setReserveKrw, engineKey, AUTO_ENGINES } from "./autotrade";
+import { adjustForDeposit, appendJournal, autoStatus, buildPlan, entry, getJournal, loadState, resetLedger, resumeAuto, runCycle, getEngine, getEngineSel, setEngine, setReserveKrw, engineKey, AUTO_ENGINES } from "./autotrade";
 import { getUsEngine, setUsEngine, US_ENGINES, usAutoStatus, usRunCycle } from "./autotrade-us";
 import { runStrategy } from "./strategy";
 import { tickerNewsStatus } from "./tickernews";
@@ -797,14 +797,24 @@ export default {
 
     // 반드시 순차로: 두 작업이 같은 인보케이션의 서브리퀘스트 한도(50)를 나눠 쓴다.
     // 주문(runCycle/usRunCycle)이 예산을 먼저 쓰고, 레이더는 남은 예산으로 돈다(실패해도 다음 크론이 재시도).
+    /* 2026-08-21: 미국 봇이 개장 후 두 시간 가까이 아무 기록 없이 멈춰 있었는데
+     * 에러 일지도 안 남아 원인을 특정할 수 없었다("조용히 실패"의 대가). 사이클
+     * 함수가 던지는 예외를 잡아 최소한 발생 사실은 일지에 남긴다 — 매매 로직은
+     * 그대로다, 실패를 보이게만 만든다. */
+    const logCycleFailure = (label: string) => (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      ctx.waitUntil(
+        appendJournal(env, [entry("error", `${label} 사이클이 예외로 중단됐습니다 — ${msg.slice(0, 300)}`)]).catch(() => undefined),
+      );
+    };
     ctx.waitUntil(
       (usCron
-        ? usRunCycle(env).then(() => undefined)
+        ? usRunCycle(env).then(() => undefined).catch(logCycleFailure("미국"))
         : skipTrade
           ? Promise.resolve()
-          : runCycle(env).then(() => undefined)
+          : runCycle(env).then(() => undefined).catch(logCycleFailure("한국"))
       ).catch(() => {
-        /* 크론은 조용히 실패한다. 원인은 일지·tail 로 확인 */
+        /* 위 catch 가 이미 일지에 남겼다. 여기는 체인이 끊기지 않게만 한다. */
       })
         // 전 시장 레이더: 한 번에 80종목씩 순회
         .then(() => radarScanChunk(env))
