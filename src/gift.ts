@@ -60,6 +60,8 @@ root.innerHTML = `
       <div id="kakao-admin" class="kakao-admin" hidden>
         <strong>운영자 설정</strong>
         <p>카카오톡 ‘나에게 보내기’를 한 번 연결합니다.</p>
+        <label for="admin-token">거래 암호</label>
+        <input id="admin-token" type="password" autocomplete="current-password" placeholder="자동매매 설정 암호" />
         <button id="connect-kakao" type="button">카카오 알림 연결하기</button>
       </div>
     </section>
@@ -80,6 +82,7 @@ const noteEl = document.getElementById("gift-note") as HTMLInputElement;
 const statusEl = document.getElementById("request-status")!;
 const adminEl = document.getElementById("kakao-admin")!;
 const connectBtn = document.getElementById("connect-kakao") as HTMLButtonElement;
+const adminTokenEl = document.getElementById("admin-token") as HTMLInputElement;
 
 const won = (v: number) => `${Math.round(v).toLocaleString("ko-KR")}원`;
 
@@ -130,8 +133,12 @@ if (new URLSearchParams(location.search).get("kakao") === "connected") {
   statusEl.textContent = "카카오 알림 연결이 완료됐어요. 이제 요청 버튼이 바로 알림을 보냅니다.";
 }
 connectBtn.addEventListener("click", async () => {
-  const token = getTradeToken() || window.prompt("운영자 거래 암호를 입력하세요")?.trim() || "";
-  if (!token) return;
+  const token = getTradeToken() || adminTokenEl.value.trim();
+  if (!token) {
+    statusEl.textContent = "운영자 거래 암호를 입력해주세요.";
+    adminTokenEl.focus();
+    return;
+  }
   connectBtn.disabled = true;
   connectBtn.textContent = "카카오 연결 화면 여는 중…";
   try {

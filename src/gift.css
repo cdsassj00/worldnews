@@ -71,6 +71,9 @@ h1 em { font-style: normal; color: #f1655c; text-shadow: 3px 3px 0 #ffe168; }
 .kakao-admin { margin-top: 15px; padding: 14px; border: 2px dashed #27305a; border-radius: 13px; background: #fff9cc; }
 .kakao-admin[hidden] { display: none; }
 .kakao-admin p { margin: 4px 0 10px; font-size: 12px; }
+.kakao-admin label { display: block; margin: 8px 0 5px; font-size: 12px; font-weight: 700; }
+.kakao-admin input { width: 100%; min-height: 42px; margin-bottom: 8px; padding: 0 12px; border: 2px solid #27305a; border-radius: 10px; background: #fff; color: #27305a; }
+.kakao-admin input:focus { outline: none; box-shadow: 0 0 0 4px #ffe164; }
 .kakao-admin button { min-height: 42px; padding: 0 14px; border: 2px solid #27305a; border-radius: 10px; background: #fee500; color: #191919; font-weight: 700; cursor: pointer; }
 footer { padding-top: 27px; text-align: center; }
 footer p { margin: 0 auto 10px; max-width: 520px; font-size: 12px; line-height: 1.55; color: #707794; }
