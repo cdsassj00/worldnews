@@ -780,8 +780,8 @@ export default {
       return briefIndex(env).catch(() => new Response("unavailable", { status: 503 }));
     }
     if (url.pathname === GIFT_PAGE_PATH || url.pathname === `${GIFT_PAGE_PATH}/`) {
-      // Cloudflare Assets의 HTML pretty URL을 내부에서 직접 조회해 외부 주소 리디렉션을 피한다.
-      const asset = await env.ASSETS.fetch(new Request(`${url.origin}/gift`, request));
+      // .html은 Assets가 canonical URL로 307 처리하므로 내부 전용 비-HTML 사본을 조회한다.
+      const asset = await env.ASSETS.fetch(new Request(`${url.origin}/gift-shell.txt`, request));
       const headers = new Headers(asset.headers);
       headers.set("x-robots-tag", "noindex, nofollow, noarchive, nosnippet");
       headers.set("cache-control", "private, no-store");
@@ -789,7 +789,7 @@ export default {
       return new Response(asset.body, { status: asset.status, headers });
     }
     // 빌드 산출물의 짧은 이름으로 우회하지 못하게 하고, 사진도 색인 금지 헤더를 붙인다.
-    if (url.pathname === "/gift" || url.pathname === "/gift/" || url.pathname === "/gift.html") {
+    if (url.pathname === "/gift" || url.pathname === "/gift/" || url.pathname === "/gift.html" || url.pathname === "/gift-shell.txt") {
       return new Response("Not found", { status: 404 });
     }
     if (url.pathname.startsWith("/gift/")) {
