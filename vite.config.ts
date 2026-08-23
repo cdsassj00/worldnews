@@ -1,4 +1,7 @@
 import { defineConfig } from "vite";
+import { fileURLToPath } from "node:url";
+
+const root = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
   build: {
@@ -6,6 +9,12 @@ export default defineConfig({
     emptyOutDir: true,
     target: "es2022",
     chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      input: {
+        main: `${root}index.html`,
+        gift: `${root}gift.html`,
+      },
+    },
   },
   server: {
     proxy: {

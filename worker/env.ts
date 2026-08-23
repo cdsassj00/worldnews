@@ -24,6 +24,10 @@ export interface Env {
   TRADE_TOKEN?: string; // 주문/잔고 API 접근용 비밀 토큰
   RADAR_TOKEN?: string; // 레이더 수동 스캔용 운영 토큰(주문 권한 없음)
   KIS_TRID_OVERRIDES?: string; // TR_ID 표를 덮어쓰는 JSON (선택)
+  KAKAO_REST_API_KEY?: string; // 승철이 선물 요청 알림용 카카오 REST API 키
+  KAKAO_CLIENT_SECRET?: string; // 카카오 REST API 클라이언트 시크릿(활성화 시 필수)
+  KAKAO_ACCESS_TOKEN?: string; // 단기 연결용 사용자 액세스 토큰
+  KAKAO_REFRESH_TOKEN?: string; // 장기 알림용 사용자 리프레시 토큰
 
   // 자동매매 (autotrade.ts)
   AUTOTRADE_ENABLED?: string; // "true" 여야 실제 주문이 나간다. 기본 false = 계획만 세움

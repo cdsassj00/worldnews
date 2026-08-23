@@ -39,6 +39,8 @@ import { briefCardSvg, dailyBrief } from "./brief";
 import { sceneSvg } from "./scenes";
 import { liveSensitivity, promoteSensitivity, rollbackSensitivity } from "./senslive";
 import { runScalpCycle, setScalpPct } from "./scalptrade";
+import { GIFT_API_PATH, GIFT_PAGE_PATH } from "../shared/gift";
+import { finishKakaoConnect, giftQuote, requestGift, startKakaoConnect } from "./gift";
 
 export { RadarDB } from "./radar";
 
@@ -393,6 +395,24 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
       invalidateCache(env, `auto:plan:${engineKey(sel)}`),
     ]);
     return json({ ok: true, reserveKrw: v });
+  }
+
+  if (path === GIFT_API_PATH) {
+    if (request.method === "GET") return json(await giftQuote(env));
+    if (request.method === "POST") {
+      const body = await request.json().catch(() => ({})) as { note?: string };
+      return json(await requestGift(env, url.origin, String(body.note ?? "")));
+    }
+    throw new ApiError(405, "method_not_allowed");
+  }
+  if (path === `${GIFT_API_PATH}/kakao/start`) {
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    return json({ url: await startKakaoConnect(env, url.origin) });
+  }
+  if (path === `${GIFT_API_PATH}/kakao/callback`) {
+    if (url.searchParams.get("error")) throw new ApiError(400, "kakao_consent_denied");
+    return finishKakaoConnect(env, url.origin, url.searchParams.get("code") ?? "", url.searchParams.get("state") ?? "");
   }
 
   if (path === "/api/auto/scalp") {
@@ -758,6 +778,23 @@ export default {
     }
     if (url.pathname === "/brief" || url.pathname === "/brief/") {
       return briefIndex(env).catch(() => new Response("unavailable", { status: 503 }));
+    }
+    if (url.pathname === GIFT_PAGE_PATH || url.pathname === `${GIFT_PAGE_PATH}/`) {
+      const asset = await env.ASSETS.fetch(new Request(`${url.origin}/gift.html`, request));
+      const headers = new Headers(asset.headers);
+      headers.set("x-robots-tag", "noindex, nofollow, noarchive, nosnippet");
+      headers.set("cache-control", "private, no-store");
+      headers.set("referrer-policy", "no-referrer");
+      return new Response(asset.body, { status: asset.status, headers });
+    }
+    // 빌드 산출물의 짧은 이름으로 우회하지 못하게 하고, 사진도 색인 금지 헤더를 붙인다.
+    if (url.pathname === "/gift.html") return new Response("Not found", { status: 404 });
+    if (url.pathname.startsWith("/gift/")) {
+      const asset = await env.ASSETS.fetch(request);
+      const headers = new Headers(asset.headers);
+      headers.set("x-robots-tag", "noindex, nofollow, noarchive");
+      headers.set("cache-control", "private, max-age=86400");
+      return new Response(asset.body, { status: asset.status, headers });
     }
     const briefMatch = url.pathname.match(/^\/brief\/(\d{4}-\d{2}-\d{2})$/);
     if (briefMatch) {

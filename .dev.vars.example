@@ -4,3 +4,8 @@ KIS_APP_KEY=한국투자증권_APP_KEY
 KIS_APP_SECRET=한국투자증권_APP_SECRET
 KIS_ACCOUNT=12345678-01
 TRADE_TOKEN=주문API_접근_암호
+
+# 승철이 선물 요청을 카카오톡 '나에게 보내기'로 받으려면 설정
+KAKAO_REST_API_KEY=카카오_REST_API_키
+KAKAO_CLIENT_SECRET=카카오_클라이언트_시크릿
+KAKAO_REFRESH_TOKEN=카카오_사용자_리프레시_토큰

@@ -18,6 +18,7 @@
     "typecheck": "tsc --build tsconfig.json",
     "test:scalp": "esbuild scripts/scalp-test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/scalp-test.mjs --log-level=warning && node node_modules/.cache/scalp-test.mjs",
     "test:settings": "esbuild scripts/settings-test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/settings-test.mjs --log-level=warning && node node_modules/.cache/settings-test.mjs",
+    "test:gift": "esbuild scripts/gift-test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/gift-test.mjs --log-level=warning && node node_modules/.cache/gift-test.mjs",
     "validate:symbols": "node scripts/validate-symbols.mjs",
     "backtest": "esbuild scripts/backtest.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/backtest.mjs --log-level=warning && node node_modules/.cache/backtest.mjs",
     "predict-eval": "esbuild scripts/predict-eval.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/predict-eval.mjs --log-level=warning && node node_modules/.cache/predict-eval.mjs",
