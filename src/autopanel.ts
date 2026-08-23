@@ -423,7 +423,7 @@ export class AutoPanel {
       const res = await api.autoSetEngine(payload);
       await this.load();
       // load() 가 새로 그리므로 이 노드는 살아남는다(같은 인스턴스를 다시 붙인다)
-      this.engineStatus.textContent = `엔진을 ${res.engineName} 로 저장했습니다 — 다음 정규 사이클에서 적용됩니다.`;
+      this.engineStatus.textContent = `저장됨 · ${res.engineName} — 다음 15분 정규 사이클부터 신규매수 판단에 적용됩니다.`;
       this.engineStatus.className = "modal-status ok";
     } catch (err) {
       const failed = err instanceof ApiFailure;
@@ -594,7 +594,7 @@ export class AutoPanel {
           engineStatus.textContent = `${name} 엔진으로 전환 중…`;
           engineStatus.className = "reserve-status";
           void api.usSetEngine(id)
-            .then(() => { engineStatus.textContent = `전환됨 — 다음 사이클부터 ${name} 점수로 매매합니다`; engineStatus.className = "reserve-status ok"; void this.load(); })
+            .then(() => { engineStatus.textContent = `저장됨 · ${name} — 다음 15분 정규 사이클부터 신규매수 판단에 적용됩니다`; engineStatus.className = "reserve-status ok"; void this.load(); })
             .catch((e) => { engineStatus.textContent = `실패: ${e instanceof Error ? e.message : e}`; engineStatus.className = "reserve-status err"; void this.load(); });
         });
         return btn;
@@ -691,7 +691,9 @@ export class AutoPanel {
       status.className = "reserve-status";
       void api.autoSetScalpPct(pct)
         .then(() => {
-          status.textContent = "저장됨 — 기존 보유분은 유지하고 다음 1분 점검부터 적용합니다";
+          status.textContent = pct === 0
+            ? "저장됨 — 신규 단타만 중지하고 기존 단타는 청산까지 계속 관리합니다"
+            : "저장됨 — 기존 보유분은 유지하고 다음 1분 점검부터 적용합니다";
           status.className = "reserve-status ok";
           void this.load();
         })

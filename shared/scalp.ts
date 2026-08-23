@@ -7,6 +7,14 @@ export interface MinuteBar {
   volume: number;
 }
 
+/**
+ * 0%는 신규 진입만 끄는 값이다. 이미 낸 주문이나 보유 단타 포지션이 있으면
+ * 손절·체결확인·당일청산이 끝날 때까지 사이클을 계속 돌려야 한다.
+ */
+export function shouldRunScalpCycle(pct: number, hasPosition: boolean, hasPending: boolean): boolean {
+  return pct > 0 || hasPosition || hasPending;
+}
+
 export interface ScalpSignal {
   enter: boolean;
   score: number;

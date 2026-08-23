@@ -19,7 +19,7 @@ import {
   type OrderMarket,
 } from "./kis";
 import { quantRank } from "./quant";
-import { scalpEntrySignal, scalpExitReason } from "../shared/scalp";
+import { scalpEntrySignal, scalpExitReason, shouldRunScalpCycle } from "../shared/scalp";
 import { ApiError, num, round } from "./util";
 
 export type ScalpMarket = "KR" | "US";
@@ -218,7 +218,9 @@ export async function scalpView(env: Env, totalDepositKrw: number, domesticCashK
     strategy: "5분 시초범위 돌파 + VWAP",
     totalTargetKrw: krTarget + usTarget,
     totalAvailableKrw: totalAvailable,
-    status: pct <= 0 ? "꺼짐" : totalAvailable < MIN_ORDER_KRW ? "자금 부족 · 대기" : "분봉 감시 중",
+    status: pct <= 0
+      ? (state.KR.position || state.KR.pending || state.US.position || state.US.pending ? "신규진입 꺼짐 · 보유분 관리" : "꺼짐")
+      : totalAvailable < MIN_ORDER_KRW ? "자금 부족 · 대기" : "분봉 감시 중",
     KR: { targetKrw: krTarget, availableKrw: krAvailable, position: state.KR.position, realizedPnlKrw: state.KR.realizedPnlKrw, note: state.KR.lastNote, at: state.KR.lastAt },
     US: { targetKrw: usTarget, availableKrw: usAvailable, position: state.US.position, realizedPnlKrw: state.US.realizedPnlKrw, note: state.US.lastNote, at: state.US.lastAt },
   };
@@ -227,10 +229,11 @@ export async function scalpView(env: Env, totalDepositKrw: number, domesticCashK
 export async function runScalpCycle(env: Env, market: ScalpMarket): Promise<void> {
   if (!kisConfigured(env)) return;
   const pct = await getScalpPct(env);
-  if (pct <= 0) return;
-  const cfg = kisConfig(env);
   const state = await loadState(env);
   const ledger = state[market];
+  // 0%는 신규진입 중지다. 이미 보유하거나 체결 확인 중인 단타가 있으면 보호 로직은 계속 돈다.
+  if (!shouldRunScalpCycle(pct, Boolean(ledger.position), Boolean(ledger.pending))) return;
+  const cfg = kisConfig(env);
   const reserve = await reserveKrw(env);
   const deposit = await totalDepositKrw(env);
   const kt = kstParts();

@@ -38,6 +38,7 @@ import {
 } from "./kis";
 import { ApiError, num, round } from "./util";
 import { getScalpClaims, getScalpPct } from "./scalptrade";
+import { strategyLocked, strategyPreference } from "../shared/strategy-settings";
 
 /* ── 설정 ─────────────────────────────────────────────── */
 
@@ -97,14 +98,15 @@ export const US_ENGINES: { id: UsEngine; nameKo: string }[] = [
 const US_ENGINE_KEY = "auto:us:engine";
 
 export async function getUsEngine(env: Env): Promise<UsEngine> {
-  const locked = (env.US_ENGINE_LOCKED ?? "false").toLowerCase() === "true";
+  const locked = strategyLocked(env.US_ENGINE_LOCKED);
   const kv = await env.CACHE.get(US_ENGINE_KEY).catch(() => null);
-  const v = ((locked ? env.US_ENGINE ?? kv : kv ?? env.US_ENGINE) ?? "onto") as string;
+  const [first, second] = strategyPreference(locked, env.US_ENGINE, kv);
+  const v = ((first ?? second) ?? "onto") as string;
   return (US_ENGINES.some((e) => e.id === v) ? v : "onto") as UsEngine;
 }
 
 export async function setUsEngine(env: Env, engine: string): Promise<UsEngine> {
-  if ((env.US_ENGINE_LOCKED ?? "false").toLowerCase() === "true") {
+  if (strategyLocked(env.US_ENGINE_LOCKED)) {
     throw new ApiError(409, "engine_locked", { hint: "최근 1·3·6개월 검증을 통과한 미국 QM 엔진이 배포 설정으로 고정되어 있습니다." });
   }
   if (!US_ENGINES.some((e) => e.id === engine)) {

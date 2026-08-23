@@ -599,13 +599,12 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
   }
 
   if (path === "/api/auto/us/engine") {
-    // 미국 봇 엔진 — 한국(auto:engine)과 완전 별개. 바꾸면 즉시 한 사이클 돈다.
+    // 미국 봇 엔진 — 한국(auto:engine)과 완전 별개. 설정만 저장하고 다음 정규 사이클에 적용한다.
     assertTradeAuth(env, request);
     if (request.method === "POST") {
       const body = (await request.json().catch(() => ({}))) as { engine?: string };
       const e = await setUsEngine(env, String(body.engine ?? ""));
-      ctx.waitUntil(usRunCycle(env).catch(() => undefined));
-      return json({ ok: true, engine: e, engines: US_ENGINES, note: "미국 엔진 변경 — 장중이면 즉시 사이클을 실행합니다." });
+      return json({ ok: true, engine: e, engines: US_ENGINES, note: "미국 엔진 설정을 저장했습니다. 다음 정규 사이클에서 안전 게이트를 다시 확인합니다." });
     }
     return json({ engine: await getUsEngine(env), engines: US_ENGINES });
   }

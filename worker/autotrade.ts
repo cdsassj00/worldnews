@@ -54,6 +54,7 @@ import {
 } from "./kis";
 import { ApiError, cached, num, round } from "./util";
 import { getScalpClaims, getScalpPct, scalpView, type ScalpView } from "./scalptrade";
+import { strategyLocked, strategyPreference } from "../shared/strategy-settings";
 
 /* ── 설정 ─────────────────────────────────────────────── */
 
@@ -579,9 +580,10 @@ function parseEngineValue(v: string | null | undefined): EngineSel | null {
 }
 
 export async function getEngineSel(env: Env): Promise<EngineSel> {
-  const locked = (env.AUTO_ENGINE_LOCKED ?? "false").toLowerCase() === "true";
-  return (locked ? parseEngineValue(env.AUTO_ENGINE) : parseEngineValue(await env.CACHE.get(ENGINE_KEY)))
-    ?? (locked ? parseEngineValue(await env.CACHE.get(ENGINE_KEY)) : parseEngineValue(env.AUTO_ENGINE))
+  const locked = strategyLocked(env.AUTO_ENGINE_LOCKED);
+  const [first, second] = strategyPreference(locked, env.AUTO_ENGINE, await env.CACHE.get(ENGINE_KEY));
+  return parseEngineValue(first)
+    ?? parseEngineValue(second)
     ?? parseEngineValue("onto")!;
 }
 
@@ -635,7 +637,7 @@ export async function setReserveKrw(env: Env, krw: number): Promise<number> {
 }
 
 export async function setEngine(env: Env, input: { engine?: string; weights?: Partial<EngineWeights> }): Promise<EngineSel> {
-  if ((env.AUTO_ENGINE_LOCKED ?? "false").toLowerCase() === "true") {
+  if (strategyLocked(env.AUTO_ENGINE_LOCKED)) {
     throw new ApiError(409, "engine_locked", { hint: "최근 장세 검증을 통과한 국내 QK 엔진이 배포 설정으로 고정되어 있습니다." });
   }
   let sel: EngineSel;

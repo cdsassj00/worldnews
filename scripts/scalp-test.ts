@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { scalpEntrySignal, scalpExitReason, type MinuteBar } from "../shared/scalp";
+import { scalpEntrySignal, scalpExitReason, shouldRunScalpCycle, type MinuteBar } from "../shared/scalp";
 
 const start = Date.UTC(2026, 7, 24, 0, 0);
 const bars: MinuteBar[] = Array.from({ length: 12 }, (_, i) => ({
@@ -22,5 +22,10 @@ assert.match(scalpExitReason({ entryPrice: 100, currentPrice: 99.1, peakPrice: 1
 assert.match(scalpExitReason({ entryPrice: 100, currentPrice: 101.4, peakPrice: 101.4, enteredAt: start, now: start + 5 * 60_000 }) ?? "", /익절/);
 assert.match(scalpExitReason({ entryPrice: 100, currentPrice: 100.4, peakPrice: 101, enteredAt: start, now: start + 10 * 60_000 }) ?? "", /추적청산/);
 assert.match(scalpExitReason({ entryPrice: 100, currentPrice: 100.1, peakPrice: 100.4, enteredAt: start, now: start + 31 * 60_000 }) ?? "", /시간청산/);
+
+assert.equal(shouldRunScalpCycle(0, false, false), false, "0%이고 미결 주문·포지션이 없으면 단타 사이클을 쉬어야 한다");
+assert.equal(shouldRunScalpCycle(0, true, false), true, "0%여도 기존 단타 포지션은 청산까지 관리해야 한다");
+assert.equal(shouldRunScalpCycle(0, false, true), true, "0%여도 미결 주문은 체결 확인을 계속해야 한다");
+assert.equal(shouldRunScalpCycle(10, false, false), true, "운용 비율이 있으면 신규 신호 감시를 계속해야 한다");
 
 console.log("✓ scalp strategy tests passed");
