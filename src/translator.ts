@@ -99,7 +99,6 @@ export class SiteTranslator {
   /** 문장별 시도 횟수 — 계속 실패하는 문장으로 API 를 무한히 두드리지 않는다 */
   private readonly attempts = new Map<string, number>();
   private inflight = false;
-  private applying = false;
   private observer: MutationObserver | null = null;
   private timer = 0;
   /** 번역 큐 상태 알림 — 상단 언어 버튼의 진행 표시용 */

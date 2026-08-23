@@ -128,31 +128,6 @@ interface AnalysisPayload {
   checklist: string[];
 }
 
-const OUTPUT_SCHEMA = {
-  type: "object",
-  properties: {
-    summary: { type: "array", items: { type: "string" } },
-    picks: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          name: { type: "string" },
-          symbol: { type: "string" },
-          stance: { type: "string" },
-          reason: { type: "string" },
-        },
-        required: ["name", "symbol", "stance", "reason"],
-        additionalProperties: false,
-      },
-    },
-    risks: { type: "array", items: { type: "string" } },
-    checklist: { type: "array", items: { type: "string" } },
-  },
-  required: ["summary", "picks", "risks", "checklist"],
-  additionalProperties: false,
-} as const;
-
 function buildUserPrompt(
   market: MarketInfo,
   indices: { label: string; price: number; changePct: number }[],

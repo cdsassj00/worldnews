@@ -20,7 +20,6 @@ import type { Env } from "./env";
 import {
   MACRO_LINKS,
   RELATIONS,
-  SENSITIVITY,
   US_SENSITIVITY,
   type MacroId,
 } from "../shared/ontology";

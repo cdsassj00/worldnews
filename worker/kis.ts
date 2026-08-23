@@ -12,6 +12,7 @@
 import type { Env } from "./env";
 import { ApiError, num, safeEqual } from "./util";
 import { socketHttpRequest } from "./http-socket";
+import type { MinuteBar } from "../shared/scalp";
 
 export interface KisConfig {
   appKey: string;
@@ -180,7 +181,7 @@ export async function overseasReadiness(env: Env, cfg: KisConfig): Promise<Overs
     aaplPrice = p.price;
     out.quote = { ok: p.price > 0, detail: p.price > 0 ? `애플 현재가 ${p.price} 조회 성공` : "가격이 비어 있음" };
   } catch (err) {
-    out.quote = { ok: false, detail: err instanceof ApiError ? `${err.code} — ${JSON.stringify(err.detail)}` : String(err) };
+    out.quote = { ok: false, detail: err instanceof ApiError ? `${err.message} — ${JSON.stringify(err.detail)}` : String(err) };
   }
 
   // ② 해외 잔고 — 계좌에 해외주식이 열려 있는지 판별하는 결정적 신호
@@ -193,7 +194,7 @@ export async function overseasReadiness(env: Env, cfg: KisConfig): Promise<Overs
       out.usdCash = b.summary.orderableCash;
       out.hasOverseasHoldings = b.holdings.length > 0;
     } catch (err) {
-      out.balance = { ok: false, detail: err instanceof ApiError ? `${err.code} — ${JSON.stringify(err.detail)}` : String(err) };
+      out.balance = { ok: false, detail: err instanceof ApiError ? `${err.message} — ${JSON.stringify(err.detail)}` : String(err) };
     }
   }
 
@@ -208,7 +209,7 @@ export async function overseasReadiness(env: Env, cfg: KisConfig): Promise<Overs
         ? { ok: true, detail: `주문가능 ${orderable.toFixed(2)} USD · 애플 기준 최대 ${ps.maxQty}주${ps.fx ? ` · 적용 환율 ${ps.fx}` : ""}${ps.frcrOrderable <= 0 ? " — 달러 예수금 없이 원화(통합증거금)로 계산된 금액입니다" : ""}` }
         : { ok: false, detail: "주문가능금액 0 — 통합증거금 미반영 또는 예수금 부족" };
     } catch (err) {
-      out.buyingPower = { ok: false, detail: err instanceof ApiError ? `${err.code} — ${JSON.stringify(err.detail)}` : String(err) };
+      out.buyingPower = { ok: false, detail: err instanceof ApiError ? `${err.message} — ${JSON.stringify(err.detail)}` : String(err) };
     }
   }
 
@@ -281,7 +282,7 @@ async function transportRequest(
   headers: Record<string, string>,
   body?: string,
 ): Promise<RawKisResponse> {
-  let budgetTimer: number | undefined;
+  let budgetTimer: ReturnType<typeof setTimeout> | undefined;
   const budget = new Promise<never>((_, reject) => {
     budgetTimer = setTimeout(
       () => reject(new ApiError(504, "kis_timeout", { hint: "한국투자증권 응답이 없어 요청을 중단했습니다." })),
@@ -604,6 +605,82 @@ export async function overseasBalance(env: Env, cfg: KisConfig, excd: OrderMarke
       currency,
     },
   };
+}
+
+/** 국내 당일 1분봉. 공식 KIS 주식당일분봉조회(v1_국내주식-022). */
+export async function domesticMinuteBars(env: Env, cfg: KisConfig, code: string, hhmmss: string): Promise<MinuteBar[]> {
+  const out = await kisCall(env, cfg, {
+    method: "GET",
+    path: "/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
+    trId: "FHKST03010200",
+    query: {
+      FID_ETC_CLS_CODE: "",
+      FID_COND_MRKT_DIV_CODE: "J",
+      FID_INPUT_ISCD: code,
+      FID_INPUT_HOUR_1: hhmmss,
+      FID_PW_DATA_INCU_YN: "Y",
+    },
+  });
+  const rows = (out["output2"] ?? []) as Record<string, string>[];
+  return rows.map((r) => {
+    const d = r["stck_bsop_date"] || "19700101";
+    const t = (r["stck_cntg_hour"] || "000000").padStart(6, "0");
+    const at = Date.UTC(Number(d.slice(0, 4)), Number(d.slice(4, 6)) - 1, Number(d.slice(6, 8)), Number(t.slice(0, 2)) - 9, Number(t.slice(2, 4)), Number(t.slice(4, 6)));
+    return { at, open: num(r["stck_oprc"]), high: num(r["stck_hgpr"]), low: num(r["stck_lwpr"]), close: num(r["stck_prpr"]), volume: num(r["cntg_vol"] || r["acml_vol"]) };
+  }).filter((b) => b.close > 0).sort((a, b) => a.at - b.at);
+}
+
+/** 해외 당일 1분봉. 공식 KIS 해외주식분봉조회. */
+export async function overseasMinuteBars(env: Env, cfg: KisConfig, excd: OrderMarket, symbol: string): Promise<MinuteBar[]> {
+  const out = await kisCall(env, cfg, {
+    method: "GET",
+    path: "/uapi/overseas-price/v1/quotations/inquire-time-itemchartprice",
+    trId: "HHDFS76950200",
+    query: { AUTH: "", EXCD: excd, SYMB: symbol, NMIN: "1", PINC: "0", NEXT: "", NREC: "120", FILL: excd, KEYB: "" },
+  });
+  const rows = (out["output2"] ?? []) as Record<string, string>[];
+  return rows.map((r, i) => {
+    const d = r["xymd"] || r["kymd"] || new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const t = (r["xhms"] || r["khms"] || r["tymd"] || "000000").replace(/[^0-9]/g, "").padStart(6, "0");
+    const at = Date.UTC(Number(d.slice(0, 4)), Number(d.slice(4, 6)) - 1, Number(d.slice(6, 8)), Number(t.slice(0, 2)), Number(t.slice(2, 4)), Number(t.slice(4, 6))) || Date.now() - i * 60_000;
+    return {
+      at,
+      open: num(r["open"] || r["oprc"]),
+      high: num(r["high"] || r["hgpr"]),
+      low: num(r["low"] || r["lwpr"]),
+      close: num(r["last"] || r["clos"] || r["price"]),
+      volume: num(r["evol"] || r["tvol"] || r["volume"]),
+    };
+  }).filter((b) => b.close > 0).sort((a, b) => a.at - b.at);
+}
+
+/** 미국 3거래소 잔고 합본. 화면 조회에도 써서 장 마감·주말에 오래된 미국 잔고가
+ * 남지 않게 한다. KIS 환경에 따라 NAS/NASD 같은 코드 지원이 달라 두 형식을 시도한다. */
+export async function overseasUsBalanceAll(env: Env, cfg: KisConfig): Promise<{ holdings: Holding[] }> {
+  const holdings: Holding[] = [];
+  const seen = new Set<string>();
+  let okCount = 0;
+  let lastErr: unknown = null;
+  for (const codes of [["NAS", "NASD"], ["NYS", "NYSE"], ["AMS", "AMEX"]]) {
+    let got: Awaited<ReturnType<typeof overseasBalance>> | null = null;
+    for (const code of codes) {
+      try {
+        got = await overseasBalance(env, cfg, code as OrderMarket, "USD");
+        break;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    if (!got) continue;
+    okCount++;
+    for (const h of got.holdings) {
+      if (seen.has(h.symbol)) continue;
+      seen.add(h.symbol);
+      holdings.push(h);
+    }
+  }
+  if (!okCount) throw lastErr ?? new ApiError(502, "us_balance_failed");
+  return { holdings };
 }
 
 /**

@@ -37,6 +37,7 @@ import {
   type OrderMarket,
 } from "./kis";
 import { ApiError, num, round } from "./util";
+import { getScalpClaims, getScalpPct } from "./scalptrade";
 
 /* ── 설정 ─────────────────────────────────────────────── */
 
@@ -96,11 +97,16 @@ export const US_ENGINES: { id: UsEngine; nameKo: string }[] = [
 const US_ENGINE_KEY = "auto:us:engine";
 
 export async function getUsEngine(env: Env): Promise<UsEngine> {
-  const v = ((await env.CACHE.get(US_ENGINE_KEY).catch(() => null)) ?? env.US_ENGINE ?? "onto") as string;
+  const locked = (env.US_ENGINE_LOCKED ?? "false").toLowerCase() === "true";
+  const kv = await env.CACHE.get(US_ENGINE_KEY).catch(() => null);
+  const v = ((locked ? env.US_ENGINE ?? kv : kv ?? env.US_ENGINE) ?? "onto") as string;
   return (US_ENGINES.some((e) => e.id === v) ? v : "onto") as UsEngine;
 }
 
 export async function setUsEngine(env: Env, engine: string): Promise<UsEngine> {
+  if ((env.US_ENGINE_LOCKED ?? "false").toLowerCase() === "true") {
+    throw new ApiError(409, "engine_locked", { hint: "최근 1·3·6개월 검증을 통과한 미국 QM 엔진이 배포 설정으로 고정되어 있습니다." });
+  }
   if (!US_ENGINES.some((e) => e.id === engine)) {
     throw new ApiError(400, "bad_engine", { allowed: US_ENGINES.map((e) => e.id) });
   }
@@ -115,7 +121,7 @@ const SLIPPAGE = 0.003;
 /** 온톨로지 점수가 이 밑이면 근거가 사라진 것으로 보고 이탈 */
 const SELL_SCORE = -0.05;
 /** 미국 종목 거래대금 하한(달러) — quant 트랙과 동일 */
-const MIN_TURNOVER_USD = 3_000_000;
+const MIN_TURNOVER_USD = 20_000_000;
 
 const STATE_KEY = "auto:us:state";
 const LAST_KEY = "auto:us:last";
@@ -137,6 +143,22 @@ export interface UsPosition {
   reason: string;
 }
 
+export interface PendingUsOrder {
+  orderNo: string;
+  acceptedAt: number;
+  side: "buy" | "sell";
+  code: string;
+  name: string;
+  excd: OrderMarket;
+  qty: number;
+  limitPrice: number;
+  fx: number;
+  beforeQty: number;
+  beforeAvgPrice: number;
+  appliedQty: number;
+  reason: string;
+}
+
 export interface UsAutoState {
   startedAt: number;
   /** 미국 동부 기준 날짜 — 세션이 KST 자정을 넘으므로 KST 로 자르면 하루가 둘로 쪼개진다 */
@@ -154,6 +176,7 @@ export interface UsAutoState {
   /** 마지막 관측 환율·보유 평가액(달러) — 국내 대시보드가 총평가에 합산할 때 쓴다 */
   lastFx?: number;
   lastValueUsd?: number;
+  pendingOrders?: PendingUsOrder[];
 }
 
 function emptyUsState(): UsAutoState {
@@ -173,7 +196,7 @@ function emptyUsState(): UsAutoState {
 export async function loadUsState(env: Env): Promise<UsAutoState> {
   const raw = (await env.CACHE.get(STATE_KEY, "json").catch(() => null)) as UsAutoState | null;
   if (!raw) return emptyUsState();
-  const s = { ...emptyUsState(), ...raw, positions: raw.positions ?? {} };
+  const s = { ...emptyUsState(), ...raw, positions: raw.positions ?? {}, pendingOrders: raw.pendingOrders ?? [] };
   /* 사고 복구(2026-08-20): num("")=0 버그로 정지 한도가 전부 0%가 되어
    * "당일/고점 -0% (한도 -0%)" 가짜 정지가 걸렸다. 한도 0%는 이제 불가능하므로
    * 이 사유의 정지는 읽는 시점에 스스로 푼다 — KV 쓰기 한도가 소진돼 저장이
@@ -198,6 +221,14 @@ function etDay(now = new Date()): string {
     month: "2-digit",
     day: "2-digit",
   }).format(now);
+}
+
+function etMinutes(now = new Date()): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(now);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  return (get("hour") % 24) * 60 + get("minute");
 }
 
 /* ── 거래소 판별 ───────────────────────────────────────
@@ -338,10 +369,14 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
     return finish(`잔고 조회 실패: ${msg}`);
   }
   const held = new Map(bal.holdings.map((h) => [h.symbol, h]));
+  await reconcilePendingUsOrders(env, state, bal.holdings, journal);
+  const pendingCodes = new Set((state.pendingOrders ?? []).map((o) => o.code));
+  const scalpClaims = await getScalpClaims(env);
 
   /* 2) 편입·대사 — 계좌가 진실이다(국내 봇과 같은 규칙: 계좌 전체가 봇 운용) */
   for (const h of bal.holdings) {
     if (h.qty <= 0) continue;
+    if (scalpClaims.US.has(h.symbol)) continue;
     const pos = state.positions[h.symbol];
     if (!pos) {
       state.positions[h.symbol] = {
@@ -358,11 +393,13 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
   }
   // 현재가 기록 — 장 마감 후에도 대시보드가 마지막 관측가로 손익을 보여줄 수 있게
   for (const pos of Object.values(state.positions)) {
+    if (pendingCodes.has(pos.code)) continue;
     const h = held.get(pos.code);
     if (h?.price) pos.lastPrice = h.price;
   }
   const GRACE_MS = 2 * 60 * 60 * 1000; // 방금 낸 주문의 체결·반영 대기
   for (const pos of Object.values(state.positions)) {
+    if (pendingCodes.has(pos.code)) continue;
     const h = held.get(pos.code);
     const fresh = Date.now() - Math.max(pos.enteredAt, pos.lastAddedAt) < GRACE_MS;
     if (fresh) continue;
@@ -381,6 +418,8 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
   /* 4) 예산·환율 — 매수가능금액(통합증거금) 조회가 환율까지 준다.
    * 기준 종목은 AAPL(항상 존재)로 고정 — 환율·주문가능 총액은 종목과 무관하다. */
   const reserveKrw = await getReserveKrw(env);
+  const scalpPct = await getScalpPct(env);
+  const swingReserveKrw = Math.max(0, Math.round(reserveKrw * (1 - scalpPct / 100)));
   let fx = 0;
   let orderableUsd = 0;
   try {
@@ -399,7 +438,7 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
   if (!fx || fx < 800 || fx > 2500) fx = 1400; // 환율이 안 오면 보수적 고정값 — 예산이 뻥튀기되지 않게 높은 쪽
   out.fx = fx;
   out.orderableUsd = round(orderableUsd, 2);
-  const budgetUsd = reserveKrw / fx;
+  const budgetUsd = swingReserveKrw / fx;
   out.budgetUsd = round(budgetUsd, 2);
 
   const priceOf = (code: string) => held.get(code)?.price ?? state.positions[code]?.avgPrice ?? 0;
@@ -432,6 +471,7 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
 
   /* 6) 청산 판단 — 손절·익절·신호이탈. 정지 상태에서도 실행한다(정지는 신규 매수만 막는다). */
   for (const pos of Object.values(state.positions)) {
+    if (pendingCodes.has(pos.code)) continue;
     const h = held.get(pos.code);
     const qty = Math.min(pos.qty, h?.qty ?? 0);
     if (qty <= 0) continue;
@@ -441,7 +481,7 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
     let why = "";
     if (pnlPct <= -cfg.stopLossPct) why = `손절 (${round(pnlPct, 1)}% ≤ -${cfg.stopLossPct}%)`;
     else if (pnlPct >= cfg.takeProfitPct) why = `익절 (${round(pnlPct, 1)}% ≥ +${cfg.takeProfitPct}%)`;
-    else if (sc !== undefined && sc <= SELL_SCORE) why = `신호 이탈 (${engineName} ${sc})`;
+    else if (etMinutes() >= 10 * 60 && sc !== undefined && sc <= SELL_SCORE) why = `신호 이탈 (${engineName} ${sc})`;
     if (!why) continue;
     const limit = Math.max(0.01, round(price * (1 - SLIPPAGE), 2));
     out.orders.push({
@@ -474,9 +514,13 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
   /* 8) 신규 매수 */
   const shadow = opts.shadow ?? !cfg.enabled;
   const blocked: string[] = [];
+  if ((env.US_NEW_BUYS_ENABLED ?? "true").toLowerCase() !== "true") {
+    blocked.push("최근 구간 검증 미통과 — 미국 신규매수 잠금");
+  }
   if (state.haltedPermanent) blocked.push(`영구 정지: ${state.haltReason}`);
   if (state.haltedDay === today) blocked.push(`당일 정지: ${state.haltReason}`);
   if (state.tradesToday >= cfg.maxTradesPerDay) blocked.push(`당일 매매 한도(${cfg.maxTradesPerDay}회) 도달`);
+  if (etMinutes() < 10 * 60) blocked.push("미국 시초가 유예 — 10:00 ET 이후 신규매수");
 
   // 주문가능금액 0 = 통합증거금 미반영이거나 예수금 부족 — 실주문 모드에서는 매수를
   // 막는다(어차피 KIS 가 거절한다). 그림자 모드에서는 계획을 계속 보여줘 검증을 돕는다.
@@ -494,7 +538,9 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
       if (last < ma) blocked.push(`S&P500 ${Math.round(last)} < 20일선 ${Math.round(ma)} — 신규 매수 정지`);
       marketNote = `S&P500 ${Math.round(last)} vs 20일선 ${Math.round(ma)}`;
     }
-  } catch { /* 지수 조회 실패 — 필터 통과 */ }
+  } catch {
+    blocked.push("S&P500 국면 데이터를 확인하지 못해 신규매수 차단");
+  }
 
   if (!blocked.length) {
     /* 신선 창 20시간 — 6시간이면 개장 직후 후보 풀이 말라 매수가 통째로 막힌다
@@ -519,6 +565,8 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
         if (buys >= cfg.maxOrdersPerCycle) break;
         if (score < cfg.buyScore) break;
         const pos = state.positions[r.code];
+        if (pendingCodes.has(r.code)) continue;
+        if (scalpClaims.US.has(r.code)) continue;
         if (!pos && Object.keys(state.positions).length + buys >= cfg.maxPositions) continue;
         const currentValue = pos ? pos.qty * (priceOf(r.code) || r.price) : 0;
         const room = Math.min(perPositionCap - currentValue, remaining, cashLeft);
@@ -569,20 +617,30 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
     for (const o of queue) {
       if (state.tradesToday >= cfg.maxTradesPerDay) break;
       try {
-        // 매도는 청산 단계에서 거래소를 확정하지 않았다 — 주문 직전에 확정
-        const excd = o.side === "sell" ? (await usQuote(env, kis, o.code)).excd : o.excd;
+        // 전송 직전에 KIS 현재가로 지정가를 다시 계산한다.
+        const live = await usQuote(env, kis, o.code);
+        const excd = live.excd;
+        o.price = Math.max(0.01, round(live.price * (o.side === "buy" ? 1 + SLIPPAGE : 1 - SLIPPAGE), 2));
+        o.notionalUsd = round(o.price * o.qty, 2);
+        o.notionalKrw = Math.round(o.notionalUsd * fx);
         const res = await placeOrder(env, kis, {
           market: excd, code: o.code, side: o.side, qty: o.qty, price: o.price,
           orderType: "limit", notionalKrw: o.notionalKrw,
         });
         state.tradesToday += 1;
-        applyUsFill(state, o);
-        // 결제 예상 현금흐름 기록 — 국내 봇의 입출금 감지가 이 금액을 미국 결제로 설명한다
-        await addUsCashflowKrw(env, o.side === "buy" ? o.notionalKrw : -o.notionalKrw);
+        const before = held.get(o.code);
+        state.pendingOrders = [
+          ...(state.pendingOrders ?? []).filter((p) => p.code !== o.code),
+          {
+            orderNo: res.orderNo, acceptedAt: Date.now(), side: o.side, code: o.code, name: o.name,
+            excd, qty: o.qty, limitPrice: o.price, fx, beforeQty: before?.qty ?? 0,
+            beforeAvgPrice: before?.avgPrice ?? 0, appliedQty: 0, reason: o.reason,
+          },
+        ];
         out.results.push({ code: o.code, side: o.side, ok: true, message: res.message });
         journal.push(
           entry("order", `미국 ${o.side === "buy" ? "매수" : "매도"} ${o.name}(${o.code}) ${o.qty}주 @$${o.price} ≈ ${o.notionalKrw.toLocaleString("ko-KR")}원 — ${o.reason}`, {
-            orderNo: res.orderNo, excd, fx,
+            orderNo: res.orderNo, excd, fx, status: "접수 — 다음 해외잔고 조회에서 체결수량 확인",
           }),
         );
       } catch (err) {
@@ -632,31 +690,72 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
   return finish(noteParts.join(" · "));
 }
 
-/** 주문 접수를 장부에 반영 — 체결 확인은 다음 사이클의 잔고 대사가 한다 */
-function applyUsFill(state: UsAutoState, o: UsPlannedOrder): void {
+/** 해외잔고 변화로 확인된 체결분만 장부에 반영한다. */
+function applyConfirmedUsFill(state: UsAutoState, o: UsPlannedOrder, confirmedQty: number, fillPrice: number): void {
   const pos = state.positions[o.code];
   if (o.side === "buy") {
     if (pos) {
-      const total = pos.qty + o.qty;
-      pos.avgPrice = total ? (pos.avgPrice * pos.qty + o.price * o.qty) / total : o.price;
+      const total = pos.qty + confirmedQty;
+      pos.avgPrice = total ? (pos.avgPrice * pos.qty + fillPrice * confirmedQty) / total : fillPrice;
       pos.qty = total;
       pos.lastAddedAt = Date.now();
       pos.reason = o.reason;
     } else {
       state.positions[o.code] = {
-        code: o.code, name: o.name, qty: o.qty, avgPrice: o.price,
+        code: o.code, name: o.name, qty: confirmedQty, avgPrice: fillPrice,
         enteredAt: Date.now(), lastAddedAt: Date.now(), reason: o.reason,
       };
     }
   } else if (pos) {
     // 왕복 비용(수수료+환전 스프레드) 0.5% 를 보수적으로 차감
-    const qty = Math.min(o.qty, pos.qty);
-    const gross = (o.price - pos.avgPrice) * qty;
-    const cost = o.price * qty * 0.005;
+    const qty = Math.min(confirmedQty, pos.qty);
+    const gross = (fillPrice - pos.avgPrice) * qty;
+    const cost = fillPrice * qty * 0.005;
     state.realizedPnlUsd = round(state.realizedPnlUsd + gross - cost, 2);
-    pos.qty -= o.qty;
+    pos.qty -= qty;
     if (pos.qty <= 0) delete state.positions[o.code];
   }
+}
+
+async function reconcilePendingUsOrders(env: Env, state: UsAutoState, holdings: Holding[], journal: JournalEntry[]): Promise<void> {
+  const pending = state.pendingOrders ?? [];
+  if (!pending.length) return;
+  const held = new Map(holdings.map((h) => [h.symbol, h]));
+  const keep: PendingUsOrder[] = [];
+  for (const p of pending) {
+    const h = held.get(p.code);
+    const nowQty = h?.qty ?? 0;
+    const observed = p.side === "buy" ? Math.max(0, nowQty - p.beforeQty) : Math.max(0, p.beforeQty - nowQty);
+    const confirmed = Math.min(p.qty, observed);
+    const delta = Math.max(0, confirmed - p.appliedQty);
+    if (delta > 0) {
+      let fillPrice = p.limitPrice;
+      if (p.side === "buy" && h?.avgPrice) {
+        const derived = p.beforeQty > 0
+          ? (h.avgPrice * nowQty - p.beforeAvgPrice * p.beforeQty) / Math.max(1, observed)
+          : h.avgPrice;
+        if (Number.isFinite(derived) && derived > 0) fillPrice = derived;
+      }
+      const o: UsPlannedOrder = {
+        side: p.side, code: p.code, name: p.name, excd: p.excd, qty: delta, price: fillPrice,
+        notionalUsd: round(fillPrice * delta, 2), notionalKrw: Math.round(fillPrice * delta * p.fx),
+        score: 0, reason: p.reason,
+      };
+      applyConfirmedUsFill(state, o, delta, fillPrice);
+      p.appliedQty += delta;
+      await addUsCashflowKrw(env, p.side === "buy" ? o.notionalKrw : -o.notionalKrw);
+      journal.push(entry("order", `미국 체결 확인 — ${p.name} ${p.side === "buy" ? "매수" : "매도"} ${delta}주 (누적 ${p.appliedQty}/${p.qty}주)`, {
+        orderNo: p.orderNo, fillPrice: round(fillPrice, 2), basis: p.side === "buy" ? "KIS 해외보유수량·평단 변화" : "KIS 해외보유수량 변화·지정가 보수계상",
+      }));
+    }
+    if (p.appliedQty >= p.qty) continue;
+    if (Date.now() - p.acceptedAt > 18 * 60 * 60 * 1000) {
+      journal.push(entry("skip", `미국 미체결 정리 — ${p.name} 잔여 ${p.qty - p.appliedQty}주`, { orderNo: p.orderNo }));
+      continue;
+    }
+    keep.push(p);
+  }
+  state.pendingOrders = keep;
 }
 
 /** 운영 조회 — /api/auto/us/status */

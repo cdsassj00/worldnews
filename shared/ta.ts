@@ -1304,7 +1304,6 @@ export function tradePlan(s: PriceHistory, cons: TaReport["consensus"], trend: T
   const sup = ladder.filter((l) => l.kind === "support");
   const res = ladder.filter((l) => l.kind === "resistance");
   const nearSup = sup[0];
-  const nearRes = res[res.length - 1]; // 위에서 아래로 정렬돼 있으므로 마지막이 가장 가깝다
 
   /* 손절 — **차트가 정한 자리를 우선**한다.
    * 가장 가까운 지지 아래로 ATR 의 절반만큼 여유를 둔다(지지선에 딱 붙이면 꼬리 한 번에 털린다).

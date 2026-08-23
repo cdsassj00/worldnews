@@ -38,6 +38,7 @@ import { getVerdict } from "./verdict";
 import { briefCardSvg, dailyBrief } from "./brief";
 import { sceneSvg } from "./scenes";
 import { liveSensitivity, promoteSensitivity, rollbackSensitivity } from "./senslive";
+import { runScalpCycle, setScalpPct } from "./scalptrade";
 
 export { RadarDB } from "./radar";
 
@@ -371,11 +372,9 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
         invalidateCache(env, `auto:plan:${engineKey(prev)}`),
         invalidateCache(env, `auto:plan:${engineKey(sel)}`),
       ]);
-      // 사용자 지시(2026-08-16): 엔진은 바뀐 그 순간부터 작동한다.
-      // 다음 크론(최대 15분)을 기다리지 않고 즉시 한 사이클을 돌린다 — 장중이면
-      // 새 엔진 기준의 매도·매수가 바로 나가고, 장외면 계획·일지만 갱신된다.
-      ctx.waitUntil(runCycle(env).catch(() => undefined));
-      return json({ ok: true, engine: sel.id, engineName: sel.nameKo, weights: sel.w, engines: AUTO_ENGINES, note: "엔진 변경 즉시 사이클을 실행합니다 (장중이면 실주문 포함)." });
+      // 설정 변경과 주문 실행을 분리한다. 새 엔진은 다음 정규 크론에서 데이터·진입
+      // 게이트를 다시 통과한 뒤 적용되며, 설정 버튼 자체는 주문을 만들지 않는다.
+      return json({ ok: true, engine: sel.id, engineName: sel.nameKo, weights: sel.w, engines: AUTO_ENGINES, note: "엔진 설정만 저장했습니다. 다음 정규 사이클에서 안전 게이트를 다시 확인합니다." });
     }
     const sel = await getEngineSel(env);
     return json({ engine: sel.id, engineName: sel.nameKo, weights: sel.w, engines: AUTO_ENGINES });
@@ -394,6 +393,19 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
       invalidateCache(env, `auto:plan:${engineKey(sel)}`),
     ]);
     return json({ ok: true, reserveKrw: v });
+  }
+
+  if (path === "/api/auto/scalp") {
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    const body = (await request.json().catch(() => ({}))) as { pct?: number };
+    const pct = await setScalpPct(env, Number(body.pct));
+    const sel = await getEngineSel(env);
+    await Promise.all([
+      ...AUTO_ENGINES.map((e) => invalidateCache(env, `auto:plan:${e.id}`)),
+      invalidateCache(env, `auto:plan:${engineKey(sel)}`),
+    ]);
+    return json({ ok: true, pct });
   }
 
   if (path === "/api/auto/status") {
@@ -781,6 +793,13 @@ export default {
    * AUTOTRADE_ENABLED 가 false 면 runCycle 이 그림자 실행으로 떨어져 일지만 남긴다.
    */
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    // 분봉 단타는 1분 전용 크론에서 단독 실행한다. 무거운 레이더·저회전 사이클과
+    // 같은 인보케이션에 섞으면 KIS 서브리퀘스트 한도를 나눠 갖고 체결 감시가 늦어진다.
+    if (event.cron === "* 0-6 * * 1-5" || event.cron === "* 13-21 * * 1-5") {
+      const market = event.cron.startsWith("* 0-6") ? "KR" : "US";
+      ctx.waitUntil(runScalpCycle(env, market).catch(() => undefined));
+      return;
+    }
     // 장중 정각(예: 09:00 KST)에는 15분 크론과 매시간 크론이 동시에 발화해
     // runCycle 이 두 번 돌았다 — 같은 매도가 두 번 나가 "주문 가능 수량 초과"의
     // 원인이 된다. 장중 시간대에는 15분 크론만 매매를 돌린다.

@@ -151,11 +151,11 @@ export class AutoPanel {
         el("span", { class: `gate-pill ${p.gate.canTrade ? "on" : "off"}`, text: p.gate.canTrade ? "가동" : "대기" }),
         el("span", { class: "mg-sub", text: `전략 ${p.engineName} · ${p.market.label}` }),
       ], [
-        this.engineBlock(p),
         this.gateBlock(p),
         this.krFundsBlock(p),
-        this.positionsBlock(p),
         this.ordersBlock(p),
+        this.disclosure("국내 보유 종목", [this.positionsBlock(p)]),
+        this.disclosure("국내 전략 설정", [this.engineBlock(p)]),
       ]),
       this.marketGroup("us", "🇺🇸 미국 봇", [
         el("span", { class: `gate-pill ${p.us.enabled ? "on" : "off"}`, text: p.us.enabled ? "가동" : "꺼짐" }),
@@ -163,12 +163,9 @@ export class AutoPanel {
       ], [
         this.usBlock(p),
       ]),
-      this.backtestBlock(),
-      this.macroBlock(p),
-      this.ontologyBlock(p),
-      this.scoresBlock(p),
-      this.controlsBlock(),
-      this.journalBlock(),
+      this.disclosure("최근 백테스트와 실패한 규칙", [this.backtestBlock()]),
+      this.disclosure("분석 근거 · 거시신호 · 종목점수", [this.macroBlock(p), this.ontologyBlock(p), this.scoresBlock(p)]),
+      this.disclosure("수동 제어와 매매 일지", [this.controlsBlock(), this.journalBlock()]),
       el("p", { class: "note", text: `계획 생성 ${timeAgo(p.generatedAt)} · 계획은 2분 캐시됩니다.` }),
     );
   }
@@ -179,6 +176,20 @@ export class AutoPanel {
       el("div", { class: "mg-head" }, [el("h2", { text: title }), ...badges]),
       ...blocks,
     ]);
+  }
+
+  /** 핵심 잔고는 펼쳐 두고, 전략·분석·과거 기록은 필요할 때만 연다. */
+  private disclosure(label: string, children: HTMLElement[], open = false): HTMLElement {
+    const node = el("details", { class: "auto-disclosure" }, [
+      el("summary", {}, [el("span", { text: label }), el("span", { class: "disclosure-hint", text: "보기" })]),
+      el("div", { class: "disclosure-body" }, children),
+    ]) as HTMLDetailsElement;
+    node.open = open;
+    node.addEventListener("toggle", () => {
+      const hint = node.querySelector<HTMLElement>(".disclosure-hint");
+      if (hint) hint.textContent = node.open ? "접기" : "보기";
+    });
+    return node;
   }
 
   /* ── 블록들 ─────────────────────────────── */
@@ -223,7 +234,7 @@ export class AutoPanel {
     const table = (windows: string[], rows: { name: string; returns: number[] | null; dd?: number[]; note?: string; live?: boolean; pending?: string }[]) => {
       const head = el("div", { class: "bt-row bt-head" }, [
         el("span", { text: "" }),
-        ...windows.map((w) => el("span", { text: w === "3mo" ? "3개월" : w === "6mo" ? "6개월" : "1년" })),
+        ...windows.map((w) => el("span", { text: w === "1mo" ? "1개월" : w === "3mo" ? "3개월" : w === "6mo" ? "6개월" : "1년" })),
       ]);
       const body = rows.map((r) =>
         el("div", { class: `bt-row${r.live ? " bt-live" : ""}` }, [
@@ -241,6 +252,7 @@ export class AutoPanel {
     const ec = b.engineComparison;
     const lr = b.liveRuleComparison;
     const market = this.btMarket;
+    const deployed = b.currentDeployments?.markets[market];
 
     const marketTabs = el("div", { class: "radar-tabs" });
     for (const m of ["KR", "US"] as const) {
@@ -251,8 +263,13 @@ export class AutoPanel {
 
     this.btBody.replaceChildren(
       el("p", { class: "note err", text: b.disclaimer + ` (측정 ${b.measuredAt})` }),
-      el("h4", { class: "bt-h4", text: `① ${ec.title}` }),
       marketTabs,
+      ...(deployed && b.currentDeployments ? [
+        el("h4", { class: "bt-h4", text: `현재 적용 · ${b.currentDeployments.title}` }),
+        table(b.currentDeployments.windows, [{ name: deployed.nameKo, returns: deployed.returns, dd: deployed.maxDd, live: true }]),
+        el("p", { class: "note", text: deployed.note }),
+      ] : []),
+      el("h4", { class: "bt-h4", text: `① ${ec.title}` }),
       table(
         ec.windows,
         ec.engines.map((e) => {
@@ -361,7 +378,7 @@ export class AutoPanel {
       el("p", { class: "note", text: p.engineNote }),
       el("p", {
         class: "note",
-        text: `프리셋 성적은 3개월/6개월/1년 백테스트 수익률(저회전+시장국면 필터 규칙${this.bt ? `, ${this.bt.measuredAt} 재측정` : ""})입니다. 바꾸는 즉시 한 사이클이 돌아 장중이면 실주문까지 나갑니다. 주문·손절·한도 같은 안전장치는 조합과 무관하게 동일하게 작동합니다.`,
+        text: `프리셋 성적은 과거 백테스트 참고값${this.bt ? `(${this.bt.measuredAt} 마지막 측정)` : ""}입니다. 현재 국면은 최근 1·3·6개월을 따로 봅니다. 엔진 변경은 설정만 저장하며 다음 정규 사이클에서 안전 게이트를 다시 확인합니다.`,
       }),
     ]);
   }
@@ -406,7 +423,7 @@ export class AutoPanel {
       const res = await api.autoSetEngine(payload);
       await this.load();
       // load() 가 새로 그리므로 이 노드는 살아남는다(같은 인스턴스를 다시 붙인다)
-      this.engineStatus.textContent = `엔진을 ${res.engineName} 로 바꿨습니다 — 즉시 사이클이 실행됩니다.`;
+      this.engineStatus.textContent = `엔진을 ${res.engineName} 로 저장했습니다 — 다음 정규 사이클에서 적용됩니다.`;
       this.engineStatus.className = "modal-status ok";
     } catch (err) {
       const failed = err instanceof ApiFailure;
@@ -430,44 +447,72 @@ export class AutoPanel {
         el("span", { class: `gate-pill ${p.gate.canTrade ? "on" : "off"}`, text: p.gate.canTrade ? "가동" : "차단" }),
       ]),
       el("ul", { class: "gate-list" }, items),
+      el("p", {
+        class: `note ${p.entryGate.canBuy ? "" : "err"}`,
+        text: p.entryGate.canBuy
+          ? "신규매수 게이트도 통과했습니다."
+          : `신규매수는 별도 차단: ${p.entryGate.reasons.join(" · ") || "조건 미충족"}. 손절·익절 매도는 계속 보호합니다.`,
+      }),
       el("p", { class: "note", text: p.market.label + " · " + p.kst.date + " " + p.kst.hhmm + " KST" }),
     ]);
   }
 
-  /** ① 계좌 전체 — 넣은 돈이 지금 어디에 얼마로 있고, 얼마를 벌었나. 봇 얘기는 아래 섹션에서. */
+  /** ① KIS 실계좌 — 합성 총액을 만들지 않고 증권사가 준 숫자를 그대로 분리해 보여준다. */
   private moneyBlock(p: AutoPlan): HTMLElement {
-    const krStockKrw = p.investedKrw - p.usValueKrw;
-    return el("section", { class: "auto-block" }, [
-      el("h3", {}, [el("span", { text: "① 내 계좌 전체" })]),
-      el("div", { class: "auto-grid" }, [
-        stat("내가 넣은 돈", fmtKrw(p.depositKrw)),
-        stat("주식", p.account.connected ? fmtKrw(p.investedKrw) : "-"),
-        stat("현금", p.account.connected ? fmtKrw(p.cashKrw) : "-"),
-        stat(
-          "수익",
-          p.account.connected
-            ? `${p.netProfitKrw >= 0 ? "+" : ""}${fmtKrw(p.netProfitKrw)} (${p.netProfitPct >= 0 ? "+" : ""}${p.netProfitPct}%)`
-            : "-",
-          p.account.connected ? dirClass(p.netProfitKrw) : "",
-        ),
+    const perf = p.performance;
+    const currentHoldPnl = perf.holdingsPnlKrw;
+    const botRealized = p.realizedKrw + p.us.realizedKrw;
+    const currentAssets = perf.currentAssetsKrw;
+    const capitalDelta = perf.cumulativePnlKrw;
+    const capitalDeltaPct = perf.cumulativePnlPct;
+    const asOf = perf.assetsAsOf
+      ? new Date(perf.assetsAsOf).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+      : "-";
+    return el("section", { class: "account-ledger" }, [
+      el("div", { class: "ledger-head" }, [
+        el("span", { class: "ledger-eyebrow", text: "KIS LIVE ACCOUNT" }),
+        el("span", { class: `gate-pill ${p.account.connected ? "on" : "off"}`, text: p.account.connected ? "조회 정상" : "조회 실패" }),
+      ]),
+      el("div", { class: "ledger-hero" }, [
+        el("div", { class: `ledger-primary ${dirClass(capitalDelta)}` }, [
+          el("span", { text: "계좌 전체 누적손익" }),
+          el("strong", { text: perf.complete ? `${capitalDelta >= 0 ? "+" : ""}${fmtKrw(capitalDelta)}` : "-" }),
+          el("small", { text: perf.complete ? `${capitalDeltaPct >= 0 ? "+" : ""}${capitalDeltaPct.toFixed(2)}% · 순입금 대비` : "국내·미국 잔고가 모두 조회돼야 계산됩니다" }),
+        ]),
+        el("div", { class: `ledger-pnl ${dirClass(currentHoldPnl)}` }, [
+          el("span", { text: "현재 보유분 평가손익" }),
+          el("strong", { text: p.account.connected ? `${currentHoldPnl >= 0 ? "+" : ""}${fmtKrw(currentHoldPnl)}` : "-" }),
+        ]),
+      ]),
+      el("div", { class: "capital-bridge" }, [
+        el("div", {}, [el("span", { text: "순수 현금 입금" }), el("b", { text: fmtKrw(perf.netContributionsKrw) })]),
+        el("i", { text: "→" }),
+        el("div", {}, [el("span", { text: "현재 조회 자산" }), el("b", { text: currentAssets ? fmtKrw(currentAssets) : "-" })]),
+        el("div", { class: `capital-delta ${dirClass(capitalDelta)}` }, [
+          el("span", { text: "원금 대비" }),
+          el("b", { text: perf.complete ? `${capitalDelta >= 0 ? "+" : ""}${fmtKrw(capitalDelta)} (${capitalDeltaPct >= 0 ? "+" : ""}${capitalDeltaPct.toFixed(2)}%)` : "-" }),
+        ]),
+      ]),
+      el("div", { class: "ledger-split" }, [
+        el("div", {}, [el("span", { text: "국내 총평가" }), el("b", { text: p.account.connected ? fmtKrw(p.account.totalEval) : "-" })]),
+        el("div", {}, [el("span", { text: "미국 주식" }), el("b", { text: p.us.balanceAt ? fmtKrw(p.us.valueKrw) : "-" })]),
       ]),
       el("p", {
         class: "auto-sub",
         text: p.account.connected
-          ? `계좌 ${fmtKrw(p.equity)} = 한국 주식 ${fmtKrw(krStockKrw)} + 미국 주식 ${fmtKrw(p.usValueKrw)} + 현금 ${fmtKrw(p.cashKrw)}  ·  넣은 돈 ${fmtKrw(p.depositKrw)} 대비 ${p.netProfitKrw >= 0 ? "+" : "−"}${fmtKrw(Math.abs(p.netProfitKrw))}`
+          ? `현재 조회 자산 합계 = 국내 총평가 ${fmtKrw(p.account.totalEval)} + 미국 주식 원화환산 ${fmtKrw(p.us.valueKrw)} · 국내 주식 ${fmtKrw(p.account.stockEval)} · 원화 주문가능 ${fmtKrw(p.account.cash)}`
           : "계좌 조회 실패로 표시할 수 없습니다",
       }),
       el("p", {
-        class: "note",
-        text: `‘수익’은 추정 없이 실측값만 더한 것입니다: 한국 보유 평가손익(증권사 제공) + 한국 실현손익(체결가) + 미국 보유 평가손익(증권사 제공) + 미국 실현손익.`,
+        class: "auto-sub",
+        text: `현재 보유 평가손익 ${currentHoldPnl >= 0 ? "+" : ""}${fmtKrw(currentHoldPnl)} = 국내 ${(p.pnlKrw - p.realizedKrw) >= 0 ? "+" : ""}${fmtKrw(p.pnlKrw - p.realizedKrw)} + 미국 ${p.us.pnlKrw >= 0 ? "+" : ""}${fmtKrw(p.us.pnlKrw)}`,
       }),
-      // 예수금 원본과 표시 현금이 다르면 이유를 밝힌다 — 결제(1~2영업일) 이동 중인 돈
-      ...(p.account.connected && Math.abs(p.bankCashKrw - p.cashKrw) > 10_000
-        ? [el("p", {
-            class: "note",
-            text: `※ 증권사 앱의 원화 예수금은 ${fmtKrw(p.bankCashKrw)}으로 보입니다 — 아직 결제(1~2영업일)가 끝나지 않은 매수 대금 ${fmtKrw(Math.abs(p.bankCashKrw - p.cashKrw))}이 포함된 값이라서, 여기서는 결제 후 남을 현금(${fmtKrw(p.cashKrw)})으로 표시합니다.`,
-          })]
-        : []),
+      el("p", {
+        class: "note",
+        text: `※ 대표 손익은 보유 평가손익이 아니라 순입금 대비 현재 순자산입니다. 자산은 KIS API ${asOf} 기준, 원금 ${fmtKrw(perf.netContributionsKrw)}은 ${perf.contributionsSource}(${perf.contributionsAsOf})입니다. 배당·예탁금이용료는 원금이 아니라 수익에 포함됩니다.`,
+      }),
+      el("p", { class: "auto-sub", text: `봇 내부 장부 ${perf.botLedgerPnlKrw >= 0 ? "+" : ""}${fmtKrw(perf.botLedgerPnlKrw)} · 계좌 누적손익과의 미대사 차이 ${perf.reconciliationKrw >= 0 ? "+" : ""}${fmtKrw(perf.reconciliationKrw)} (수수료·환전·결제·봇 이전 거래 포함)` }),
+      el("p", { class: "auto-sub", text: `과거 봇 실현손익 ${botRealized >= 0 ? "+" : ""}${fmtKrw(botRealized)} · 현재 보유 평가손익 ${currentHoldPnl >= 0 ? "+" : ""}${fmtKrw(currentHoldPnl)}` }),
       ...(p.account.reason ? [el("p", { class: "note", text: `※ ${p.account.reason}` })] : []),
     ]);
   }
@@ -488,37 +533,25 @@ export class AutoPanel {
         el("span", {}, [el("b", { text: `🇺🇸 미국 ${usPct}%` }), el("i", { text: ` · ${fmtKrw(p.reserveKrw)}` })]),
       ]),
       this.reserveRow(p),
+      this.scalpRow(p),
     ]);
   }
 
   /** 🇰🇷 한국 봇의 자금·목표·규칙 */
   private krFundsBlock(p: AutoPlan): HTMLElement {
     const c = p.config;
-    const pct = Math.max(-100, Math.min(100, p.targetProgressPct));
-    // 타일 구성은 미국 섹션과 완전히 동일해야 한다(2026-08-19 사용자 지시 "왜 계산법이 다르냐")
     const holdPnl = p.pnlKrw - p.realizedKrw;
     return el("section", { class: "auto-block" }, [
-      el("h3", {}, [el("span", { text: "한국 봇 자금" })]),
+      el("h3", {}, [el("span", { text: "현재 국내 계좌" })]),
       el("div", { class: "auto-grid" }, [
-        stat("예산(한국 몫)", fmtKrw(Math.max(0, c.capitalKrw - p.reserveKrw))),
-        stat("주식에 투입", fmtKrw(p.deployedKrw)),
-        stat("매수 여유", fmtKrw(p.budgetKrw)),
-        stat(
-          "손익(실현 포함)",
-          p.account.connected ? `${p.pnlKrw >= 0 ? "+" : ""}${fmtKrw(p.pnlKrw)}` : "-",
-          p.account.connected ? dirClass(p.pnlKrw) : "",
-        ),
+        stat("국내 총평가", p.account.connected ? fmtKrw(p.account.totalEval) : "-"),
+        stat("현재 보유손익", p.account.connected ? `${holdPnl >= 0 ? "+" : ""}${fmtKrw(holdPnl)}` : "-", dirClass(holdPnl)),
+        stat("국내 주식", p.account.connected ? fmtKrw(p.account.stockEval) : "-"),
+        stat("주문가능", p.account.connected ? fmtKrw(p.account.cash) : "-"),
       ]),
       el("p", {
         class: "note",
-        text: `손익 = 보유 평가손익 ${holdPnl >= 0 ? "+" : ""}${fmtKrw(holdPnl)} + 실현손익 ${p.realizedKrw >= 0 ? "+" : ""}${fmtKrw(p.realizedKrw)} (증권사 실측·체결가 기준, 미국 섹션과 같은 계산법).`,
-      }),
-      el("div", { class: "target-bar", title: `목표 ${fmtKrw(c.targetProfitKrw)} 대비 ${p.targetProgressPct}%` }, [
-        el("i", { style: `width:${Math.max(0, pct)}%` }),
-      ]),
-      el("p", {
-        class: "note",
-        text: `목표 ${fmtKrw(c.targetProfitKrw)} · 진행 ${p.targetProgressPct}% · 종목당 최대 ${c.maxPositionPct}% · 손절 -${c.stopLossPct}% · 익절 +${c.takeProfitPct}% · 당일정지 -${c.dailyLossHaltPct}% · 영구정지 -${c.maxDrawdownPct}% · 위험회피 ${p.riskOff}`,
+        text: `과거 봇 실현손익 ${p.realizedKrw >= 0 ? "+" : ""}${fmtKrw(p.realizedKrw)}은 현재 보유손익에 포함하지 않았습니다. · 손절 -${c.stopLossPct}% · 익절 +${c.takeProfitPct}% · 당일정지 -${c.dailyLossHaltPct}%`,
       }),
     ]);
   }
@@ -541,7 +574,6 @@ export class AutoPanel {
           ]),
         )
       : [el("p", { class: "note", text: "미국 봇이 보유한 종목이 없습니다. 개장(22:30 KST) 후 첫 사이클부터 매수를 검토합니다." })];
-    const totalPnl = u.pnlKrw + u.realizedKrw;
     /* 미국 엔진 선택 — 한국 엔진과 완전 별개(2026-08-19 사용자 지시 "미국 별도 세팅").
      * 한국과 같은 카드 모양 + 백테스트 성적을 붙인다(2026-08-21 사용자 지시 "왜 다르게 생겼냐").
      * 미국 봇 점수라 미국 성적만 보여 준다. 융합(세 점수 평균)은 별도 시나리오가 없어
@@ -567,22 +599,23 @@ export class AutoPanel {
         });
         return btn;
       }));
-    // 타일 구성은 한국 섹션과 완전히 동일 — 예산 / 투입 / 여유 / 손익(실현 포함)
     return el("section", { class: "auto-block" }, [
-      el("h3", {}, [el("span", { text: "미국 봇 자금 · 보유 종목" })]),
-      el("div", { class: "us-engine-row" }, [el("span", { class: "k", text: "미국 엔진 — 성적은 미국 백테스트 3·6·12개월" }), engineStatus]),
-      engineRow,
+      el("h3", {}, [el("span", { text: "현재 미국 계좌" })]),
       el("div", { class: "auto-grid" }, [
-        stat("예산(미국 몫)", fmtKrw(u.budgetKrw)),
-        stat("주식에 투입", fmtKrw(investedKrw)),
+        stat("미국 주식", fmtKrw(investedKrw)),
+        stat("현재 보유손익", `${u.pnlKrw >= 0 ? "+" : ""}${fmtKrw(u.pnlKrw)}`, dirClass(u.pnlKrw)),
+        stat("운용 예산", fmtKrw(u.budgetKrw)),
         stat("매수 여유", fmtKrw(freeKrw)),
-        stat("손익(실현 포함)", `${totalPnl >= 0 ? "+" : ""}${fmtKrw(totalPnl)}`, dirClass(totalPnl)),
       ]),
       el("p", {
         class: "note",
-        text: `손익 = 보유 평가손익 ${u.pnlKrw >= 0 ? "+" : ""}${fmtKrw(u.pnlKrw)} + 실현손익 ${u.realizedKrw >= 0 ? "+" : ""}${fmtKrw(u.realizedKrw)} (KIS 실측·체결가 기준, 한국 섹션과 같은 계산법).`,
+        text: `과거 봇 실현손익 ${u.realizedKrw >= 0 ? "+" : ""}${fmtKrw(u.realizedKrw)}은 현재 보유손익에 포함하지 않았습니다. · 적용 전략 ${u.engineName} QM`,
       }),
-      el("div", { class: "pos-list" }, rows),
+      this.disclosure("미국 보유 종목", [el("div", { class: "pos-list" }, rows)]),
+      this.disclosure("미국 전략 설정", [
+        el("div", { class: "us-engine-row" }, [el("span", { class: "k", text: "미국 엔진 — 성적은 미국 백테스트 3·6·12개월" }), engineStatus]),
+        engineRow,
+      ]),
       el("p", {
         class: "note",
         text: `보유·평가손익은 KIS 해외 잔고 실측값입니다 (${u.balanceAt ? timeAgo(u.balanceAt) + " 조회" : "조회 전"}, 장중 15분마다 갱신 · 방금 낸 주문은 다음 갱신에 반영). 환율 ${u.fx.toLocaleString("ko-KR")}원 · 손절·익절·정지 규칙은 한국과 동일.`,
@@ -635,6 +668,59 @@ export class AutoPanel {
         class: "note",
         text: "이 몫은 국내 봇이 쓰지 않습니다 — 미국 자동매매의 예산입니다. 움직이면 바로 저장됩니다.",
       }),
+    ]);
+  }
+
+  /** 단타 비율은 한국·미국 배정을 다시 나누는 두 번째 축이다. 전략 선택은 숨기고
+   * 사용자는 얼마를 준비금으로 둘지만 정한다. 기존 보유분은 강제매도하지 않는다. */
+  private scalpRow(p: AutoPlan): HTMLElement {
+    const s = p.scalp;
+    const slider = el("input", { type: "range", min: "0", max: "30", step: "5", value: String(s.pct), "aria-label": "단타 운용 비율" }) as HTMLInputElement;
+    const amount = el("b", {});
+    const status = el("span", { class: "reserve-status", text: "" });
+    const show = () => {
+      const pct = Number(slider.value);
+      amount.textContent = `${pct}% · 목표 ${fmtKrw(Math.round(p.depositKrw * pct / 100))}`;
+      return pct;
+    };
+    show();
+    slider.addEventListener("input", show);
+    slider.addEventListener("change", () => {
+      const pct = show();
+      status.textContent = "저장 중…";
+      status.className = "reserve-status";
+      void api.autoSetScalpPct(pct)
+        .then(() => {
+          status.textContent = "저장됨 — 기존 보유분은 유지하고 다음 1분 점검부터 적용합니다";
+          status.className = "reserve-status ok";
+          void this.load();
+        })
+        .catch((e) => {
+          status.textContent = `저장 실패: ${e instanceof Error ? e.message : e}`;
+          status.className = "reserve-status err";
+          slider.value = String(s.pct);
+          show();
+        });
+    });
+    const positionText = (m: typeof s.KR) => m.position ? `${m.position.name} ${m.position.qty}주 운용 중` : m.note;
+    const fill = s.totalTargetKrw > 0 ? Math.min(100, Math.round(s.totalAvailableKrw / s.totalTargetKrw * 100)) : 0;
+    return el("div", { class: "scalp-fund" }, [
+      el("div", { class: "scalp-head" }, [
+        el("div", {}, [el("span", { class: "scalp-kicker", text: "INTRADAY POCKET" }), el("strong", { text: "단타 준비금" })]),
+        el("span", { class: `scalp-state ${s.totalAvailableKrw >= 150000 ? "ready" : "wait"}`, text: s.status }),
+      ]),
+      el("div", { class: "scalp-control" }, [slider, amount, status]),
+      el("div", { class: "scalp-meter", title: `목표 대비 실제 사용 가능 ${fill}%` }, [el("i", { style: `width:${fill}%` })]),
+      el("div", { class: "scalp-numbers" }, [
+        el("span", {}, [el("small", { text: "목표" }), el("b", { text: fmtKrw(s.totalTargetKrw) })]),
+        el("span", {}, [el("small", { text: "시장별 최대 가능" }), el("b", { text: fmtKrw(s.totalAvailableKrw) })]),
+        el("span", {}, [el("small", { text: "전략" }), el("b", { text: s.strategy })]),
+      ]),
+      el("div", { class: "scalp-markets" }, [
+        el("div", {}, [el("b", { text: `🇰🇷 ${fmtKrw(s.KR.availableKrw)} / ${fmtKrw(s.KR.targetKrw)}` }), el("span", { text: positionText(s.KR) })]),
+        el("div", {}, [el("b", { text: `🇺🇸 ${fmtKrw(s.US.availableKrw)} / ${fmtKrw(s.US.targetKrw)}` }), el("span", { text: positionText(s.US) })]),
+      ]),
+      el("p", { class: "note", text: "실제 남은 현금만 사용합니다. 국내·미국 가능액은 통합증거금으로 같은 원화가 겹칠 수 있어 합산하지 않습니다. 현금이 부족하면 기다리며 기존 보유종목을 팔지 않고, 단타 포지션은 별도 원장으로 당일 청산합니다." }),
     ]);
   }
 

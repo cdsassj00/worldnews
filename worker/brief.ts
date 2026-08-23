@@ -316,9 +316,6 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
           })),
         }
       : null,
-    /** 밀리초 epoch */
-    dataAsOf: verdict.dataAsOf,
-    generatedAt: verdict.generatedAt,
   };
 
   /* 오늘 이력 저장 — 같은 날짜는 마지막 계산으로 덮어쓴다(내일 채점의 기준가가 된다) */

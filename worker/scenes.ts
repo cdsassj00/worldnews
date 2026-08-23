@@ -258,7 +258,7 @@ function sceneBacktest(): string {
     });
   });
   g += `<text x="${x0}" y="${y0 + engines.length * rowH + 40}" fill="${DIM}" font-size="21" ${FONT}>과거 시세로 규칙을 되돌려 본 모의 실험 — 미래 수익을 보장하지 않습니다 · 슬리피지·수수료·세금 반영</text>`;
-  return shell(header(`백테스트 성적표 — 7개 전략 × 두 시장`, `측정일 ${bt.measuredAt ?? "-"} · 매 거래일 16:40 KST 자동 재측정`) + g, false);
+  return shell(header(`백테스트 성적표 — 7개 전략 × 두 시장`, `마지막 측정일 ${bt.measuredAt ?? "-"} · 최근 국면은 1·3·6개월을 별도 확인`) + g, false);
 }
 
 /* ── 엔트리 ───────────────────────────────────────────── */

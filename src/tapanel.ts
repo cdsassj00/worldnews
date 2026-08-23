@@ -8,7 +8,7 @@
  *     필요한 건 선·막대·수평선뿐이라 SVG 로 충분하다.
  */
 import { api, type TaResponse, type TaStrategy } from "./api";
-import { el, fmtKrw, fmtPct, svgEl, timeAgo } from "./format";
+import { el, fmtKrw, fmtPct, timeAgo } from "./format";
 // 구간 재분석은 서버와 **같은 코드**를 프런트에서 직접 돌린다 — 확대할 때마다
 // API 를 부르면 느리고, 다른 코드로 계산하면 서버 판정과 어긋난다.
 import { windowAnalysis } from "../shared/ta";

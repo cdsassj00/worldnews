@@ -51,6 +51,8 @@ export interface TickerScore {
   /** 변동성(일간 표준편차 %) */
   volatility: number;
   atr: number;
+  /** 이 종목 시세의 마지막 갱신 시각(ms). 실주문 전 신선도 확인에 쓴다. */
+  asOf?: number;
   reasons: ScoreReason[];
   /** 온톨로지 그래프 간선 (대시보드 시각화용) */
   edges: { macroId: string; sector: string; contribution: number }[];
@@ -64,6 +66,14 @@ export interface StrategyResult {
   scores: TickerScore[];
   /** 시장 전반 위험도 (VIX·지수 기반). 1에 가까울수록 위험회피 */
   riskOff: number;
+  /** 현재 시장 국면. 백테스트의 20일선 필터와 실전 판단이 같은 값을 쓰게 한다. */
+  marketRegime: {
+    kospiPrice: number;
+    ma20: number;
+    momentum20Pct: number;
+    defensive: boolean;
+    label: string;
+  };
   note: string;
   /** 1면 뉴스 AI 해석 (거시요인 보정) */
   macroNews: { provider: string | null; headlinesUsed: number; adjustments: { id: string; impact: number; reasonKo: string }[] };
@@ -97,7 +107,8 @@ export async function runStrategy(env: Env): Promise<StrategyResult> {
    * 1일 축을 50% 섞는다. 2026-08-20 백테스트(QKA30) 검증: 급변 구간 3개월 +6.7%p·
    * 6개월 +19.3%p 개선, 조용한 장에서는 0이 되어 기존과 동일. 하루 -5.8% 폭락을
    * 5일 합계가 가려 위험회피 0으로 판정하던 실계좌 실손실의 재발 방지. */
-  const fastBlend = shockFastBlend(macroBySymbol.get("^KS11")?.closes ?? []);
+  const fastBlendPct = Math.max(0, Math.min(1, Number(env.AUTO_FAST_MACRO_BLEND_PCT ?? 0) || 0));
+  const fastBlend = shockFastBlend(macroBySymbol.get("^KS11")?.closes ?? [], 0.03, fastBlendPct);
   const macro = macroSignals((symbol) => macroBySymbol.get(symbol.toUpperCase()), fastBlend);
 
   // 각 거시 신호가 "언제 시세" 기준인지 붙인다 — 화면에 시간 기준을 밝히기 위해.
@@ -146,7 +157,7 @@ export async function runStrategy(env: Env): Promise<StrategyResult> {
 
   const scores: TickerScore[] = [];
   for (const t of UNIVERSE) {
-    let s: { price: number; changePct: number; closes: number[]; highs: number[]; lows: number[]; volumes: number[]; symbol: string } | undefined;
+    let s: { price: number; changePct: number; closes: number[]; highs: number[]; lows: number[]; volumes: number[]; symbol: string; time?: number; ts?: number | null } | undefined;
     if (t.core) {
       s = bySymbol.get(t.symbol.toUpperCase());
     } else {
@@ -209,6 +220,7 @@ export async function runStrategy(env: Env): Promise<StrategyResult> {
       newsScore: round(newsScore, 3),
       volatility: round(price.volatility, 2),
       atr: round(price.atr, 1),
+      asOf: s.time || s.ts || undefined,
       reasons,
       edges: onto.edges.slice(0, 6),
     });
@@ -225,6 +237,23 @@ export async function runStrategy(env: Env): Promise<StrategyResult> {
 
   const dataAsOf =
     Math.max(0, ...macroSpark.map((s) => s.ts ?? 0), ...priceSeries.map((p) => p.time || 0)) || null;
+  const kospiCloses = macroBySymbol.get("^KS11")?.closes ?? [];
+  const kospiPrice = kospiCloses.at(-1) ?? 0;
+  const ma20 = kospiCloses.length
+    ? kospiCloses.slice(-20).reduce((a, b) => a + b, 0) / Math.min(20, kospiCloses.length)
+    : 0;
+  const momentum20Pct = kospiCloses.length > 20 && kospiCloses[kospiCloses.length - 21]
+    ? ((kospiPrice / kospiCloses[kospiCloses.length - 21]) - 1) * 100
+    : 0;
+  // 검증본 QK와 동일: 코스피가 20일선 아래면 신규매수를 전부 중지한다.
+  const defensive = kospiCloses.length > 20 && kospiPrice < ma20;
+  const marketRegime = {
+    kospiPrice: round(kospiPrice, 2),
+    ma20: round(ma20, 2),
+    momentum20Pct: round(momentum20Pct, 2),
+    defensive,
+    label: defensive ? "방어 국면 — 신규매수 중지" : "진입 허용 국면",
+  };
 
   return {
     generatedAt: Date.now(),
@@ -232,6 +261,7 @@ export async function runStrategy(env: Env): Promise<StrategyResult> {
     macro,
     scores,
     riskOff,
+    marketRegime,
     note: `거시 상위 변동: ${top || "없음"} · 위험회피 지수 ${riskOff}${mnews?.adjustments.length ? ` · 뉴스 보정 ${mnews.adjustments.length}건` : ""}`,
     macroNews: {
       provider: mnews?.provider ?? null,

@@ -37,7 +37,7 @@ const MAX_TRADES_PER_DAY = 6;
 const MAX_ORDERS_PER_CYCLE = 3;
 const DAILY_LOSS_HALT_PCT = 5;
 const MAX_DRAWDOWN_PCT = 20;
-const BUY_SCORE = 0.15;
+const BUY_SCORE = 0.35;
 const SELL_SCORE = -0.05;
 const SLIPPAGE = 0.003;
 /** 왕복 거래비용 (매도 시 한 번에 반영) */
@@ -497,8 +497,12 @@ function simulate(ds: Dataset, baseCfg: Scenario): SimResult {
       }
     }
 
-    /* 3) 매수 (다음날 시가) */
+    /* 3) 매수 (다음날 시가) — 실전과 동일한 현재 국면 필터.
+     * 코스피가 20일선 아래이고 20일 모멘텀이 -1% 미만이면 신규 진입하지 않는다. */
     if (haltedDay === today) { blockedDays++; continue; }
+    const marketIdx = idxAsOf("^KS11", today);
+    const marketCloses = marketIdx >= 0 ? ds.kospi.close.slice(0, marketIdx + 1) : [];
+    if (isDefensive(marketCloses, day.riskOff)) { blockedDays++; continue; }
     let buys = 0;
     const riskScale = 1 - Math.min(0.5, day.riskOff * 0.5);
     for (const r of day.ranked) {

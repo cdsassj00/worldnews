@@ -43,14 +43,17 @@ import { runStrategy, type StrategyResult, type TickerScore } from "./strategy";
 import { quantRank, usMarketOpen } from "./quant";
 import {
   domesticBalance,
+  domesticPrice,
   domesticPsamount,
   isDryRun,
   kisConfig,
   kisConfigured,
+  overseasUsBalanceAll,
   placeOrder,
   type Holding,
 } from "./kis";
 import { ApiError, cached, num, round } from "./util";
+import { getScalpClaims, getScalpPct, scalpView, type ScalpView } from "./scalptrade";
 
 /* ── 설정 ─────────────────────────────────────────────── */
 
@@ -159,6 +162,20 @@ export interface BotPosition {
   reason: string;
 }
 
+export interface PendingDomesticOrder {
+  orderNo: string;
+  acceptedAt: number;
+  side: "buy" | "sell";
+  code: string;
+  nameKo: string;
+  qty: number;
+  limitPrice: number;
+  beforeQty: number;
+  beforeAvgPrice: number;
+  appliedQty: number;
+  reason: string;
+}
+
 export interface AutoState {
   startedAt: number;
   /**
@@ -195,6 +212,8 @@ export interface AutoState {
   dayStartPnl?: number;
   /** 내가 이 계좌에 넣은 돈의 총액(원). 수익 = 현재 평가금액 − 이 값. */
   totalDepositKrw?: number;
+  /** KIS가 접수했지만 아직 잔고 변화로 체결을 확인하지 못한 주문. */
+  pendingOrders?: PendingDomesticOrder[];
 }
 
 function emptyState(now: KstNow): AutoState {
@@ -219,7 +238,7 @@ export async function loadState(env: Env): Promise<AutoState> {
   const raw = (await env.CACHE.get(STATE_KEY, "json").catch(() => null)) as AutoState | null;
   const now = kstNow();
   if (!raw) return emptyState(now);
-  const state: AutoState = { ...emptyState(now), ...raw, positions: raw.positions ?? {} };
+  const state: AutoState = { ...emptyState(now), ...raw, positions: raw.positions ?? {}, pendingOrders: raw.pendingOrders ?? [] };
 
   /* 1회성 보정 (2026-08-03): 사용자가 400만원을 입금했는데 손익으로 잡혀
    * 목표 달성(+100만)이 오발동했다. 입금은 수익이 아니다 — 기준선을 같은 만큼
@@ -340,6 +359,8 @@ export function entry(kind: JournalEntry["kind"], text: string, detail?: unknown
 export interface AccountView {
   connected: boolean;
   reason: string;
+  /** KIS 국내 잔고 API를 실제로 읽은 시각 */
+  fetchedAt: number;
   cash: number;
   stockEval: number;
   totalEval: number;
@@ -352,7 +373,7 @@ const ACCOUNT_FRESH_MS = 60_000;
 
 async function readAccount(env: Env): Promise<AccountView> {
   if (!kisConfigured(env)) {
-    return { connected: false, reason: "KIS 시크릿이 등록되지 않아 계좌를 읽지 못했습니다.", cash: 0, stockEval: 0, totalEval: 0, holdings: [] };
+    return { connected: false, reason: "KIS 시크릿이 등록되지 않아 계좌를 읽지 못했습니다.", fetchedAt: 0, cash: 0, stockEval: 0, totalEval: 0, holdings: [] };
   }
   // 1분 안에 성공한 조회가 있으면 재사용 — 대시보드 새로고침마다 KIS 를 때리면
   // 초당 유량 제한(EGW00201)에 걸려 간헐적으로 "미연결" 이 뜬다.
@@ -367,6 +388,7 @@ async function readAccount(env: Env): Promise<AccountView> {
       const view: AccountView = {
         connected: true,
         reason: "",
+        fetchedAt: Date.now(),
         cash: bal.summary.orderableCash || bal.summary.cash,
         stockEval: bal.summary.stockEval,
         totalEval: bal.summary.totalEval || bal.summary.cash + bal.summary.stockEval,
@@ -386,7 +408,7 @@ async function readAccount(env: Env): Promise<AccountView> {
     const ageSec = Math.round((Date.now() - lastGoodAccount.at) / 1000);
     return { ...lastGoodAccount.view, reason: `KIS 일시 오류로 ${ageSec}초 전 조회값 표시 (${message})` };
   }
-  return { connected: false, reason: `계좌 조회 실패: ${message}`, cash: 0, stockEval: 0, totalEval: 0, holdings: [] };
+  return { connected: false, reason: `계좌 조회 실패: ${message}`, fetchedAt: 0, cash: 0, stockEval: 0, totalEval: 0, holdings: [] };
 }
 
 /* ── 계획 ─────────────────────────────────────────────── */
@@ -409,6 +431,8 @@ export interface AutoPlan {
   market: { open: boolean; label: string };
   config: AutoConfig;
   gate: { canTrade: boolean; reasons: string[] };
+  /** 신규 진입 전용 게이트. 손절·익절 매도는 이 게이트와 무관하게 계속 보호한다. */
+  entryGate: { canBuy: boolean; reasons: string[] };
   account: AccountView;
   equity: number;
   deployedKrw: number;
@@ -427,6 +451,22 @@ export interface AutoPlan {
   /** 순수익 = 현재 평가금액 − 입금 총액 */
   netProfitKrw: number;
   netProfitPct: number;
+  /** 계좌 전체 성과. 보유 평가손익이나 봇 내부 장부와 구분한다. */
+  performance: {
+    complete: boolean;
+    netContributionsKrw: number;
+    currentAssetsKrw: number;
+    cumulativePnlKrw: number;
+    cumulativePnlPct: number;
+    holdingsPnlKrw: number;
+    botLedgerPnlKrw: number;
+    reconciliationKrw: number;
+    assetsAsOf: number;
+    contributionsAsOf: string;
+    contributionsSource: string;
+  };
+  /** 기존 저회전 예산 안에서 따로 떼어 둔 분봉 단타 트랙 */
+  scalp: ScalpView;
   /** 주식에 들어가 있는 돈 / 현금으로 남은 돈 */
   investedKrw: number;
   /** 그중 미국 보유분(미국 봇 원장 × 환율) */
@@ -539,8 +579,9 @@ function parseEngineValue(v: string | null | undefined): EngineSel | null {
 }
 
 export async function getEngineSel(env: Env): Promise<EngineSel> {
-  return parseEngineValue(await env.CACHE.get(ENGINE_KEY))
-    ?? parseEngineValue(env.AUTO_ENGINE)
+  const locked = (env.AUTO_ENGINE_LOCKED ?? "false").toLowerCase() === "true";
+  return (locked ? parseEngineValue(env.AUTO_ENGINE) : parseEngineValue(await env.CACHE.get(ENGINE_KEY)))
+    ?? (locked ? parseEngineValue(await env.CACHE.get(ENGINE_KEY)) : parseEngineValue(env.AUTO_ENGINE))
     ?? parseEngineValue("onto")!;
 }
 
@@ -594,6 +635,9 @@ export async function setReserveKrw(env: Env, krw: number): Promise<number> {
 }
 
 export async function setEngine(env: Env, input: { engine?: string; weights?: Partial<EngineWeights> }): Promise<EngineSel> {
+  if ((env.AUTO_ENGINE_LOCKED ?? "false").toLowerCase() === "true") {
+    throw new ApiError(409, "engine_locked", { hint: "최근 장세 검증을 통과한 국내 QK 엔진이 배포 설정으로 고정되어 있습니다." });
+  }
   let sel: EngineSel;
   if (input.weights) {
     sel = selFromWeights(normWeights(input.weights));
@@ -620,39 +664,50 @@ async function applyEngine(
   env: Env,
   sel: EngineSel,
   scores: TickerScore[],
-): Promise<{ scores: TickerScore[]; note: string }> {
+): Promise<{ scores: TickerScore[]; note: string; available: boolean }> {
   const { w } = sel;
   const mixKo = `온톨로지 ${w.onto}% · 수급 ${w.flow}% · 차트 ${w.chart}%`;
-  if (w.flow === 0 && w.chart === 0) return { scores, note: "온톨로지 점수로 순위를 정합니다." };
+  if (w.flow === 0 && w.chart === 0) {
+    const onto = scores.map((s) => ({ ...s, score: s.ontologyScore })).sort((a, b) => b.score - a.score);
+    return { scores: onto, note: "검증본 QK와 동일하게 온톨로지 점수만으로 순위를 정합니다.", available: onto.length > 0 };
+  }
 
   let rows: { code: string; score: number; taScore?: number }[] = [];
   try {
     rows = (await quantRank(env, "breakout", 400)).rows.map((r) => ({ code: r.code, score: r.score, taScore: r.taScore }));
   } catch {
-    return { scores, note: `퀀트 점수를 불러오지 못해 온톨로지 점수로 대체했습니다 (목표 조합: ${mixKo}).` };
+    return { scores: [], note: `요청한 조합의 수급·차트 점수를 불러오지 못해 신규매수를 차단했습니다 (${mixKo}).`, available: false };
   }
   const byCode = new Map(rows.map((r) => [r.code, r]));
-  if (!byCode.size) return { scores, note: `퀀트 스캔 결과가 아직 없어 온톨로지 점수로 대체했습니다 (목표 조합: ${mixKo}).` };
+  if (!byCode.size) return { scores: [], note: `요청한 조합의 수급·차트 결과가 없어 신규매수를 차단했습니다 (${mixKo}).`, available: false };
 
   const out: TickerScore[] = [];
   let covered = 0;
   for (const s of scores) {
     const q = byCode.get(s.code);
-    // 가중 평균 — 점수가 없는 축은 빼고 남은 가중치로 재정규화한다.
-    // 0으로 채우면 "정보가 없다"가 "나쁘다"로 둔갑하기 때문이다.
-    const comps: { wgt: number; val: number }[] = [{ wgt: w.onto, val: s.score }];
-    if (q?.score !== undefined) comps.push({ wgt: w.flow, val: q.score });
-    if (q?.taScore !== undefined) comps.push({ wgt: w.chart, val: q.taScore });
+    // 실거래 조합은 요청한 축이 하나라도 없으면 후보에서 제외한다. 결측 축을 버리고
+    // 남은 점수를 100%로 재정규화하면 화면의 조합과 실제 주문 판단이 달라진다.
+    if (w.flow > 0 && q?.score === undefined) continue;
+    if (w.chart > 0 && q?.taScore === undefined) continue;
+    const comps: { wgt: number; val: number }[] = [];
+    if (w.onto > 0) comps.push({ wgt: w.onto, val: s.ontologyScore });
+    if (w.flow > 0) comps.push({ wgt: w.flow, val: q!.score });
+    if (w.chart > 0) comps.push({ wgt: w.chart, val: q!.taScore! });
     const denom = comps.reduce((a, c) => a + c.wgt, 0);
     if (denom <= 0) continue; // 이 종목엔 이 조합을 매길 정보가 없다
-    // 수급·차트 정보가 아예 없는 종목은, 그 축이 조합의 절반 이상이면 후보에서 뺀다
-    if (denom < (w.onto + w.flow + w.chart) / 2) continue;
     if (q) covered++;
     const mixed = comps.reduce((a, c) => a + c.wgt * c.val, 0) / denom;
     out.push({ ...s, score: round(mixed, 3) });
   }
   out.sort((a, b) => b.score - a.score);
-  return { scores: out, note: `${mixKo} 가중 평균으로 순위를 정합니다 (수급·차트 점수 있는 종목 ${covered}개).` };
+  const available = out.length > 0;
+  return {
+    scores: out,
+    note: available
+      ? `${mixKo} 가중 평균으로 순위를 정합니다 (모든 요청 축이 있는 종목 ${covered}개).`
+      : `${mixKo} 조합의 모든 축을 갖춘 종목이 없어 신규매수를 차단했습니다.`,
+    available,
+  };
 }
 
 export async function buildPlan(env: Env): Promise<AutoPlan> {
@@ -677,12 +732,14 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   // 편입된 종목은 점수 유니버스 밖일 수 있다 — 계좌가 주는 현재가로 손절·익절을 판단한다
   const acctPrice = new Map(account.holdings.map((h) => [h.symbol, h.price]));
   const priceOf = (code: string) => scoreByCode.get(code)?.price ?? acctPrice.get(code) ?? 0;
+  const pendingCodes = new Set((state.pendingOrders ?? []).map((o) => o.code));
 
   /* 운용 한도: AUTO_CAPITAL_KRW=0 이면 "넣은 돈 전액"을 자동 추종한다.
    * 2026-08-17 사용자 지시: "계좌에 있는 모든 돈은 다 봇이 컨트롤한다." */
   if (cfg.capitalKrw <= 0) cfg.capitalKrw = Math.max(2_000_000, Math.round(state.totalDepositKrw ?? 0));
   /* 예약 현금 — 국내 매수 예산에서 빼 두는 몫 (미국주식 대기 자금). KV 슬라이더 값 우선 */
-  const reserveKrw = await getReserveKrw(env);
+  const [reserveKrw, scalpPct, scalpClaims] = await Promise.all([getReserveKrw(env), getScalpPct(env), getScalpClaims(env)]);
+  const scalpKrTargetKrw = Math.round(Math.max(0, cfg.capitalKrw - reserveKrw) * scalpPct / 100);
 
   /* 미국 보유분(별도 원장) 평가액 — 국내 잔고 조회에는 잡히지 않으므로 총평가·투자금에
    * 더한다. 안 더하면 미국 매수 대금이 결제되는 날 '수익'이 −400만처럼 보인다.
@@ -704,7 +761,28 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   try {
     usSnap = (await env.CACHE.get("auto:us:balance", "json")) as UsSnap | null;
   } catch { /* 스냅샷 없으면 미국 0 취급 */ }
-  const usEngineRaw = (await env.CACHE.get("auto:us:engine").catch(() => null)) ?? env.US_ENGINE ?? "onto";
+  /* 미국 사이클은 장 마감이면 잔고 조회 전에 종료하므로 주말에는 스냅샷이 며칠씩
+   * 낡을 수 있다. 자동매매 화면을 열 때 10분 넘은 값이면 주문 없이 잔고만 KIS에서
+   * 다시 읽는다. 계획 API 자체가 45초 캐시되어 과도한 호출도 막는다. */
+  if (kisConfigured(env) && (!usSnap?.at || Date.now() - usSnap.at > 10 * 60_000)) {
+    try {
+      const liveUs = await overseasUsBalanceAll(env, kisConfig(env));
+      usSnap = {
+        at: Date.now(),
+        fx: usSnap?.fx && usSnap.fx > 800 ? usSnap.fx : 1400,
+        holdings: liveUs.holdings,
+        totalEvalUsd: round(liveUs.holdings.reduce((s, h) => s + (h.evalAmount || h.qty * h.price), 0), 2),
+        holdingsPnlUsd: round(liveUs.holdings.reduce((s, h) => s + (h.pnl || 0), 0), 2),
+        realizedPnlUsd: usSnap?.realizedPnlUsd ?? 0,
+      };
+      await env.CACHE.put("auto:us:balance", JSON.stringify(usSnap)).catch(() => undefined);
+    } catch {
+      /* KIS가 닫혔거나 유량 제한이면 마지막 성공값을 유지하고 시각으로 오래됨을 밝힌다. */
+    }
+  }
+  const usEngineLocked = (env.US_ENGINE_LOCKED ?? "false").toLowerCase() === "true";
+  const usEngineKv = await env.CACHE.get("auto:us:engine").catch(() => null);
+  const usEngineRaw = (usEngineLocked ? env.US_ENGINE ?? usEngineKv : usEngineKv ?? env.US_ENGINE) ?? "onto";
   const usEngineId = ["onto", "quant", "ta", "fusion"].includes(usEngineRaw) ? usEngineRaw : "onto";
   const usFx = usSnap?.fx && usSnap.fx > 800 ? usSnap.fx : 1400;
   const usValueKrw = usSnap ? Math.round(usSnap.totalEvalUsd * usFx) : 0;
@@ -712,7 +790,7 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   const usPnlKrw = usSnap ? Math.round((usSnap.holdingsPnlUsd + (usSnap.realizedPnlUsd || 0)) * usFx) : 0;
 
   const deployed = deployedValue(state, priceOf);
-  const budget = Math.max(0, cfg.capitalKrw - reserveKrw - deployed);
+  const budget = Math.max(0, cfg.capitalKrw - reserveKrw - scalpKrTargetKrw - deployed);
 
   /* 손익은 "평가액 − 기준선"이 아니라 **보유 종목 평가손익 + 실현손익**으로 잰다.
    * 평가액 기반은 입출금·D+2 정산으로 총평가가 출렁일 때마다 가짜 손익을 만들었다
@@ -737,6 +815,21 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   if (state.haltedDay === now.date) blocked.push(`당일 정지: ${state.haltReason}`);
   if (state.tradesToday >= cfg.maxTradesPerDay) blocked.push(`당일 매매 횟수 한도(${cfg.maxTradesPerDay}회) 도달`);
 
+  /* 신규 진입은 시초가 잡음·현재 국면·데이터 신선도를 별도로 통과해야 한다.
+   * 이 게이트는 손절·익절 매도를 막지 않는다. */
+  const entryBlocked: string[] = [];
+  const ENTRY_MIN = 9 * 60 + 30;
+  if ((env.AUTO_NEW_BUYS_ENABLED ?? "true").toLowerCase() !== "true") {
+    entryBlocked.push("최근 1·3·6개월 검증 미통과 — 국내 신규매수 잠금");
+  }
+  if (now.minutes < ENTRY_MIN) entryBlocked.push(`시초가 유예 — 09:30 KST 이후 신규매수`);
+  if (strategy.marketRegime.defensive) {
+    entryBlocked.push(`코스피 방어 국면 — 20일선 아래·20일 모멘텀 ${strategy.marketRegime.momentum20Pct}%`);
+  }
+  if (!engineApplied.available) entryBlocked.push("선택 엔진의 필수 데이터가 없어 신규매수 차단");
+  const dataAgeMs = strategy.dataAsOf ? Date.now() - strategy.dataAsOf : Number.POSITIVE_INFINITY;
+  if (phase.open && dataAgeMs > 20 * 60_000) entryBlocked.push("전략 시세가 20분 이상 지연되어 신규매수 차단");
+
   const targetHit = pnl >= cfg.targetProfitKrw && cfg.targetProfitKrw > 0;
   if (targetHit) blocked.push(`목표 수익 ${cfg.targetProfitKrw.toLocaleString("ko-KR")}원 달성 — 신규 매수 중단`);
 
@@ -748,9 +841,11 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   /* 1) 청산 판단 — 봇이 산 종목만 대상으로 한다 */
   const positionView: AutoPlan["positions"] = [];
   for (const pos of Object.values(state.positions)) {
+    if (pendingCodes.has(pos.code)) continue;
     const held = heldQty.get(pos.code) ?? 0;
     const sc = scoreByCode.get(pos.code);
-    const price = sc?.price ?? acctPrice.get(pos.code) ?? pos.avgPrice;
+    // 보유분의 손절·익절은 Yahoo 후보 시세보다 KIS 계좌 현재가를 우선한다.
+    const price = acctPrice.get(pos.code) ?? sc?.price ?? pos.avgPrice;
     const pnlPct = pos.avgPrice ? ((price - pos.avgPrice) / pos.avgPrice) * 100 : 0;
     positionView.push({ ...pos, price, pnlPct: round(pnlPct, 2), heldQty: held });
 
@@ -762,8 +857,10 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
     let why = "";
     if (pnlPct <= -cfg.stopLossPct) why = `손절 (${round(pnlPct, 1)}% ≤ -${cfg.stopLossPct}%)`;
     else if (pnlPct >= cfg.takeProfitPct) why = `익절 (${round(pnlPct, 1)}% ≥ +${cfg.takeProfitPct}%)`;
-    else if (sc && sc.score <= SELL_SCORE) why = `신호 이탈 (점수 ${sc.score})`;
-    else if (strategy.riskOff >= 0.8) why = `시장 위험회피 ${strategy.riskOff} — 비중 축소`;
+    else if (
+      now.minutes >= ENTRY_MIN && engineApplied.available && sc?.asOf && Date.now() - sc.asOf <= 20 * 60_000 && sc.score <= SELL_SCORE
+    ) why = `신호 이탈 (점수 ${sc.score})`;
+    else if (now.minutes >= ENTRY_MIN && dataAgeMs <= 20 * 60_000 && strategy.riskOff >= 0.8) why = `시장 위험회피 ${strategy.riskOff} — 비중 축소`;
     if (!why) continue;
 
     const limit = roundToTick(price * (1 - SLIPPAGE), "down");
@@ -791,12 +888,18 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   let cashLeft = account.connected ? account.cash : Number.POSITIVE_INFINITY;
 
   const coreCodes = new Set(UNIVERSE.filter((t) => t.core).map((t) => t.code));
-  if (!targetHit) {
+  if (!targetHit && entryBlocked.length === 0) {
     for (const sc of strategy.scores) {
       if (orders.filter((o) => o.side === "buy").length >= cfg.maxOrdersPerCycle) break;
       if (sc.score < BUY_SCORE) break; // 점수 내림차순이라 여기서 끊어도 된다
+      if (!sc.asOf || Date.now() - sc.asOf > 20 * 60_000) {
+        skipped.push(`${sc.nameKo} 시세 지연으로 제외`);
+        continue;
+      }
       // 확장 유니버스는 분석·표시 전용이다. 거래량·ATR 없는 데이터에 돈을 태우지 않는다.
       if (!coreCodes.has(sc.code)) continue;
+      if (scalpClaims.KR.has(sc.code)) continue;
+      if (pendingCodes.has(sc.code)) continue;
       if (sellingCodes.has(sc.code)) continue;
 
       const pos = state.positions[sc.code];
@@ -843,6 +946,7 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
   }
 
   if (!orders.length) notes.push("이번 사이클에 조건을 만족하는 매매가 없습니다. 대기합니다.");
+  if (entryBlocked.length) notes.push(`신규매수 차단: ${entryBlocked.join(" · ")}`);
   if (skipped.length) notes.push(`자금 한도로 제외: ${skipped.join(" · ")}`);
   if (deployed > 0) notes.push(`운용 투입 ${Math.round(deployed).toLocaleString("ko-KR")}원 / 한도 ${cfg.capitalKrw.toLocaleString("ko-KR")}원`);
   if (reserveKrw > 0) notes.push(`미국 배분 ${reserveKrw.toLocaleString("ko-KR")}원은 국내 매수 예산에서 제외합니다(미국 자동매매 예산).`);
@@ -853,6 +957,16 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
    * 원래 갖고 있던 종목의 등락에 묻혀 판단이 안 된다. 봇 지분은 계좌 보유 수량 중
    * 봇 장부 수량만큼을 비례 배분해 계산한다. */
   const deposit = state.totalDepositKrw ?? 0;
+  /* 계좌 전체 누적손익의 유일한 대표값.
+   * 외부에서 넣은 순현금 1,000만원과 KIS 현재 순자산을 비교한다. 배당·예탁금이용료는
+   * 원금이 아니라 계좌 안에서 생긴 수익이므로 현재 자산 쪽에만 포함된다. */
+  const currentAssets = account.connected && usSnap?.at
+    ? Math.round(account.totalEval + usValueKrw)
+    : 0;
+  const cumulativePnl = currentAssets ? currentAssets - deposit : 0;
+  const holdingsPnlAll = Math.round(holdingsPnl + (usSnap ? usSnap.holdingsPnlUsd * usFx : 0));
+  const botLedgerPnl = Math.round(netProfit);
+  const scalp = await scalpView(env, deposit, account.connected ? account.cash : 0, usValueKrw);
 
   let botPnl = state.realizedPnl ?? 0;
   if (account.connected) {
@@ -870,6 +984,7 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
     market: phase,
     config: cfg,
     gate: { canTrade: blocked.length === 0, reasons: blocked },
+    entryGate: { canBuy: blocked.length === 0 && entryBlocked.length === 0 && !targetHit, reasons: [...blocked, ...entryBlocked] },
     account,
     equity: Math.round(equity),
     deployedKrw: Math.round(deployed),
@@ -884,8 +999,22 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
      * 수익 = 한국 평가손익(KIS) + 한국 실현손익 + 미국 평가손익(KIS) + 미국 실현손익.
      * 잔고 합산·결제 추정은 쓰지 않는다 — '계좌'는 넣은 돈 + 수익으로 표시한다. */
     depositKrw: Math.round(deposit),
-    netProfitKrw: Math.round(netProfit),
-    netProfitPct: deposit > 0 ? round((netProfit / deposit) * 100, 2) : 0,
+    netProfitKrw: Math.round(cumulativePnl),
+    netProfitPct: deposit > 0 && currentAssets ? round((cumulativePnl / deposit) * 100, 2) : 0,
+    performance: {
+      complete: Boolean(account.connected && usSnap?.at),
+      netContributionsKrw: Math.round(deposit),
+      currentAssetsKrw: currentAssets,
+      cumulativePnlKrw: Math.round(cumulativePnl),
+      cumulativePnlPct: deposit > 0 && currentAssets ? round((cumulativePnl / deposit) * 100, 2) : 0,
+      holdingsPnlKrw: holdingsPnlAll,
+      botLedgerPnlKrw: botLedgerPnl,
+      reconciliationKrw: currentAssets ? Math.round(cumulativePnl - botLedgerPnl) : 0,
+      assetsAsOf: Math.min(account.fetchedAt || Date.now(), usSnap?.at || Date.now()),
+      contributionsAsOf: "2026-08-24",
+      contributionsSource: "순수 현금 입금 확인값",
+    },
+    scalp,
     investedKrw: Math.round((account.connected ? account.stockEval : deployed) + usValueKrw),
     usValueKrw,
     /* 미국 봇 요약 — 전부 KIS 해외 잔고 스냅샷(auto:us:balance) 실측값.
@@ -959,6 +1088,10 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
   const state = await loadState(env);
   const now = plan.kst;
   const journal: JournalEntry[] = [];
+
+  /* 주문 접수와 체결을 분리한다. 직전 주문 뒤 실제 KIS 보유수량이 변한 만큼만
+   * 장부에 반영한다. 미체결·부분체결이면 나머지는 pending 으로 남아 중복주문을 막는다. */
+  reconcilePendingDomesticOrders(state, plan.account.holdings, journal);
 
   /* 입출금 자동 감지 — 보유 수량은 그대로인데 현금만 크게 변했다면 매매로 설명이
    * 안 되는 돈이 들어오거나 나간 것이다(입금·출금). 넣은 돈(수익 계산 기준)에 자동
@@ -1059,6 +1192,7 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
    *  ② 감소 방향만: 계좌 수량이 장부보다 많아도 올리지 않는다 — 사용자가 직접
    *     보유한 물량을 봇 장부가 흡수해 마음대로 팔면 안 된다. */
   const RECONCILE_GRACE_MS = 2 * 60 * 60 * 1000;
+  const scalpClaimsForReconcile = await getScalpClaims(env);
 
   /* 편입 — 계좌에 있는데 봇 장부에 없는(또는 장부보다 많은) 보유분을 장부로 흡수한다.
    *
@@ -1070,6 +1204,7 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
   if (plan.account.connected) {
     for (const h of plan.account.holdings) {
       if (h.qty <= 0) continue;
+      if (scalpClaimsForReconcile.KR.has(h.symbol)) continue;
       const pos = state.positions[h.symbol];
       if (!pos) {
         state.positions[h.symbol] = {
@@ -1133,6 +1268,26 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
         break;
       }
       try {
+        // 전송 직전에 KIS 현재가로 지정가를 다시 만든다. 후보 선정은 일봉이지만
+        // 실제 주문 가격까지 Yahoo 지연 시세에 의존하지 않게 한다.
+        if (!isDryRun(env)) {
+          const live = await domesticPrice(env, kisConfig(env), o.code).catch(() => null);
+          if (!live?.price) {
+            journal.push(entry("skip", `${o.nameKo} 주문 보류 — KIS 현재가 확인 실패`));
+            results.push({ code: o.code, side: o.side, ok: false, message: "KIS 현재가 확인 실패" });
+            continue;
+          }
+          o.price = roundToTick(live.price * (o.side === "buy" ? 1 + SLIPPAGE : 1 - SLIPPAGE), o.side === "buy" ? "up" : "down");
+          o.notionalKrw = Math.round(o.price * o.qty);
+          if (o.notionalKrw > cfg.maxOrderNotionalKrw) {
+            o.qty = Math.floor(cfg.maxOrderNotionalKrw / o.price);
+            o.notionalKrw = Math.round(o.price * o.qty);
+          }
+          if (o.qty < 1) {
+            journal.push(entry("skip", `${o.nameKo} 주문 보류 — KIS 현재가 기준 1주가 주문한도를 초과`));
+            continue;
+          }
+        }
         /* 매수는 전송 직전에 매수가능조회로 수량을 한 번 더 누른다.
          * 예수금 기반 cashLeft 는 통합증거금 미국 결제 예정액을 모르기 때문에
          * 그대로 보내면 APBK0952(주문가능금액 초과)로 사이클마다 거절이 반복된다. */
@@ -1159,12 +1314,29 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
           notionalKrw: o.notionalKrw,
         });
         state.tradesToday += 1;
-        applyFill(state, o);
+        const before = plan.account.holdings.find((h) => h.symbol === o.code);
+        state.pendingOrders = [
+          ...(state.pendingOrders ?? []).filter((p) => p.code !== o.code),
+          {
+            orderNo: res.orderNo,
+            acceptedAt: Date.now(),
+            side: o.side,
+            code: o.code,
+            nameKo: o.nameKo,
+            qty: o.qty,
+            limitPrice: o.price,
+            beforeQty: before?.qty ?? 0,
+            beforeAvgPrice: before?.avgPrice ?? 0,
+            appliedQty: 0,
+            reason: o.reason,
+          },
+        ];
         results.push({ code: o.code, side: o.side, ok: true, message: res.message });
         journal.push(
           entry("order", `${o.side === "buy" ? "매수" : "매도"} ${o.nameKo}(${o.code}) ${o.qty}주 @${o.price.toLocaleString("ko-KR")}원 — ${o.reason}`, {
             dryRun: res.dryRun ?? false,
             orderNo: res.orderNo,
+            status: "접수 — 다음 계좌 조회에서 체결수량 확인",
             근거: o.detail,
           }),
         );
@@ -1187,16 +1359,14 @@ export async function runCycle(env: Env, opts: { shadow?: boolean } = {}): Promi
 }
 
 /**
- * 주문 접수를 장부에 반영한다.
- * 실제 체결 확인은 다음 사이클의 잔고 조회가 해 준다 — 여기서는 낙관적으로 기록하되,
- * 잔고에 없는 수량은 buildPlan 이 `heldQty` 로 눌러 준다.
+ * 계좌 보유수량 변화로 확인된 체결분만 장부에 반영한다.
  */
-function applyFill(state: AutoState, o: PlannedOrder): void {
+function applyConfirmedFill(state: AutoState, o: PlannedOrder, confirmedQty: number, fillPrice: number): void {
   const pos = state.positions[o.code];
   if (o.side === "buy") {
     if (pos) {
-      const totalQty = pos.qty + o.qty;
-      pos.avgPrice = totalQty ? (pos.avgPrice * pos.qty + o.price * o.qty) / totalQty : o.price;
+      const totalQty = pos.qty + confirmedQty;
+      pos.avgPrice = totalQty ? (pos.avgPrice * pos.qty + fillPrice * confirmedQty) / totalQty : fillPrice;
       pos.qty = totalQty;
       pos.lastAddedAt = Date.now();
       pos.reason = o.reason;
@@ -1204,8 +1374,8 @@ function applyFill(state: AutoState, o: PlannedOrder): void {
       state.positions[o.code] = {
         code: o.code,
         nameKo: o.nameKo,
-        qty: o.qty,
-        avgPrice: o.price,
+        qty: confirmedQty,
+        avgPrice: fillPrice,
         enteredAt: Date.now(),
         lastAddedAt: Date.now(),
         reason: o.reason,
@@ -1214,13 +1384,54 @@ function applyFill(state: AutoState, o: PlannedOrder): void {
   } else if (pos) {
     // 매도分은 확정 손익으로 적립한다 (평가손익에서 빠지므로 여기서 잡아야 총액이 맞는다).
     // 왕복 거래비용 0.23% 를 차감해 낙관 편향을 없앤다.
-    const qty = Math.min(o.qty, pos.qty);
-    const gross = (o.price - pos.avgPrice) * qty;
-    const cost = o.price * qty * 0.0023;
+    const qty = Math.min(confirmedQty, pos.qty);
+    const gross = (fillPrice - pos.avgPrice) * qty;
+    const cost = fillPrice * qty * 0.0023;
     state.realizedPnl = Math.round((state.realizedPnl ?? 0) + gross - cost);
-    pos.qty -= o.qty;
+    pos.qty -= qty;
     if (pos.qty <= 0) delete state.positions[o.code];
   }
+}
+
+function reconcilePendingDomesticOrders(state: AutoState, holdings: Holding[], journal: JournalEntry[]): void {
+  const pending = state.pendingOrders ?? [];
+  if (!pending.length) return;
+  const held = new Map(holdings.map((h) => [h.symbol, h]));
+  const keep: PendingDomesticOrder[] = [];
+  for (const p of pending) {
+    const h = held.get(p.code);
+    const nowQty = h?.qty ?? 0;
+    const observed = p.side === "buy"
+      ? Math.max(0, nowQty - p.beforeQty)
+      : Math.max(0, p.beforeQty - nowQty);
+    const confirmed = Math.min(p.qty, observed);
+    const delta = Math.max(0, confirmed - p.appliedQty);
+    if (delta > 0) {
+      let fillPrice = p.limitPrice;
+      if (p.side === "buy" && h?.avgPrice) {
+        const derived = p.beforeQty > 0
+          ? (h.avgPrice * nowQty - p.beforeAvgPrice * p.beforeQty) / Math.max(1, observed)
+          : h.avgPrice;
+        if (Number.isFinite(derived) && derived > 0) fillPrice = derived;
+      }
+      applyConfirmedFill(state, {
+        side: p.side, code: p.code, nameKo: p.nameKo, qty: delta, price: fillPrice,
+        notionalKrw: Math.round(fillPrice * delta), score: 0, reason: p.reason, detail: [],
+      }, delta, fillPrice);
+      p.appliedQty += delta;
+      journal.push(entry("order", `체결 확인 — ${p.nameKo} ${p.side === "buy" ? "매수" : "매도"} ${delta}주 (누적 ${p.appliedQty}/${p.qty}주)`, {
+        orderNo: p.orderNo, fillPrice: Math.round(fillPrice), basis: p.side === "buy" ? "KIS 보유수량·평단 변화" : "KIS 보유수량 변화·지정가 보수계상",
+      }));
+    }
+    if (p.appliedQty >= p.qty) continue;
+    // 당일 주문은 장 종료 후 소멸한다. 12시간이 지난 잔여분은 미체결로 정리한다.
+    if (Date.now() - p.acceptedAt > 12 * 60 * 60 * 1000) {
+      journal.push(entry("skip", `미체결 정리 — ${p.nameKo} ${p.side === "buy" ? "매수" : "매도"} 잔여 ${p.qty - p.appliedQty}주`, { orderNo: p.orderNo }));
+      continue;
+    }
+    keep.push(p);
+  }
+  state.pendingOrders = keep;
 }
 
 /* ── 상태 요약 · 수동 제어 ─────────────────────────────── */

@@ -27,6 +27,7 @@ export interface Env {
 
   // 자동매매 (autotrade.ts)
   AUTOTRADE_ENABLED?: string; // "true" 여야 실제 주문이 나간다. 기본 false = 계획만 세움
+  AUTO_NEW_BUYS_ENABLED?: string; // "false" 면 보유분 청산은 유지하고 국내 신규매수만 차단
   AUTO_CAPITAL_KRW?: string; // 운용 원금 상한. "0" = 넣은 돈 전액 자동 추종
   AUTO_RESERVE_KRW?: string; // 국내 매수 예산에서 빼 두는 예약 현금(미국주식 대기 자금 등)
   AUTO_MAX_POSITION_PCT?: string; // 한 종목 최대 비중(%)
@@ -41,6 +42,9 @@ export interface Env {
   AUTO_MAX_POSITIONS?: string;
   /** 종목 선정에 쓸 점수 엔진 — onto | quant | hybrid (KV 값이 있으면 그쪽이 우선) */
   AUTO_ENGINE?: string;
+  AUTO_ENGINE_LOCKED?: string; // true면 검증된 배포 엔진이 KV/UI 선택보다 우선
+  AUTO_FAST_MACRO_BLEND_PCT?: string; // 급변 시 1일 거시축 혼합비(0~1). 0이면 QK 기본형
+  SCALP_CAPITAL_PCT?: string; // 전체 한국·미국 배정액 중 분봉 단타 준비금 비율(0~30, 기본 10)
 
   /* 퀀트 트랙 (quant.ts) — 수급·차트만 보는 별도 엔진. 모의매매라 주문은 나가지 않는다.
    * 백테스트에서 온톨로지 트랙에 졌기 때문에 실계좌를 붙이지 않았다(기록은 계속 쌓는다). */
@@ -62,6 +66,7 @@ export interface Env {
 
   // AI 분석
   US_AUTOTRADE_ENABLED?: string; // 미국 자동매매 — 백테스트 통과 전까지 "false"
+  US_NEW_BUYS_ENABLED?: string; // "false" 면 보유분 청산은 유지하고 미국 신규매수만 차단
   /* 미국 봇 독립 세팅(2026-08-19) — 비우면 한국(AUTO_*) 값을 그대로 따른다.
    * 값을 넣는 순간부터 미국만 따로 움직인다. 엔진 선택은 KV auto:us:engine. */
   US_STOP_LOSS_PCT?: string;
@@ -76,6 +81,7 @@ export interface Env {
   US_BUY_SCORE?: string;
   US_MIN_POOL?: string;
   US_ENGINE?: string; // onto | quant | ta | fusion (KV 미설정 시 폴백)
+  US_ENGINE_LOCKED?: string; // true면 검증된 배포 엔진이 KV/UI 선택보다 우선
   GEMINI_API_KEY?: string; // 있으면 Gemini 를 1순위로 사용 (시크릿, aistudio.google.com/apikey)
   GEMINI_MODEL?: string; // 기본 gemini-2.5-flash
   OPENROUTER_API_KEY?: string; // 있으면 OpenRouter 를 1순위 AI 제공자로 (시크릿)

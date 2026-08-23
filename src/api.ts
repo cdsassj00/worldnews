@@ -273,7 +273,8 @@ export interface AutoPlan {
   market: { open: boolean; label: string };
   config: AutoConfigView;
   gate: { canTrade: boolean; reasons: string[] };
-  account: { connected: boolean; reason: string; cash: number; stockEval: number; totalEval: number; holdings: Holding[] };
+  entryGate: { canBuy: boolean; reasons: string[] };
+  account: { connected: boolean; reason: string; fetchedAt: number; cash: number; stockEval: number; totalEval: number; holdings: Holding[] };
   equity: number;
   deployedKrw: number;
   budgetKrw: number;
@@ -310,6 +311,29 @@ export interface AutoPlan {
   depositKrw: number;
   netProfitKrw: number;
   netProfitPct: number;
+  performance: {
+    complete: boolean;
+    netContributionsKrw: number;
+    currentAssetsKrw: number;
+    cumulativePnlKrw: number;
+    cumulativePnlPct: number;
+    holdingsPnlKrw: number;
+    botLedgerPnlKrw: number;
+    reconciliationKrw: number;
+    assetsAsOf: number;
+    contributionsAsOf: string;
+    contributionsSource: string;
+  };
+  scalp: {
+    enabled: boolean;
+    pct: number;
+    strategy: string;
+    totalTargetKrw: number;
+    totalAvailableKrw: number;
+    status: string;
+    KR: { targetKrw: number; availableKrw: number; position?: { code: string; name: string; qty: number; entryPrice: number; enteredAt: number }; realizedPnlKrw: number; note: string; at: number };
+    US: { targetKrw: number; availableKrw: number; position?: { code: string; name: string; qty: number; entryPrice: number; enteredAt: number }; realizedPnlKrw: number; note: string; at: number };
+  };
   investedKrw: number;
   cashKrw: number;
   targetProgressPct: number;
@@ -689,6 +713,10 @@ export interface BacktestEngineRow {
 export interface BacktestResults {
   measuredAt: string;
   disclaimer: string;
+  currentDeployments?: {
+    title: string; windows: string[];
+    markets: Record<"KR" | "US", { nameKo: string; returns: number[]; maxDd: number[]; trades: number[]; benchmark: number[]; note: string }>;
+  };
   engineComparison: {
     title: string; command: string; rules: string; windows: string[];
     universe: Record<string, string>; cost: Record<string, string>;
@@ -775,6 +803,9 @@ export const api = {
   /** 미국 배분(예약 현금) 설정 — 국내 봇 예산에서 빼 두는 몫 */
   autoSetReserve: (reserveKrw: number) =>
     request<{ ok: true; reserveKrw: number }>("/api/auto/reserve", { method: "POST", auth: true, body: JSON.stringify({ reserveKrw }) }),
+  /** 기존 한국·미국 배정 안에서 분봉 단타가 우선 확보할 비율 */
+  autoSetScalpPct: (pct: number) =>
+    request<{ ok: true; pct: number }>("/api/auto/scalp", { method: "POST", auth: true, body: JSON.stringify({ pct }) }),
   autoReset: () => request<{ ok: true }>("/api/auto/reset", { method: "POST", auth: true, body: "{}" }),
   usSetEngine: (engine: string) =>
     request<{ ok: true; engine: string }>("/api/auto/us/engine", { method: "POST", auth: true, body: JSON.stringify({ engine }) }),
