@@ -783,6 +783,7 @@ export default {
       // .html은 Assets가 canonical URL로 307 처리하므로 내부 전용 비-HTML 사본을 조회한다.
       const asset = await env.ASSETS.fetch(new Request(`${url.origin}/gift-shell.txt`, request));
       const headers = new Headers(asset.headers);
+      headers.set("content-type", "text/html; charset=utf-8");
       headers.set("x-robots-tag", "noindex, nofollow, noarchive, nosnippet");
       headers.set("cache-control", "private, no-store");
       headers.set("referrer-policy", "no-referrer");
