@@ -10,23 +10,28 @@ import { el } from "./format";
 
 interface TourStep { sel: string; title: string; body: string }
 
-const DONE_KEY = "wfg-tour-done";
+const DONE_KEY = "wfg-tour-done-v2";
 
 const STEPS: TourStep[] = [
   {
-    sel: ".hero-inner",
-    title: "실계좌 공개 운용 실험",
-    body: "세 가지 분석(온톨로지·수급·차트)과 그 조합을 백테스트로 겨루게 하고, 챔피언 전략이 실제 계좌를 자동매매합니다. 모든 성적은 공개됩니다.",
+    sel: ".brand",
+    title: "WORLD FINANCE GLOBE 한눈에 보기",
+    body: "이 사이트는 거시 인과로 방향을, 수급으로 힘을, 차트로 타이밍을 읽습니다. 전략 성적을 비교한 뒤 종목 분석과 자동매매 현황까지 이어서 볼 수 있습니다.",
   },
   {
     sel: "#lab-strip .lab-head",
-    title: "① 전략실 — 성적표",
-    body: "4개 전략의 백테스트 성적(간판 숫자 = 최근 1년)과 실시간 리그. 🏆 챔피언이 현재 1위, 카드를 누르면 그 전략이 고른 종목과 보유·이탈 내역이 열립니다.",
+    title: "① 전략실 — 전략 성적 비교",
+    body: "온톨로지·수급차트·차트거장·융합 전략을 같은 조건에서 비교합니다. 아래 전략 카드를 누르면 최근 성적과 선택 종목을 자세히 볼 수 있습니다.",
   },
   {
     sel: "#terminal-tabs",
     title: "② 분석 터미널 — 화면 전환",
     body: "온톨로지(거시 인과 3D 그래프) · 차트분석 · 수급분석 · 조합 전략, 네 화면을 탭으로 오갑니다.",
+  },
+  {
+    sel: '#terminal-tabs .tt-tab[data-pane="onto"]',
+    title: "온톨로지",
+    body: "금리·환율·유가 같은 거시 요인이 업종과 종목으로 어떻게 전파되는지 3D 인과 그래프로 확인합니다.",
   },
   {
     sel: '#terminal-tabs .tt-tab[data-pane="ta"]',
@@ -61,6 +66,7 @@ export class Tour {
   private spot: HTMLElement | null = null;
   private card: HTMLElement | null = null;
   private readonly onRelayout = () => this.position();
+  private readonly onKeydown = (event: KeyboardEvent) => { if (event.key === "Escape") this.finish(); };
 
   get running(): boolean { return this.dim !== null; }
 
@@ -77,6 +83,7 @@ export class Tour {
     document.body.append(this.dim, this.spot, this.card);
     window.addEventListener("resize", this.onRelayout);
     window.addEventListener("scroll", this.onRelayout, { passive: true });
+    window.addEventListener("keydown", this.onKeydown);
     this.show();
   }
 
@@ -86,13 +93,26 @@ export class Tour {
     this.dim = this.spot = this.card = null;
     window.removeEventListener("resize", this.onRelayout);
     window.removeEventListener("scroll", this.onRelayout);
+    window.removeEventListener("keydown", this.onKeydown);
+  }
+
+  private visibleTarget(selector: string): Element | null {
+    const target = document.querySelector(selector);
+    if (!target) return null;
+    const rect = target.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return null;
+    for (let node: Element | null = target; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) < 0.05) return null;
+    }
+    return target;
   }
 
   private target(): Element | null {
-    // 화면에 없는 대상(반응형으로 숨김 등)은 건너뛴다
+    // 반응형으로 숨겨졌거나 스크롤 히어로에서 현재 투명한 대상은 건너뛴다.
     for (; this.idx < STEPS.length; this.idx++) {
-      const t = document.querySelector(STEPS[this.idx].sel);
-      if (t && (t as HTMLElement).offsetParent !== null) return t;
+      const target = this.visibleTarget(STEPS[this.idx].sel);
+      if (target) return target;
     }
     return null;
   }
@@ -101,7 +121,10 @@ export class Tour {
     const t = this.target();
     if (!t || !this.card) { this.finish(); return; }
     const step = STEPS[this.idx];
-    t.scrollIntoView({ behavior: "smooth", block: "center" });
+    const firstRect = t.getBoundingClientRect();
+    const headerBottom = document.querySelector(".top-fixed")?.getBoundingClientRect().bottom ?? 0;
+    const alreadyVisible = firstRect.top >= headerBottom + 8 && firstRect.bottom <= window.innerHeight - 8;
+    if (!alreadyVisible) t.scrollIntoView({ behavior: "smooth", block: "center" });
 
     this.card.replaceChildren(
       el("p", { class: "tour-step", text: `${this.idx + 1} / ${STEPS.length}` }),
@@ -121,6 +144,7 @@ export class Tour {
       if (this.idx >= STEPS.length - 1) this.finish();
       else { this.idx++; this.show(); }
     });
+    (btns[btns.length - 1] as HTMLButtonElement | undefined)?.focus({ preventScroll: true });
 
     // 스크롤 애니메이션이 끝난 뒤 위치를 잡는다 (두 번 재계산으로 안착)
     window.setTimeout(() => this.position(), 380);
@@ -129,15 +153,19 @@ export class Tour {
 
   private position(): void {
     if (!this.spot || !this.card) return;
-    const t = document.querySelector(STEPS[this.idx]?.sel ?? "");
+    const t = this.visibleTarget(STEPS[this.idx]?.sel ?? "");
     if (!t) return;
     const r = t.getBoundingClientRect();
     const pad = 8;
+    const leftEdge = Math.max(8, r.left - pad);
+    const topEdge = Math.max(8, r.top - pad);
+    const rightEdge = Math.min(window.innerWidth - 8, r.right + pad);
+    const bottomEdge = Math.min(window.innerHeight - 8, r.bottom + pad);
     Object.assign(this.spot.style, {
-      left: `${r.left - pad}px`,
-      top: `${r.top - pad}px`,
-      width: `${r.width + pad * 2}px`,
-      height: `${r.height + pad * 2}px`,
+      left: `${leftEdge}px`,
+      top: `${topEdge}px`,
+      width: `${Math.max(0, rightEdge - leftEdge)}px`,
+      height: `${Math.max(0, bottomEdge - topEdge)}px`,
     });
     // 카드 — 대상 아래 공간이 부족하면 위로
     const cw = Math.min(360, window.innerWidth - 24);
