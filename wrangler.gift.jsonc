@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "stockontology-gift",
+  "main": "worker/gift-standalone.ts",
+  "compatibility_date": "2026-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "observability": { "enabled": true },
+  "routes": [
+    { "pattern": "stockontology.cc/for/seungcheol-birthday-4shares-9c7e3a61d4f2*", "zone_name": "stockontology.cc" },
+    { "pattern": "stockontology.cc/api/gift/seungcheol-9c7e3a61d4f2*", "zone_name": "stockontology.cc" },
+    { "pattern": "stockontology.cc/gift/*", "zone_name": "stockontology.cc" },
+    { "pattern": "stockontology.cc/gift-assets/*", "zone_name": "stockontology.cc" }
+  ],
+  "workers_dev": true,
+  "kv_namespaces": [
+    { "binding": "CACHE", "id": "38b0ce18a5b84fa69ff47b10c6648ad6" }
+  ]
+}
