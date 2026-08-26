@@ -39,6 +39,7 @@ const TRID: Record<string, { prod: string; vts: string }> = {
   "domestic.balance": { prod: "TTTC8434R", vts: "VTTC8434R" },
   "domestic.psamount": { prod: "TTTC8908R", vts: "VTTC8908R" },
   "domestic.price": { prod: "FHKST01010100", vts: "FHKST01010100" },
+  "domestic.minute": { prod: "FHKST03010200", vts: "FHKST03010200" },
   "overseas.price": { prod: "HHDFS00000300", vts: "HHDFS00000300" },
   "overseas.balance": { prod: "TTTS3012R", vts: "VTTS3012R" },
   "overseas.psamount": { prod: "TTTS3007R", vts: "VTTS3007R" },
@@ -476,6 +477,49 @@ export async function domesticPrice(env: Env, cfg: KisConfig, code: string) {
     lowerLimit: num(o["stck_llam"]),
     name: o["hts_kor_isnm"] ?? "",
   };
+}
+
+export interface MinuteBar {
+  /** HHMMSS(KST) */
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+/**
+ * 국내주식 분봉조회 — 분봉 단타(2026-08-25 착수)의 기반 데이터.
+ * 한 번에 최근 최대 30개 정도(1분봉 기준)만 내려온다 — 장중에 여러 번 이어붙여
+ * 축적해야 긴 시계열이 된다. 조회성 API라 실전/모의 TR_ID 가 같다.
+ */
+export async function domesticMinuteCandles(env: Env, cfg: KisConfig, code: string, hhmmss = "153000"): Promise<MinuteBar[]> {
+  const out = await kisCall(env, cfg, {
+    method: "GET",
+    path: "/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
+    trId: trId(env, "domestic.minute", cfg.isPaper),
+    query: {
+      FID_ETC_CLS_CODE: "",
+      FID_COND_MRKT_DIV_CODE: "J",
+      FID_INPUT_ISCD: code,
+      FID_INPUT_HOUR_1: hhmmss,
+      FID_PW_DATA_INCU_YN: "Y",
+    },
+  });
+  const rows = (out["output2"] ?? []) as Record<string, string>[];
+  // KIS 는 최신→과거 순으로 준다. 차트·지표 계산은 과거→최신을 기대하므로 뒤집는다.
+  return rows
+    .filter((r) => r["stck_cntg_hour"])
+    .map((r) => ({
+      time: r["stck_cntg_hour"],
+      open: num(r["stck_oprc"]),
+      high: num(r["stck_hgpr"]),
+      low: num(r["stck_lwpr"]),
+      close: num(r["stck_prpr"]),
+      volume: num(r["cntg_vol"]),
+    }))
+    .reverse();
 }
 
 export async function overseasPrice(env: Env, cfg: KisConfig, excd: string, symb: string) {

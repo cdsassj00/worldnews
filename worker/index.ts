@@ -15,6 +15,7 @@ import {
   assertTradeAuth,
   cancelDomesticOrder,
   domesticBalance,
+  domesticMinuteCandles,
   domesticPrice,
   kisConfig,
   kisStatus,
@@ -291,6 +292,16 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     assertOverseasAllowed(env, market);
     const data = market === "KRX" ? await domesticPrice(env, cfg, code) : await overseasPrice(env, cfg, market, code);
     return json(data);
+  }
+
+  if (path === "/api/kis/minute") {
+    // 분봉 단타 착수(2026-08-25) — 실계좌 분봉 데이터가 실제로 오는지 검증용.
+    assertTradeAuth(env, request);
+    const cfg = kisConfig(env);
+    const code = url.searchParams.get("code");
+    if (!code) throw new ApiError(400, "code_required");
+    const bars = await domesticMinuteCandles(env, cfg, code);
+    return json({ code, count: bars.length, bars });
   }
 
   if (path === "/api/kis/balance") {
