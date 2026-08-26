@@ -132,9 +132,9 @@ function simulateBreakout(
       continue;
     }
     if (isLastBarOfDay) continue;
-    if (Number.isNaN(dc.upper[i - 1]) || Number.isNaN(adx[i])) continue;
+    if (Number.isNaN(dc.up[i - 1]) || Number.isNaN(adx[i])) continue;
     // 직전 봉까지의 N봉 최고가를 이번 봉 종가가 넘어서면 돌파. 오늘 자신을 포함해 계산하면 항상 참이 되므로 i-1 기준.
-    if (bars[i].c > dc.upper[i - 1] && adx[i] >= cfg.adxMin) {
+    if (bars[i].c > dc.up[i - 1] && adx[i] >= cfg.adxMin) {
       pos = { entry: bars[i].c, idx: i, peak: bars[i].c };
     }
   }
