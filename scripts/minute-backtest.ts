@@ -13,7 +13,7 @@
  * 데이터: 야후 5분봉 60일(핵심 유동성 20종목). 당일청산(오버나잇 금지).
  * 실행: npx tsx scripts/minute-backtest.ts
  */
-import { rsiSeries, bollinger, adxSeries, donchian } from "../shared/ta";
+import { rsiSeries, bollinger, adxSeries, donchian, smaSeries } from "../shared/ta";
 import { UNIVERSE } from "../shared/ontology";
 
 const CORE = UNIVERSE.filter((u) => u.core);
@@ -58,10 +58,28 @@ function kstDate(unixSec: number): string {
 
 interface Trade { pnlPct: number; bars: number }
 
+/**
+ * 지수 추세 필터 — 코스피 자체가 최근 N봉 평균 위에 있을 때만 롱 진입을 허용한다.
+ * 2026-08-25 사용자 지시로 추가: v2 가 전패한 원인 중 하나가 60일 내내 하락장(-20.7%)
+ * 이었는데 롱 전용 전략을 계속 돌린 것 — "떨어지는 칼날 잡기"를 걸러내려는 필터다.
+ * 타임스탬프로 대사한다(개별 종목·지수가 같은 거래소라 봉 시각이 대체로 일치하지만,
+ * 결측 대비 못 찾으면 필터를 통과시킨다 — 필터가 있어서 매매가 아예 막히는 것보다는 낫다).
+ */
+function buildTrendFilter(kospiBars: Bar[], smaN: number): Map<number, boolean> {
+  const closes = kospiBars.map((b) => b.c);
+  const sma = smaSeries(closes, smaN);
+  const map = new Map<number, boolean>();
+  for (let i = 0; i < kospiBars.length; i++) {
+    if (!Number.isNaN(sma[i])) map.set(kospiBars[i].t, closes[i] > sma[i]);
+  }
+  return map;
+}
+
 /** 역추세 — RSI 과매도 + 볼린저 하단권. 반등 목표 도달 또는 RSI 중립 복귀 시 청산. */
 function simulateMeanRev(
   bars: Bar[],
   cfg: { rsiN: number; rsiBuy: number; rsiExit: number; bbN: number; bbMult: number; stopPct: number; takePct: number },
+  trendFilter?: Map<number, boolean>,
 ): Trade[] {
   const closes = bars.map((b) => b.c);
   const rsi = rsiSeries(closes, cfg.rsiN);
@@ -91,6 +109,7 @@ function simulateMeanRev(
     }
     if (isLastBarOfDay) continue;
     if (Number.isNaN(rsi[i]) || Number.isNaN(bb.lower[i])) continue;
+    if (trendFilter && trendFilter.get(bars[i].t) === false) continue; // 지수가 단기평균 밑이면 진입 안 함
     // 과매도 + 하단밴드 접근(밴드 폭의 30% 이내로 근접) — 동시에 만족해야 진입
     const nearLower = bars[i].c <= bb.lower[i] + (bb.mid[i] - bb.lower[i]) * 0.3;
     if (rsi[i] <= cfg.rsiBuy && nearLower) {
@@ -104,6 +123,7 @@ function simulateMeanRev(
 function simulateBreakout(
   bars: Bar[],
   cfg: { donchianN: number; adxN: number; adxMin: number; stopPct: number; trailPct: number },
+  trendFilter?: Map<number, boolean>,
 ): Trade[] {
   const closes = bars.map((b) => b.c), highs = bars.map((b) => b.h), lows = bars.map((b) => b.l);
   const dc = donchian(highs, lows, cfg.donchianN);
@@ -133,6 +153,7 @@ function simulateBreakout(
     }
     if (isLastBarOfDay) continue;
     if (Number.isNaN(dc.up[i - 1]) || Number.isNaN(adx[i])) continue;
+    if (trendFilter && trendFilter.get(bars[i].t) === false) continue;
     // 직전 봉까지의 N봉 최고가를 이번 봉 종가가 넘어서면 돌파. 오늘 자신을 포함해 계산하면 항상 참이 되므로 i-1 기준.
     if (bars[i].c > dc.up[i - 1] && adx[i] >= cfg.adxMin) {
       pos = { entry: bars[i].c, idx: i, peak: bars[i].c };
@@ -211,6 +232,21 @@ async function main() {
     const all: Trade[] = [];
     for (const u of CORE) all.push(...simulateBreakout(barsByCode.get(u.code) ?? [], cfg));
     report(cfg.name, all, tradingDays);
+  }
+
+  // 지수 추세 필터 — 코스피가 단기평균 위일 때만 롱 진입. 각 그룹의 상대적 우등생(R4·B3)에 적용해 비교.
+  console.log(`\n지수 추세 필터 적용 (코스피 5분봉 SMA20/SMA60 위일 때만 진입) — R4·B3 재측정`);
+  const filter20 = buildTrendFilter(kospiBars, 20);
+  const filter60 = buildTrendFilter(kospiBars, 60);
+  const r4 = meanRevScenarios[3];
+  const b3 = breakoutScenarios[2];
+  for (const [label, filter] of [["SMA20", filter20], ["SMA60", filter60]] as const) {
+    const rAll: Trade[] = [];
+    for (const u of CORE) rAll.push(...simulateMeanRev(barsByCode.get(u.code) ?? [], r4, filter));
+    report(`${r4.name} +지수필터${label}`, rAll, tradingDays);
+    const bAll: Trade[] = [];
+    for (const u of CORE) bAll.push(...simulateBreakout(barsByCode.get(u.code) ?? [], b3, filter));
+    report(`${b3.name} +지수필터${label}`, bAll, tradingDays);
   }
 }
 
