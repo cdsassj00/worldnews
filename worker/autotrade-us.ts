@@ -514,12 +514,25 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
       let remaining = Math.max(0, budgetUsd - deployedUsd);
       let cashLeft = orderableUsd > 0 ? orderableUsd : remaining;
       const minOrderUsd = cfg.minOrderKrw / fx;
+      /* 섹터 분산 — 백테스트 검증(2026-08-21 QKC3, 1년 수익 거의 그대로 +63.3%→+63.3%지만
+       * 최대낙폭 -18.5%→-15.5%)을 실계좌에 반영한다. 온톨로지는 국면 추종이라 순풍인
+       * 섹터가 상위를 도배하기 쉽다 — 실측으로도 미국 픽이 3일 연속 에너지 4~5/5였고
+       * 그 섹터가 꺾인 날 보유 4종목 중 3개가 동시에 졌다. 신규 진입만 막는다(이미
+       * 보유 중인 종목의 추가 매수는 그대로 허용) — 이미 산 걸 억지로 팔진 않는다. */
+      const SECTOR_CAP = 3;
+      const sectorOf = (code: string): string | undefined => rowByCode.get(code)?.sector;
+      const heldSectorCount = new Map<string, number>();
+      for (const code of Object.keys(state.positions)) {
+        const s = sectorOf(code);
+        if (s) heldSectorCount.set(s, (heldSectorCount.get(s) ?? 0) + 1);
+      }
       let buys = 0;
       for (const { r, score } of cands) {
         if (buys >= cfg.maxOrdersPerCycle) break;
         if (score < cfg.buyScore) break;
         const pos = state.positions[r.code];
         if (!pos && Object.keys(state.positions).length + buys >= cfg.maxPositions) continue;
+        if (!pos && r.sector && (heldSectorCount.get(r.sector) ?? 0) >= SECTOR_CAP) continue;
         const currentValue = pos ? pos.qty * (priceOf(r.code) || r.price) : 0;
         const room = Math.min(perPositionCap - currentValue, remaining, cashLeft);
         const sized = room * Math.min(1, 0.7 + score * 1.5);
@@ -543,6 +556,7 @@ export async function usRunCycle(env: Env, opts: { shadow?: boolean; force?: boo
         remaining -= notionalUsd;
         cashLeft -= notionalUsd;
         buys++;
+        if (!pos && r.sector) heldSectorCount.set(r.sector, (heldSectorCount.get(r.sector) ?? 0) + 1);
         out.orders.push({
           side: "buy", code: r.code, name: r.name, excd, qty, price: limit,
           notionalUsd: round(notionalUsd, 2), notionalKrw: Math.round(notionalUsd * fx),
