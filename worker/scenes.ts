@@ -4,6 +4,11 @@
  *   GET /api/scene.svg?market=KR|US&view=overview            전체 그래프 (거시→섹터→종목 3층)
  *   GET /api/scene.svg?market=KR&view=sector:정유화학          추천 섹터 하나 강조
  *   GET /api/scene.svg?market=KR&view=stock:010950            종목 상세 (합성 점수 분해 + 경로)
+ *   GET /api/scene.svg?market=KR&view=chart:010950            일봉 + 이동평균 + 지지·저항 + 거래량
+ *   GET /api/scene.svg?market=KR&view=strategies:010950       차트 전략 13종 합의 + 매매 플랜
+ *   GET /api/scene.svg?market=KR&view=consensus                엔진 합의 격자(종목×엔진)
+ *   GET /api/scene.svg?market=KR&view=flow                     수급(자금흐름·매집·거래대금) 순위
+ *   GET /api/scene.svg?market=KR&view=combo                    온톨로지+수급+차트 조합 순위
  *   GET /api/scene.svg?market=KR&view=league                  전략실 리그 4엔진 성적
  *   GET /api/scene.svg?view=backtest                          백테스트 성적표 (양 시장)
  *   공통: &animate=1 → 간선에 3초 흐름 루프(SMIL — 크롬/파폭 재생, 화면 녹화용)
@@ -14,13 +19,14 @@
  */
 import type { Env } from "./env";
 import { getVerdict } from "./verdict";
-import { labOverview } from "./quant";
+import { labOverview, quantRank, comboRank } from "./quant";
 import { radarFind } from "./radarscan";
 import { backtestResults } from "./backtest";
 import { getManySeries } from "./quotes";
 import { computeLevels } from "./levels";
 import { buildEnginesAndAgreement } from "./agreement";
-import { smaSeries } from "../shared/ta";
+import { taCached } from "./ta";
+import { smaSeries, VERDICT_KO } from "../shared/ta";
 import { ApiError, round } from "./util";
 import krSeed from "../shared/radar-universe.json";
 import usSeed from "../shared/us-universe.json";
@@ -43,6 +49,7 @@ const FONT_IMPORT = `<style>@import url('https://cdn.jsdelivr.net/gh/orioncactus
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const sgn = (v: number, d = 2) => `${v >= 0 ? "+" : ""}${v.toFixed(d)}`;
 const dirColor = (v: number) => (v >= 0 ? UP : DOWN);
+const trunc = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
 
 const MACRO_KO: Record<string, string> = {
   OIL: "유가", USDKRW: "원/달러", US10Y: "미 10년 금리", SEMI: "반도체 업황",
@@ -300,6 +307,132 @@ async function sceneChart(env: Env, market: "KR" | "US", code: string, animate: 
   return shell(header(`${esc(CODE_TO_NAME.get(code) ?? series.name)} — 일봉 차트`, sub, dirColor(series.changePct)) + legend + mas + candles + srLines + note, animate);
 }
 
+/* ── strategies:코드 — 차트 전략 13종 합의 + 매매 플랜 (분석 터미널 "차트분석" 탭) ── */
+
+const STRAT_SHORT: Record<string, string> = {
+  ma_cross: "이평 교차", macd: "MACD", rsi: "RSI", bollinger: "볼린저", ichimoku: "일목균형",
+  turtle: "터틀", supertrend: "슈퍼트렌드", stochastic: "스토캐스틱", adx: "ADX/DMI",
+  weinstein: "스테이지", minervini: "추세템플릿", elder: "삼중창", darvas: "다바스박스",
+};
+const TREND_KO: Record<string, string> = { up: "상승", down: "하락", flat: "횡보" };
+
+async function sceneStrategies(env: Env, market: "KR" | "US", code: string, animate: boolean): Promise<string> {
+  const symbol = CODE_TO_SYMBOL.get(code);
+  if (!symbol) throw new ApiError(404, "stock_not_found", { code });
+  const rep = await taCached(env, symbol);
+  if (!rep.strategies.length) throw new ApiError(404, "not_enough_history", { code });
+  const cur = market === "US" ? "$" : "원";
+  const name = CODE_TO_NAME.get(code) ?? rep.name;
+
+  // 13개 전략 칩 — 7열×2행
+  const gx0 = 80, gx1 = 1840, cols = 7, gap = 16;
+  const chipW = (gx1 - gx0 - (cols - 1) * gap) / cols, chipH = 118, rowGap = 18;
+  const row1Y = 280, row2Y = row1Y + chipH + rowGap;
+  let chips = "";
+  rep.strategies.forEach((s, i) => {
+    const col = i % cols, row = Math.floor(i / cols);
+    const x = gx0 + col * (chipW + gap), y = row === 0 ? row1Y : row2Y;
+    const c = dirColor(s.score);
+    chips += `<rect x="${x}" y="${y}" width="${chipW.toFixed(1)}" height="${chipH}" rx="12" fill="${PANEL}" stroke="${s.verdict === "neutral" ? "rgba(148,163,184,0.35)" : c}" stroke-width="2"/>
+<text x="${x + 16}" y="${y + 40}" fill="${FG}" font-size="21" font-weight="800" ${FONT}>${esc(STRAT_SHORT[s.id] ?? s.nameKo)}</text>
+<text x="${x + 16}" y="${y + 78}" fill="${c}" font-size="19" font-weight="800" ${FONT}>${esc(VERDICT_KO[s.verdict])} ${sgn(s.score)}</text>`;
+  });
+
+  // 합의 바
+  const consY = 640;
+  const barX = gx0, barW = gx1 - gx0, half = barW / 2;
+  const len = Math.min(half, Math.abs(rep.consensus.score) * half);
+  const consBar = `<text x="${barX}" y="${consY - 20}" fill="${GOLD}" font-size="26" font-weight="900" ${FONT}>종합 판정 — ${esc(rep.consensus.text)}</text>
+<rect x="${barX}" y="${consY}" width="${barW}" height="30" rx="15" fill="rgba(148,163,184,0.15)"/>
+<rect x="${rep.consensus.score >= 0 ? barX + half : barX + half - len}" y="${consY}" width="${Math.max(3, len)}" height="30" rx="15" fill="${dirColor(rep.consensus.score)}"/>
+<line x1="${barX + half}" y1="${consY - 8}" x2="${barX + half}" y2="${consY + 38}" stroke="${DIM}" stroke-width="1.5"/>`;
+
+  // 추세 + 지표 타일
+  const trendY = 730;
+  const trendLine = `<text x="${gx0}" y="${trendY}" fill="${rep.trend.trending ? GOLD : DIM}" font-size="24" font-weight="800" ${FONT}>${esc(rep.trend.alignment)}</text>
+<text x="${gx0}" y="${trendY + 32}" fill="${DIM}" font-size="20" ${FONT}>${esc(rep.trend.text)}</text>`;
+
+  const tiles: [string, string][] = [
+    ["RSI", rep.indicators.rsi.toFixed(1)],
+    ["MACD", sgn(rep.indicators.macdHist)],
+    ["ADX", rep.indicators.adx.toFixed(1)],
+    ["MFI", rep.indicators.mfi.toFixed(1)],
+    ["%B", `${rep.indicators.bbPercentB.toFixed(0)}%`],
+    ["ATR", rep.indicators.atr.toLocaleString("ko-KR")],
+  ];
+  const tileY = 800, tileGap = 16, tileW = (gx1 - gx0 - 5 * tileGap) / 6, tileH = 100;
+  let tilesG = "";
+  tiles.forEach(([label, val], i) => {
+    const x = gx0 + i * (tileW + tileGap);
+    tilesG += `<rect x="${x}" y="${tileY}" width="${tileW.toFixed(1)}" height="${tileH}" rx="10" fill="${PANEL}" stroke="rgba(148,163,184,0.25)" stroke-width="1.5"/>
+<text x="${x + 18}" y="${tileY + 34}" fill="${DIM}" font-size="18" ${FONT}>${label}</text>
+<text x="${x + 18}" y="${tileY + 74}" fill="${FG}" font-size="30" font-weight="800" ${FONT}>${esc(val)}</text>`;
+  });
+
+  // 매매 플랜
+  const p = rep.plan;
+  const planY = 950;
+  const biasColor = p.bias === "long" ? UP : p.bias === "avoid" ? DOWN : DIM;
+  const plan = `<rect x="${gx0}" y="${planY - 40}" width="${gx1 - gx0}" height="100" rx="14" fill="${PANEL}" stroke="${biasColor}" stroke-width="2"/>
+<text x="${gx0 + 24}" y="${planY - 4}" fill="${biasColor}" font-size="26" font-weight="900" ${FONT}>${esc(p.biasKo)} (${esc(p.gradeKo)})</text>
+<text x="${gx0 + 24}" y="${planY + 32}" fill="${FG}" font-size="21" ${FONT}>진입 ${p.entry.low.toLocaleString("ko-KR")}~${p.entry.high.toLocaleString("ko-KR")}${cur} · 손절 ${p.stop.price.toLocaleString("ko-KR")}${cur}(${sgn(p.stop.pct, 1)}%) · 목표1 ${p.targets[0].price.toLocaleString("ko-KR")}${cur}(${sgn(p.targets[0].pct, 1)}%) · 목표2 ${p.targets[1].price.toLocaleString("ko-KR")}${cur}(${sgn(p.targets[1].pct, 1)}%) · 손익비 ${p.rr.toFixed(2)}</text>`;
+
+  const sub = `${kstDate()} · ${rep.price.toLocaleString("ko-KR")}${cur} (${sgn(rep.changePct, 1)}%) · 창시자가 있는 전략 13종`;
+  return shell(header(`${esc(name)} — 차트 전략 13종`, sub, dirColor(rep.consensus.score)) + chips + consBar + trendLine + tilesG + plan, animate);
+}
+
+/* ── flow — 수급(자금흐름·매집·거래대금) 순위 (분석 터미널 "수급분석" 탭) ────── */
+
+async function sceneFlow(env: Env, market: "KR" | "US"): Promise<string> {
+  const res = await quantRank(env, "flow", 7, market);
+  const cur = market === "US" ? "$" : "원";
+  const cols = ["#", "종목", "현재가", "등락", "점수", "왜 이 순위인가"];
+  const x0 = 80, y0 = 340, rowH = 100, colWs = [70, 420, 220, 160, 140, 750];
+  const colX = (i: number) => x0 + colWs.slice(0, i).reduce((a, b) => a + b, 0);
+  let g = "";
+  cols.forEach((c, i) => { g += `<text x="${colX(i)}" y="${y0 - 24}" fill="${DIM}" font-size="22" font-weight="700" ${FONT}>${c}</text>`; });
+  res.rows.forEach((r, i) => {
+    const y = y0 + i * rowH;
+    g += `<rect x="${x0 - 20}" y="${y - 46}" width="${colWs.reduce((a, b) => a + b, 0) + 20}" height="${rowH - 14}" rx="12" fill="${i % 2 ? "rgba(15,23,42,0.5)" : "rgba(15,23,42,0.85)"}"/>`;
+    g += `<text x="${colX(0)}" y="${y}" fill="${i < 3 ? GOLD : FG}" font-size="26" font-weight="900" ${FONT}>${i + 1}</text>`;
+    g += `<text x="${colX(1)}" y="${y - 8}" fill="${FG}" font-size="25" font-weight="800" ${FONT}>${esc(r.name)}</text>`;
+    g += `<text x="${colX(1)}" y="${y + 20}" fill="${DIM}" font-size="17" ${FONT}>${esc(r.sector || "미분류")} · 자금${sgn(r.parts.moneyFlow, 1)} 매집${sgn(r.parts.accum, 1)} 대금${sgn(r.parts.surge, 1)}</text>`;
+    g += `<text x="${colX(2)}" y="${y}" fill="${FG}" font-size="24" ${FONT}>${r.price.toLocaleString("ko-KR")}${cur}</text>`;
+    g += `<text x="${colX(3)}" y="${y}" fill="${dirColor(r.changePct)}" font-size="24" font-weight="700" ${FONT}>${sgn(r.changePct, 1)}%</text>`;
+    g += `<text x="${colX(4)}" y="${y}" fill="${dirColor(r.score)}" font-size="26" font-weight="900" ${FONT}>${r.score.toFixed(2)}</text>`;
+    g += `<text x="${colX(5)}" y="${y}" fill="${DIM}" font-size="19" ${FONT}>${esc(trunc(r.reasons[0]?.text ?? "", 32))}</text>`;
+  });
+  const sub = `${kstDate()} · 자금흐름(MFI)·매집(CLV 누적)·거래대금 급증 — 큰손이 사는 흔적 순위 · ${res.scanned}/${res.universe}종목 스캔`;
+  return shell(header(`${market === "US" ? "미국" : "한국"} 수급 순위`, sub) + g, false);
+}
+
+/* ── combo — 온톨로지+수급+차트 조합 순위 (분석 터미널 "조합 전략" 탭) ────── */
+
+async function sceneCombo(env: Env, market: "KR" | "US"): Promise<string> {
+  const res = await comboRank(env, {}, 8, market);
+  const cur = market === "US" ? "$" : "원";
+  const cols = ["#", "종목", "현재가", "등락", "온톨로지", "수급", "차트", "종합"];
+  const x0 = 80, y0 = 340, rowH = 84, colWs = [60, 420, 210, 150, 190, 190, 190, 190];
+  const colX = (i: number) => x0 + colWs.slice(0, i).reduce((a, b) => a + b, 0);
+  const cell = (v: number | null) => (v === null ? `<tspan fill="${DIM}">—</tspan>` : `<tspan fill="${dirColor(v)}">${sgn(v, 2)}</tspan>`);
+  let g = "";
+  cols.forEach((c, i) => { g += `<text x="${colX(i)}" y="${y0 - 24}" fill="${DIM}" font-size="22" font-weight="700" ${FONT}>${c}</text>`; });
+  res.rows.forEach((r, i) => {
+    const y = y0 + i * rowH;
+    g += `<rect x="${x0 - 20}" y="${y - 38}" width="${colWs.reduce((a, b) => a + b, 0) + 20}" height="${rowH - 12}" rx="12" fill="${i % 2 ? "rgba(15,23,42,0.5)" : "rgba(15,23,42,0.85)"}"/>`;
+    g += `<text x="${colX(0)}" y="${y}" fill="${i < 3 ? GOLD : FG}" font-size="24" font-weight="900" ${FONT}>${i + 1}</text>`;
+    g += `<text x="${colX(1)}" y="${y}" fill="${FG}" font-size="24" font-weight="800" ${FONT}>${esc(r.name)} <tspan fill="${DIM}" font-size="17">${esc(r.sector || "미분류")}</tspan></text>`;
+    g += `<text x="${colX(2)}" y="${y}" fill="${FG}" font-size="22" ${FONT}>${r.price.toLocaleString("ko-KR")}${cur}</text>`;
+    g += `<text x="${colX(3)}" y="${y}" fill="${dirColor(r.changePct)}" font-size="22" font-weight="700" ${FONT}>${sgn(r.changePct, 1)}%</text>`;
+    g += `<text x="${colX(4)}" y="${y}" font-size="23" font-weight="700" ${FONT}>${cell(r.onto)}</text>`;
+    g += `<text x="${colX(5)}" y="${y}" font-size="23" font-weight="700" ${FONT}>${cell(r.flow)}</text>`;
+    g += `<text x="${colX(6)}" y="${y}" font-size="23" font-weight="700" ${FONT}>${cell(r.chart)}</text>`;
+    g += `<text x="${colX(7)}" y="${y}" fill="${dirColor(r.total)}" font-size="27" font-weight="900" ${FONT}>${sgn(r.total, 2)}</text>`;
+  });
+  const sub = `${kstDate()} · 가중치 온톨로지 ${res.weights.onto}% · 수급 ${res.weights.flow}% · 차트 ${res.weights.chart}% (기본 삼합) · 점수 없는 축은 빼고 재정규화`;
+  return shell(header(`${market === "US" ? "미국" : "한국"} 조합 전략 순위`, sub) + g, false);
+}
+
 /* ── consensus — 종목(세로) × 엔진(가로) 합의 격자 (2026-09-04 요청 3번 부속) ────── */
 
 const ENGINE_ORDER = ["onto", "quant", "ta", "fusion"];
@@ -408,6 +541,11 @@ export async function sceneSvg(env: Env, market: "KR" | "US", view: string, anim
   if (view.startsWith("sector:")) return sceneSector(env, market, view.slice(7), animate);
   if (view.startsWith("stock:")) return sceneStock(env, market, view.slice(6), animate);
   if (view.startsWith("chart:")) return sceneChart(env, market, view.slice(6), animate);
+  if (view.startsWith("strategies:")) return sceneStrategies(env, market, view.slice(11), animate);
   if (view === "consensus") return sceneConsensus(env, market);
-  throw new ApiError(400, "bad_view", { allowed: ["overview", "sector:<이름>", "stock:<코드>", "chart:<코드>", "league", "backtest", "consensus"] });
+  if (view === "flow") return sceneFlow(env, market);
+  if (view === "combo") return sceneCombo(env, market);
+  throw new ApiError(400, "bad_view", {
+    allowed: ["overview", "sector:<이름>", "stock:<코드>", "chart:<코드>", "strategies:<코드>", "league", "backtest", "consensus", "flow", "combo"],
+  });
 }

@@ -145,14 +145,20 @@ GET /api/scene.svg?market=KR|US&view=overview          # 전체 그래프 (거�
 GET /api/scene.svg?market=KR&view=sector:정유화학        # 섹터 하나 강조 + 인과 화살표 + 근거
 GET /api/scene.svg?market=KR&view=stock:010950         # 종목 상세: 합성 점수 분해(0.35/0.45/0.2) + 온톨로지 경로 + 근거  ← 매일 5회용
 GET /api/scene.svg?market=KR&view=chart:010950         # §12 요청 2번 — 일봉 캔들 + MA20/60 + 지지·저항선 + 거래량
+GET /api/scene.svg?market=KR&view=strategies:010950    # 차트 전략 13종 합의 + 매매 플랜 (분석 터미널 "차트분석" 탭)
 GET /api/scene.svg?market=KR&view=consensus             # §12 요청 3번 — agreement 상위 7종목 × 4엔진 합의 그리드
+GET /api/scene.svg?market=KR&view=flow                  # 수급(자금흐름·매집·거래대금) 순위 (분석 터미널 "수급분석" 탭)
+GET /api/scene.svg?market=KR&view=combo                 # 온톨로지+수급+차트 조합 순위 (분석 터미널 "조합 전략" 탭)
 GET /api/scene.svg?market=KR&view=league               # 전략실 리그 4엔진 카드
 GET /api/scene.svg?view=backtest                       # 백테스트 성적표 (7전략 × 두 시장, 챔피언 🏆)
 공통 옵션: &animate=1  → 간선 3초 흐름 루프(SMIL) — 브라우저 재생·화면 녹화용. 래스터화 시엔 빼세요.
 ```
 
 - `view=chart:` 는 최근 최대 90거래일 캔들 + MA20(하늘)/MA60(보라) + 지지(초록 점선)·저항(빨강 점선) 절대가 라벨 + 거래량 막대. 지지·저항은 daily-brief 의 `levels`와 같은 계산(agreement.ts/levels.ts 공유) — 화면과 API 숫자가 어긋나지 않는다.
+- `view=strategies:` 는 창시자가 있는 차트 전략 13종(이동평균 교차·MACD·RSI·볼린저·일목균형·터틀·슈퍼트렌드·스토캐스틱·ADX·스테이지·추세템플릿·삼중창·다바스박스) 각각의 매수/중립/매도 판정 + 종합 합의 바 + 추세(단기·중기·장기·ADX) + RSI/MACD/ADX/MFI/%B/ATR 지표 타일 + 매매 플랜(진입 구간·손절가·목표1·2차·손익비, 전부 절대 가격). JSON은 `GET /api/ta?symbol=<야후심볼>&days=180`(공개, 캐시 3분) — 화면과 같은 `taReport()` 계산을 쓴다.
 - `view=consensus` 는 `agreement` 배열 그대로를 격자로 그린 것 — 열은 `ENGINE_ORDER = [onto, quant, ta, fusion]` 고정 순서, 파생 엔진(fusion)은 회색 체크로 독립 엔진과 시각적으로 구분된다.
+- `view=flow` 는 자금흐름(MFI)·매집강도(CLV 누적)·거래대금 급증 세 신호로 만든 상위 7종목 순위표(-1~1 점수, 근거 문장 포함). JSON은 `GET /api/quant/rank?market=KR|US&profile=flow&limit=20`(공개, 120종목 스캔·14분 주기 갱신).
+- `view=combo` 는 온톨로지·수급·차트 세 축을 가중치(기본 34/33/33, "삼합")로 섞은 상위 8종목 순위표 — 점수 없는 축은 빼고 남은 가중치로 재정규화한다("정보 없음 ≠ 나쁨"). JSON은 `GET /api/combo/rank?market=KR|US&onto=&flow=&chart=&limit=`(0~100 정수 가중치, 생략 시 34/33/33).
 
 - **1920×1080 고정, 완성본만 응답** — 대기·ready 플래그 불필요, UI 크롬 없음, 배치 결정론(정렬 데이터 기반).
 - SVG → PNG: `sharp(svg).png()` 또는 `resvg` 한 줄. **브라우저 불필요** (Pretendard 웹폰트만 온라인 필요 — 오프라인이면 시스템 산세리프 폴백).
@@ -200,3 +206,21 @@ GET /api/scene.svg?view=backtest                       # 백테스트 성적표 
 `agreement`/`sectors.all`/`chart:`/`consensus`는 모두 daily-brief 응답과 계산을 공유한다(`worker/agreement.ts`, `worker/levels.ts`) — 화면·영상·API가 다른 숫자를 말할 위험이 없다.
 
 지지·저항이 없는 종목(상장 1년 미만이거나 유효한 스윙 피벗이 2회 이상 겹치지 않는 경우)은 `levels: null` 이 온다 — **추정으로 채우지 않는다는 원칙**이라 빈 값을 그대로 다뤄야 한다(예: "지지선 정보 없음"으로 대본 분기).
+
+## 8) 분석 터미널 4개 탭 — 콘텐츠용 JSON (2026-09-04 추가)
+
+사이트의 "분석 터미널" 4개 탭이 쓰는 데이터는 전부 **인증 없는 공개 REST** 다. daily-brief 가
+"오늘의 결론 한 장"이라면, 이쪽은 **같은 종목을 여러 각도로 파고드는 소재**다(영상 한 편을 채우는 용도).
+
+| 탭 | JSON | 대응 장면(SVG) | 핵심 내용 |
+|---|---|---|---|
+| 온톨로지 | `GET /api/onto/state` | `view=overview`, `view=stock:<코드>` | 거시요인 값·섹터 민감도·인과 간선(RELATIONS)·거시 간 인과·의미 클러스터 |
+| 차트분석 | `GET /api/ta?symbol=<야후심볼>` | `view=strategies:<코드>`, `view=chart:<코드>` | 전략 13종 판정(`strategies[]`: nameKo·author·verdict·score·text), `consensus`, `trend`, `indicators`, `ladder`(지지·저항 사다리 + 근거 출처), `plan`(진입·손절·목표·손익비·체크리스트), `chart`(지표 시계열) |
+| 수급분석 | `GET /api/quant/rank?market=&profile=&limit=` | `view=flow` | 종목별 `score`(-1~1) + `parts`(trend/momentum/relStrength/moneyFlow/accum/surge/breakout/overheat) + `reasons[]`(기여도 포함) |
+| 조합 전략 | `GET /api/combo/rank?market=&onto=&flow=&chart=&limit=` | `view=combo` | 축별 점수(onto/flow/chart, 없으면 null) + 가중 종합 `total`, 가중치 자유 지정 |
+
+- `profile` 값: `flow`(수급 중심) · `chart`(차트 중심) · `blend`(수급+차트) · `breakout`(돌파 — 리그 2호 엔진과 동일) · `meanrev`(역추세). 생략 시 서버 기본값.
+- `/api/ta` 의 `symbol` 은 야후 심볼(한국은 `005930.KS`, 미국은 `AAPL`). scene 쪽은 6자리 코드/티커를 받아 내부에서 변환한다.
+- 전략 13종에는 `author` 필드가 있다(예: "J. Welles Wilder, 1978") — 영상에서 근거 출처를 밝힐 때 그대로 쓰면 된다.
+- `plan` 은 전부 **절대 가격**이다. `bias`(long/wait/avoid)·`grade`(good/fair/poor)·`invalidation`(계획이 깨지는 조건 문장)까지 완성 문장으로 온다.
+- **엣지 캐시 주의**: scene/카드 SVG 는 `cache-control: public, max-age=300` 이라 Cloudflare 엣지가 URL 단위로 캐시한다. 같은 URL 을 5분 안에 다시 부르면 갱신 전 이미지가 올 수 있으니, 반드시 최신본이 필요하면 무의미한 쿼리 하나(`&cb=<타임스탬프>`)를 붙여 우회한다.
