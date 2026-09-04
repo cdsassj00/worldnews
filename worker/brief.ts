@@ -20,7 +20,19 @@ import { labOverview, usMarketOpen } from "./quant";
 import { marketPhase } from "./autotrade";
 import { radarTop } from "./radarscan";
 import { backtestResults } from "./backtest";
+import { nextTradingDay } from "./holidays";
+import { getManySeries } from "./quotes";
+import { computeLevels, type Levels } from "./levels";
+import { buildEnginesAndAgreement, holdDaysFor } from "./agreement";
 import { ApiError, round } from "./util";
+import krSeed from "../shared/radar-universe.json";
+import usSeed from "../shared/us-universe.json";
+
+/** 종목코드 → 야후 심볼. 한국은 코드와 심볼이 다르다(예: 005930 → 005930.KS), 미국은 같다. */
+const CODE_TO_SYMBOL = new Map<string, string>([
+  ...(krSeed as { code: string; symbol: string }[]).map((t): [string, string] => [t.code, t.symbol]),
+  ...(usSeed as { code: string; symbol: string }[]).map((t): [string, string] => [t.code, t.symbol]),
+]);
 
 type BriefMarket = "KR" | "US";
 
@@ -38,6 +50,11 @@ const BASIS_NOTE =
 
 function kstDate(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
+/** 특정 로컬 날짜(YYYY-MM-DD)를 그 시간대 기준으로 뽑는다 — dataSessionDate 계산용 */
+function localDate(ms: number, tz: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
 }
 
 /** 스냅샷 기준 상태 — 장중이면 intraday, 아니면 KST 시각으로 전/후 판별 */
@@ -183,6 +200,25 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
   };
 
   const rawPicks = verdict.stocks.recommend.slice(0, 5);
+
+  /* 절대 가격 레벨(MA·52주·ATR·거래량·지지저항) — 2026-09-04 유튜브 파이프라인 요청 1번.
+   * "상대 수익률만 있고 얼마에 사서 얼마에 손절인지 말할 수 없다"는 지적에 답한다.
+   * 1y 일봉을 픽마다 다시 받는다(레이더 스캔은 점수만 저장하고 원본 시계열을 안 남기므로) —
+   * 픽이 5개뿐이라 사이클 예산에 영향 없다. 심볼을 못 찾거나 데이터가 모자라면 조용히 null. */
+  const tz = market === "US" ? "America/New_York" : "Asia/Seoul";
+  const symbolToCode = new Map<string, string>();
+  for (const s of rawPicks) {
+    const sym = CODE_TO_SYMBOL.get(s.code);
+    if (sym) symbolToCode.set(sym, s.code);
+  }
+  const levelSeries = await getManySeries(env, [...symbolToCode.keys()], "1y").catch(() => []);
+  const levelsByCode = new Map<string, Levels | null>();
+  for (const sr of levelSeries) {
+    const code = symbolToCode.get(sr.symbol);
+    if (code) levelsByCode.set(code, computeLevels(sr, rawPicks.find((s) => s.code === code)?.price ?? sr.price, tz));
+  }
+  const ontoHorizon = holdDaysFor(market, "onto");
+
   const picks = rawPicks.map((s) => ({
     code: s.code,
     /** 미국은 거래소 티커 그대로, 한국은 6자리 종목코드라 별도 티커 없음 */
@@ -197,6 +233,9 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
     reasons: s.reasons ?? [],
     isNew: prevStored ? !prevCodes.has(s.code) : true,
     daysInList: prevStored && prevCodes.has(s.code) ? daysIn(s.code) : 1,
+    levels: levelsByCode.get(s.code) ?? null,
+    horizonDays: ontoHorizon?.days ?? null,
+    horizonNote: ontoHorizon?.note ?? null,
   }));
   const todayCodes = new Set(picks.map((p) => p.code));
   const dropped = (prevStored?.picks ?? [])
@@ -243,6 +282,15 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
       "온톨로지는 국면 추종 전략입니다 — 국면이 유지되는 동안 같은 섹터 클러스터가 이어지는 것은 정상이며(평균 보유 6~13일), 이 방식의 가치는 국면이 꺾이는 날 남보다 먼저 갈아타는 데 있습니다.",
   };
 
+  /* 엔진별 추천 + 엔진 합의 — brief 와 scene.svg?view=consensus 가 같은 모듈을 쓴다
+   * (2026-09-04 요청 3번: 따로 계산하면 화면·영상이 다른 숫자를 말할 위험). */
+  const headlineCodes = new Set(picks.map((p) => p.code));
+  const { engines: enginesOut, agreement } = buildEnginesAndAgreement(market, lab?.strategies, headlineCodes, cur);
+
+  /* 이 계산에 쓴 시세의 실제 거래일 — 레이더 최신 갱신 시각의 로컬 날짜. 갱신 기록이 없으면
+   * (레이더 조회 실패) 오늘 날짜로 보수적으로 대체한다. */
+  const dataSessionDate = dataAsOf ? localDate(dataAsOf, tz) : today;
+
   const brief = {
     market,
     marketKo: market === "US" ? "미국" : "한국",
@@ -262,6 +310,9 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
     sectors: {
       recommend: verdict.sectors.recommend.map((s) => ({ sector: s.sector, score: s.score, reasons: s.reasons })),
       avoid: verdict.sectors.avoid.map((s) => ({ sector: s.sector, score: s.score, reasons: s.reasons })),
+      /** 추천·회피 상위 4개 밖도 포함한 전체 — 오늘 픽의 업종이 추천 리스트에 없을 때도
+       * scene.svg?view=sector: 로 그릴 수 있다(2026-09-04 요청 6번). */
+      all: verdict.sectors.all.map((s) => ({ sector: s.sector, score: s.score, reasons: s.reasons })),
     },
     picks,
     avoid: verdict.stocks.avoid.slice(0, 3).map((s) => ({
@@ -287,27 +338,7 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
     /** 엔진(분석 방식)별 추천 — 온톨로지·수급·차트·융합 각각 "무엇을 보고 골랐는지"
      * 근거 문장 포함. 전략실 리그와 같은 점수 함수라 화면·리그와 어긋나지 않는다.
      * (2026-08-19 유튜브 파이프라인 요청: 엔진별 추천 + 근거) */
-    engines: lab
-      ? lab.strategies.map((st) => ({
-          id: st.id,
-          nameKo: st.nameKo,
-          tagKo: st.tagKo,
-          descKo: st.descKo,
-          live: st.liveNow,
-          leaguePnlPct: st.pnlPct,
-          picks: st.picks.map((p) => ({
-            code: p.code,
-            ticker: market === "US" ? p.code : null,
-            name: p.name,
-            sector: p.sector ?? null,
-            score: p.score,
-            price: p.price,
-            priceLabel: `${p.price.toLocaleString("ko-KR")}${cur}`,
-            changePct: p.changePct,
-            reasons: p.reasons,
-          })),
-        }))
-      : null,
+    engines: enginesOut,
     league: lab
       ? {
           currency: lab.currency,
@@ -316,6 +347,15 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
           })),
         }
       : null,
+    agreement,
+    /* 이 브리프가 가리키는 실제 거래일 (2026-09-04 유튜브 파이프라인 요청 4번).
+     * 발행이 마감 뒤라 "다음 거래일" 기준으로 제목·나레이션을 만드는데, 공휴일을 모르면
+     * 잘못된 날짜를 박게 된다. dataSessionDate 는 이 계산에 쓴 시세의 실제 거래일(레이더
+     * 최신 갱신 시각의 로컬 날짜), targetSession 은 그 다음 거래일(주말+공휴일 skip)이다. */
+    dataSessionDate,
+    targetSession: nextTradingDay(dataSessionDate, market),
+    /** basis 파생 — "장중이라 낡았을 수 있다"를 문자열 파싱 없이 바로 판별하게 (2026-09-04 요청 5번) */
+    sessionClosed: basisOf(market) !== "intraday",
     /** 밀리초 epoch */
     dataAsOf: verdict.dataAsOf,
     generatedAt: verdict.generatedAt,
@@ -386,9 +426,54 @@ const FONT_IMPORT = `<style>@import url('https://cdn.jsdelivr.net/gh/orioncactus
 const FONT = `font-family="'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif"`;
 const GOLD = "#d9a441", UP = "#e0524a", DOWN = "#3b82f6", FG = "#e2e8f0", DIM = "#94a3b8";
 
-export async function briefCardSvg(env: Env, market: BriefMarket, ratio: "16:9" | "9:16" = "16:9"): Promise<string> {
+export async function briefCardSvg(env: Env, market: BriefMarket, ratio: "16:9" | "9:16" | "1:1" = "16:9"): Promise<string> {
+  if (ratio === "1:1") return cardSquare(env, market);
   const v = await getVerdict(env, market);
   return ratio === "9:16" ? cardPortrait(v, market) : cardLandscape(v, market);
+}
+
+/** 1080×1080 — 인스타그램·스레드용. 온톨로지 단독이 아니라 "여러 방식이 동시에 지목한
+ * 종목"을 주인공으로 삼는다(2026-09-04 요청 8번: "동시 지목 상위 3종목 + 엔진 이름"). */
+async function cardSquare(env: Env, market: BriefMarket): Promise<string> {
+  const [v, lab] = await Promise.all([getVerdict(env, market), labOverview(env, market).catch(() => null)]);
+  const cur = market === "US" ? "$" : "원";
+  const headlineCodes = new Set(v.stocks.recommend.slice(0, 5).map((s) => s.code));
+  const { agreement } = buildEnginesAndAgreement(market, lab?.strategies, headlineCodes, cur);
+  const top3 = agreement.slice(0, 3);
+  const toneColor = v.regime.tone === "risk-on" ? UP : v.regime.tone === "risk-off" ? DOWN : GOLD;
+  const mkLabel = market === "US" ? "미국" : "한국";
+  const W = 1080, H = 1080;
+
+  let body = "";
+  let y = 420;
+  if (top3.length) {
+    body += `<text x="64" y="${y}" fill="${GOLD}" font-size="26" font-weight="900" ${FONT}>오늘 여러 방식이 동시에 지목한 종목</text>`;
+    y += 50;
+    top3.forEach((r, i) => {
+      const h = 118;
+      body += `<rect x="52" y="${y - 30}" width="${W - 104}" height="${h}" rx="16" fill="rgba(15,23,42,0.9)" stroke="${GOLD}" stroke-width="1.5"/>`;
+      body += `<text x="72" y="${y + 4}" fill="${FG}" font-size="30" font-weight="900" ${FONT}>${i + 1}. ${esc(r.name)}</text>`;
+      body += `<text x="72" y="${y + 34}" fill="${DIM}" font-size="17" ${FONT}>${esc(r.sector ?? "미분류")} · 독립 ${r.independentCount}개 방식 일치</text>`;
+      const names = r.engines.map((e) => e.nameKo + (e.derived ? "(파생)" : "")).join(" · ");
+      body += `<text x="72" y="${y + 62}" fill="${GOLD}" font-size="16" font-weight="700" ${FONT}>${esc(names).slice(0, 60)}</text>`;
+      y += h + 22;
+    });
+  } else {
+    body += `<text x="64" y="${y}" fill="${DIM}" font-size="24" ${FONT}>오늘은 두 방식 이상이 겹친 종목이 없습니다</text>`;
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  ${FONT_IMPORT}
+  <defs><radialGradient id="bg" cx="50%" cy="18%" r="120%"><stop offset="0%" stop-color="#0b1530"/><stop offset="100%" stop-color="#040814"/></radialGradient></defs>
+  <rect width="${W}" height="${H}" fill="url(#bg)"/>
+  <text x="64" y="90" fill="${GOLD}" font-size="19" font-weight="900" letter-spacing="3" ${FONT}>STOCKONTOLOGY</text>
+  <text x="64" y="126" fill="${DIM}" font-size="16" ${FONT}>온톨로지 데일리 · ${kstDate()}</text>
+  <text x="64" y="184" fill="${FG}" font-size="38" font-weight="900" ${FONT}>${mkLabel} 시장</text>
+  <text x="64" y="228" fill="${toneColor}" font-size="26" font-weight="900" ${FONT}>${esc(v.regime.label)}</text>
+  ${body}
+  <text x="64" y="${H - 60}" fill="${DIM}" font-size="13" ${FONT}>${esc(DISCLAIMER.slice(0, 40))}…</text>
+  <text x="64" y="${H - 36}" fill="${GOLD}" font-size="15" font-weight="700" ${FONT}>stockontology.cc</text>
+</svg>`;
 }
 
 function cardHeader(v: OntoVerdict, market: BriefMarket, W: number, titleSize: number) {

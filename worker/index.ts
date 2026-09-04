@@ -663,9 +663,11 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
   }
 
   if (path === "/api/brief-card.svg") {
-    // 온톨로지 경로 카드 — 16:9(기본) / 9:16(쇼츠). 발행 파이프라인이 <img>/캡처로 쓴다
+    // 온톨로지 경로 카드 — 16:9(기본) / 9:16(쇼츠) / 1:1(인스타·스레드, 2026-09-04 요청 8번).
+    // 발행 파이프라인이 <img>/캡처로 쓴다.
     const market = url.searchParams.get("market")?.toUpperCase() === "US" ? "US" : "KR";
-    const ratio = url.searchParams.get("ratio") === "9:16" ? "9:16" : "16:9";
+    const ratioParam = url.searchParams.get("ratio");
+    const ratio = ratioParam === "9:16" ? "9:16" : ratioParam === "1:1" ? "1:1" : "16:9";
     const { data } = await cached(env, `brief:card:v2:${market}:${ratio}`, 300, () => briefCardSvg(env, market, ratio));
     return new Response(data, {
       headers: {

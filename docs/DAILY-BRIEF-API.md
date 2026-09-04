@@ -1,7 +1,7 @@
-# Stockontology 데일리 브리프 연동 스펙 v2 (유튜브 자동발행용)
+# Stockontology 데일리 브리프 연동 스펙 v3 (유튜브 자동발행용)
 
 인증 불필요·공개 API. 서버 캐시 5분. **필드는 추가만 되고 삭제·개명되지 않음** (`version` 관리).
-2026-08-19 파이프라인 요청서 반영판.
+2026-09-04 파이프라인 요청서(8항목) 반영판 — v2 대비 추가분은 §7~§10.
 
 ## 1) 요약 JSON
 
@@ -30,7 +30,18 @@ GET https://stockontology.cc/api/daily-brief?market=KR&date=2026-08-20   # 과�
     "name", "sector", "score", "price", "priceLabel", "changePct",
     "reason": "짧은 한 줄",
     "reasons": ["유가(WTI) +2.09% → 에너지 민감도 +0.85", "..."],   // 종목별 실제 기여 (1-3)
-    "isNew": true, "daysInList": 1            // 신규/연속 등장일 (2-4)
+    "isNew": true, "daysInList": 1,           // 신규/연속 등장일 (2-4)
+    "levels": {                               // §7 절대 가격 지지·저항 (2026-09-04 요청 1번) — null 가능
+      "support": [{ "price": 33500, "touches": 2, "lastTouchDate": "2026-07-14" }],
+      "resistance": [{ "price": 36200, "touches": 3, "lastTouchDate": "2026-08-22" }],
+      "ma": { "ma5": 34800, "ma20": 34100, "ma60": 32900, "ma120": 31500 },
+      "week52": { "high": 39200, "low": 24100 },
+      "atr14": 820,
+      "volume": { "today": 1834200, "avg20": 1502300 },
+      "levelNote": "36,200은 최근 3번 저항받은 자리(최근 8월)입니다"
+    } | null,
+    "horizonDays": 7,                         // §8 이 엔진의 실측 평균 보유일 (요청 7번) — null 가능
+    "horizonNote": "이 엔진의 최근 1년 백테스트 평균 보유 7일(3개월 3일·6개월 4일) — 실측값이며 종목별 예측이 아닙니다"
   }],
   "avoid": [ ...picks 와 동일 구조(isNew 없음)... ],
   "dropped": [{ "code", "name", "reason": "오늘 점수가 상위권에서 밀렸습니다" }],   // (2-4)
@@ -48,13 +59,31 @@ GET https://stockontology.cc/api/daily-brief?market=KR&date=2026-08-20   # 과�
   "engines": [                                // 분석 엔진별 추천 + 근거 (전략실 리그와 동일 점수)
     { "id": "onto",   "nameKo": "온톨로지",   "tagKo": "거시 인과",     "descKo": "...",
       "live": true,                           // 지금 실계좌를 움직이는 엔진인가
+      "derived": false,                       // §9 다른 엔진의 조합인가 (요청 3번) — fusion만 true
       "leaguePnlPct": -4.29,                  // 실시간 리그(모의) 수익률
+      "horizonDays": 7, "horizonNote": "...", // §8 이 엔진의 실측 평균 보유일 — null 가능
       "picks": [{ "code","ticker","name","sector","score","price","priceLabel","changePct",
                   "reasons": ["유가(WTI) +2.14% → 정유화학 민감도 +0.65"] }] },
-    { "id": "quant",  "nameKo": "수급·차트",  "picks": [{ "reasons": ["추세 — 20일선 +17.7% · 20/60선 정배열"] }] },
-    { "id": "ta",     "nameKo": "차트 거장",  "picks": [{ "reasons": ["차트 거장 13종 전략 합의 점수 +0.43 (이평·MACD·일목·터틀 등)"] }] },
-    { "id": "fusion", "nameKo": "융합",       "picks": [{ "reasons": ["온톨로지 +0.53 와 수급 +0.89 가 모두 긍정 — 반반 평균"] }] }
+    { "id": "quant",  "nameKo": "수급·차트",  "derived": false, "picks": [{ "reasons": ["추세 — 20일선 +17.7% · 20/60선 정배열"] }] },
+    { "id": "ta",     "nameKo": "차트 거장",  "derived": false, "picks": [{ "reasons": ["차트 거장 13종 전략 합의 점수 +0.43 (이평·MACD·일목·터틀 등)"] }] },
+    { "id": "fusion", "nameKo": "융합",       "derived": true,  "picks": [{ "reasons": ["온톨로지 +0.53 와 수급 +0.89 가 모두 긍정 — 반반 평균"] }] }
   ],
+  "agreement": [                              // §9 엔진 합의 — API가 직접 계산 (요청 3번)
+    { "code": "096770", "name": "SK케미칼", "sector": "정유화학",
+      "independentCount": 2,                  // derived=false 인 엔진들끼리만 카운트 (이중 카운트 방지)
+      "engines": [
+        { "id": "onto", "nameKo": "온톨로지", "derived": false, "reason": "유가(WTI) +2.14% → 정유화학 민감도 +0.65" },
+        { "id": "quant", "nameKo": "수급·차트", "derived": false, "reason": "추세 — 20일선 +17.7%" },
+        { "id": "fusion", "nameKo": "융합", "derived": true, "reason": "..." }
+      ],
+      "inHeadlineList": true }
+    // 정렬: independentCount desc → 기여(파생 제외) 엔진들의 리그 누적수익률 합 desc → 최고 점수 desc
+    // hits(엔진 수) < 2 인 종목은 목록에서 빠짐(합의가 아니므로)
+  ],
+  "sectors": { "recommend": [...], "avoid": [...], "all": [ /* 상위4 제한 없는 전 섹터 — §11 요청 6번 */ ] },
+  "dataSessionDate": "2026-09-04",            // §10 이 데이터가 실제로 속한 거래일 (요청 4·5번)
+  "targetSession": "2026-09-05",              // 공휴일 인식 다음 거래일 — 이 픽이 "언제 장"을 향한 것인지
+  "sessionClosed": true,                      // basis !== "intraday" 와 동치 — 신선도 판정용 불리언
   "league": { "currency", "strategies": [{ "nameKo", "tagKo", "live", "pnlPct", "equity" }] },
   "dataAsOf": 1787103911000, "generatedAt": 1787103911000
 }
@@ -62,13 +91,17 @@ GET https://stockontology.cc/api/daily-brief?market=KR&date=2026-08-20   # 과�
 
 - `marketCap` 은 현재 시세 소스에 없어 미제공. 초소형주 걱정은 유니버스 자체가 코스피200·KQ150·S&P 주요 종목이라 완화됨.
 - `titleSuggestion` 은 참고용 — 재작성 자유.
+- 위 `sectors`, `dataSessionDate`, `targetSession`, `sessionClosed`, `agreement` 는 `briefs[]` 각 시장 블록 최상위 필드다(engines/league와 같은 레벨).
 
 ## 2) 이미지
 
 ```
 GET https://stockontology.cc/api/brief-card.svg?market=KR            # 1280×720 (16:9)
 GET https://stockontology.cc/api/brief-card.svg?market=KR&ratio=9:16  # 720×1280 (쇼츠)
+GET https://stockontology.cc/api/brief-card.svg?market=KR&ratio=1:1   # 1080×1080 (SNS 정사각) — §12 요청 8번
 ```
+
+- `ratio=1:1` 카드는 상단 국면 헤드라인 + agreement 상위 3종목(합의 엔진 이름 나열)만 담은 짧은 레이아웃 — 정사각 피드용으로 텍스트를 줄였다. 세로형(9:16)은 기존 720×1280 을 그대로 쓰면 된다(스토리·릴스 규격과 동일 비율).
 
 - SVG 안에 Pretendard 웹폰트 `@import` 포함(jsdelivr) — 래스터화 환경이 네트워크만 되면 사이트와 같은 글꼴. 오프라인 래스터화면 시스템 산세리프 폴백.
 - CORS `*`, 캐시 5분.
@@ -91,6 +124,7 @@ GET https://stockontology.cc/api/brief-card.svg?market=KR&ratio=9:16  # 720×128
 | `generatedAt` (ms) | — | 이 응답을 계산한 시각. 항상 지금이므로 검사 불필요 |
 | `dataAsOf` (ms) | 존재 | 이 시장 시세의 마지막 갱신 시각 |
 | `dataAgeMinutes` | < 720 | 시세가 12시간 이내인지. 초과 = 수집 장애 → 건너뛰기 |
+| `sessionClosed` | true 권장 | `basis!=="intraday"`와 동치인 불리언 — `basis` 문자열 비교 대신 이 값 하나로 판정 가능 (v3) |
 
 **basis 는 시장별로 다르게 나오는 게 정상이다.** 한국 저녁(17시 이후 KST)에 부르면 KR="post_close", US="prev_close" — 미국장은 그날 아침 5시(KST)에 끝난 것이 최신이므로 prev_close 가 맞다. 영상에서는 "미국은 오늘 아침 마감 기준"이라고 말하면 된다.
 
@@ -110,10 +144,15 @@ GET https://stockontology.cc/api/brief-card.svg?market=KR&ratio=9:16  # 720×128
 GET /api/scene.svg?market=KR|US&view=overview          # 전체 그래프 (거시→섹터→종목 3층)
 GET /api/scene.svg?market=KR&view=sector:정유화학        # 섹터 하나 강조 + 인과 화살표 + 근거
 GET /api/scene.svg?market=KR&view=stock:010950         # 종목 상세: 합성 점수 분해(0.35/0.45/0.2) + 온톨로지 경로 + 근거  ← 매일 5회용
+GET /api/scene.svg?market=KR&view=chart:010950         # §12 요청 2번 — 일봉 캔들 + MA20/60 + 지지·저항선 + 거래량
+GET /api/scene.svg?market=KR&view=consensus             # §12 요청 3번 — agreement 상위 7종목 × 4엔진 합의 그리드
 GET /api/scene.svg?market=KR&view=league               # 전략실 리그 4엔진 카드
 GET /api/scene.svg?view=backtest                       # 백테스트 성적표 (7전략 × 두 시장, 챔피언 🏆)
 공통 옵션: &animate=1  → 간선 3초 흐름 루프(SMIL) — 브라우저 재생·화면 녹화용. 래스터화 시엔 빼세요.
 ```
+
+- `view=chart:` 는 최근 최대 90거래일 캔들 + MA20(하늘)/MA60(보라) + 지지(초록 점선)·저항(빨강 점선) 절대가 라벨 + 거래량 막대. 지지·저항은 daily-brief 의 `levels`와 같은 계산(agreement.ts/levels.ts 공유) — 화면과 API 숫자가 어긋나지 않는다.
+- `view=consensus` 는 `agreement` 배열 그대로를 격자로 그린 것 — 열은 `ENGINE_ORDER = [onto, quant, ta, fusion]` 고정 순서, 파생 엔진(fusion)은 회색 체크로 독립 엔진과 시각적으로 구분된다.
 
 - **1920×1080 고정, 완성본만 응답** — 대기·ready 플래그 불필요, UI 크롬 없음, 배치 결정론(정렬 데이터 기반).
 - SVG → PNG: `sharp(svg).png()` 또는 `resvg` 한 줄. **브라우저 불필요** (Pretendard 웹폰트만 온라인 필요 — 오프라인이면 시스템 산세리프 폴백).
@@ -142,3 +181,22 @@ GET /api/scene.svg?view=backtest                       # 백테스트 성적표 
 - 국면 전환일에는 summaryKo 가 "국면이 바뀌었습니다 — ...온톨로지가 갈아타는 날입니다" 형태가 된다.
   이 날이 시리즈의 하이라이트 회차다.
 - streakDays·섹터 비교는 발행 이력(45일 보관) 기준 — 발행을 거를수록 어제 비교가 그만큼 멀어진다.
+
+## 7) v3 신규 필드 — 2026-09-04 요청서 8항목 반영 요약
+
+요청서 우선순위(1>3>4>2>5>6>7>8) 순.
+
+| # | 요청 | 필드/엔드포인트 | 위치 |
+|---|---|---|---|
+| 1 | 지지·저항 절대가 | `picks[].levels` (support/resistance/ma/week52/atr14/volume) | §1 picks 블록 |
+| 3 | 엔진 합의 (API가 직접 계산) | `agreement[]`, `engines[].derived` | §1 briefs 블록 |
+| 4 | 다음 거래일(공휴일 인식) | `targetSession`, `dataSessionDate` | §1 briefs 블록 |
+| 2 | 차트 장면 (캔들+이평+지지저항+거래량) | `GET /api/scene.svg?view=chart:<code>` | §5 |
+| 5 | 신선도 판정 보강 | `sessionClosed`(불리언, `basis!=="intraday"`와 동치) | §1 briefs 블록, §3-1 표에 추가 |
+| 6 | 섹터 화면 404 수정 | `sectors.all`(상위4 제한 없는 전 섹터), scene.svg?view=sector: 이 여기서도 검색 | §1, §5 |
+| 7 | 픽 유효 기간 | `picks[].horizonDays`/`horizonNote`, `engines[].horizonDays`/`horizonNote` — 백테스트 실측 평균 보유일(3/6/12개월 중 1년 대표값). 종목별 예측이 아니라 **그 엔진의 과거 평균 보유 기간**이라는 점 주의 | §1 |
+| 8 | SNS 카드 1:1 | `GET /api/brief-card.svg?ratio=1:1` (1080×1080) | §2 |
+
+`agreement`/`sectors.all`/`chart:`/`consensus`는 모두 daily-brief 응답과 계산을 공유한다(`worker/agreement.ts`, `worker/levels.ts`) — 화면·영상·API가 다른 숫자를 말할 위험이 없다.
+
+지지·저항이 없는 종목(상장 1년 미만이거나 유효한 스윙 피벗이 2회 이상 겹치지 않는 경우)은 `levels: null` 이 온다 — **추정으로 채우지 않는다는 원칙**이라 빈 값을 그대로 다뤄야 한다(예: "지지선 정보 없음"으로 대본 분기).

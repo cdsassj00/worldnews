@@ -15,9 +15,16 @@ export interface Series {
   time: number;
   /** 일봉 종가(오래된 → 최신) */
   closes: number[];
+  /** closes 와 같은 인덱스로 정렬된 시가 — 캔들스틱 렌더용(2026-09-04) */
+  opens: number[];
   highs: number[];
   lows: number[];
   volumes: number[];
+  /** closes 와 같은 인덱스로 정렬된 밀리초 epoch — 지지·저항이 "언제" 만들어졌는지 표기용
+   * (2026-09-04 유튜브 파이프라인 요청: levelNote 에 월 표기). highs/lows/volumes 는 각자
+   * 독립적으로 null 을 걸러 만들어져 인덱스가 어긋날 수 있어(기존 동작 유지), 새 용도에는
+   * closes 와 함께 걸러진 이 배열만 쓴다. */
+  timestamps: number[];
 }
 
 interface YahooChart {
@@ -27,7 +34,7 @@ interface YahooChart {
       | {
           meta: Record<string, unknown>;
           timestamp?: number[];
-          indicators: { quote: { close?: (number | null)[]; high?: (number | null)[]; low?: (number | null)[]; volume?: (number | null)[] }[] };
+          indicators: { quote: { open?: (number | null)[]; close?: (number | null)[]; high?: (number | null)[]; low?: (number | null)[]; volume?: (number | null)[] }[] };
         }[]
       | null;
   };
@@ -46,7 +53,19 @@ async function loadSeries(symbol: string, range: string, interval: string): Prom
       if (!r) throw new ApiError(404, "symbol_not_found", { symbol, reason: data.chart.error?.description });
       const meta = r.meta;
       const q = r.indicators?.quote?.[0] ?? {};
-      const closes = (q.close ?? []).filter((v): v is number => typeof v === "number");
+      const rawCloses = q.close ?? [];
+      const rawOpens = q.open ?? [];
+      const ts = r.timestamp ?? [];
+      const closes: number[] = [];
+      const opens: number[] = [];
+      const timestamps: number[] = [];
+      for (let i = 0; i < rawCloses.length; i++) {
+        const v = rawCloses[i];
+        if (typeof v !== "number") continue;
+        closes.push(v);
+        opens.push(typeof rawOpens[i] === "number" ? (rawOpens[i] as number) : v);
+        timestamps.push((ts[i] ?? 0) * 1000);
+      }
       const price = num(meta.regularMarketPrice, closes.at(-1) ?? 0);
       // chartPreviousClose 는 "조회 구간 직전 종가"라서 range 가 길면 전일 종가가 아니다.
       // 직전 일봉 종가 → previousClose → chartPreviousClose 순으로 써야 전일대비가 맞는다.
@@ -64,9 +83,11 @@ async function loadSeries(symbol: string, range: string, interval: string): Prom
         marketState: String(meta.marketState ?? "UNKNOWN"),
         time: num(meta.regularMarketTime) * 1000,
         closes: closes.map((v) => round(v, 4)),
+        opens: opens.map((v) => round(v, 4)),
         highs: (q.high ?? []).filter((v): v is number => typeof v === "number").map((v) => round(v, 4)),
         lows: (q.low ?? []).filter((v): v is number => typeof v === "number").map((v) => round(v, 4)),
         volumes: (q.volume ?? []).map((v) => (typeof v === "number" ? v : 0)),
+        timestamps,
       };
     } catch (err) {
       lastErr = err;

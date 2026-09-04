@@ -64,7 +64,7 @@ export interface OntoVerdict {
   /** 수급 요인 (KR 전용, KIS 연결 시) */
   flow: InvestorFlow | null;
   /** ④ 섹터 결론 */
-  sectors: { recommend: SectorVerdict[]; avoid: SectorVerdict[] };
+  sectors: { recommend: SectorVerdict[]; avoid: SectorVerdict[]; all: SectorVerdict[] };
   /** ⑤ 종목 결론 */
   stocks: { recommend: StockVerdict[]; avoid: StockVerdict[] };
   note: string;
@@ -210,6 +210,10 @@ function sectorVerdicts(macro: MacroSignal[], market: VerdictMarket, krTable: Re
   return {
     recommend: scored.filter((s) => s.score > 0.05).slice(0, 4),
     avoid: scored.filter((s) => s.score < -0.05).slice(-4).reverse(),
+    /** 추천·회피 상위 4개 밖의 섹터도 포함한 전체 — 종목 화면이 업종을 못 찾는 문제 방지
+     * (2026-09-04 유튜브 파이프라인 요청 6번: 오늘의 1등 종목 업종이 추천 리스트엔 없어서
+     * sector: 화면이 404 났다). */
+    all: scored,
   };
 }
 
@@ -262,7 +266,7 @@ async function buildVerdict(env: Env, market: VerdictMarket): Promise<OntoVerdic
 
 /** 5분 캐시 — 전략 캐시와 보조를 맞춘다 */
 export async function getVerdict(env: Env, market: VerdictMarket): Promise<OntoVerdict> {
-  // v2: 종목별 reasons 추가 + 미국 causal 분리 (2026-08-19) — 키를 갈아 옛 모양 캐시를 무효화
-  const { data } = await cached(env, `verdict:v2:${market}`, 300, () => buildVerdict(env, market));
+  // v3: sectors.all 추가(2026-09-04, 섹터 화면 404 방지용) — 키를 갈아 옛 모양 캐시를 무효화
+  const { data } = await cached(env, `verdict:v3:${market}`, 300, () => buildVerdict(env, market));
   return data;
 }

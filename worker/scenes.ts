@@ -17,7 +17,23 @@ import { getVerdict } from "./verdict";
 import { labOverview } from "./quant";
 import { radarFind } from "./radarscan";
 import { backtestResults } from "./backtest";
+import { getManySeries } from "./quotes";
+import { computeLevels } from "./levels";
+import { buildEnginesAndAgreement } from "./agreement";
+import { smaSeries } from "../shared/ta";
 import { ApiError, round } from "./util";
+import krSeed from "../shared/radar-universe.json";
+import usSeed from "../shared/us-universe.json";
+
+const CODE_TO_SYMBOL = new Map<string, string>([
+  ...(krSeed as { code: string; symbol: string }[]).map((t): [string, string] => [t.code, t.symbol]),
+  ...(usSeed as { code: string; symbol: string }[]).map((t): [string, string] => [t.code, t.symbol]),
+]);
+/** 야후 meta.shortName 은 한국 종목도 영문("SamsungElec")으로 온다 — 화면엔 우리 시드의 한글명을 쓴다 */
+const CODE_TO_NAME = new Map<string, string>([
+  ...(krSeed as { code: string; name: string }[]).map((t): [string, string] => [t.code, t.name]),
+  ...(usSeed as { code: string; name: string }[]).map((t): [string, string] => [t.code, t.name]),
+]);
 
 const W = 1920, H = 1080;
 const GOLD = "#d9a441", UP = "#e0524a", DOWN = "#3b82f6", FG = "#e2e8f0", DIM = "#94a3b8", PANEL = "rgba(15,23,42,0.92)";
@@ -118,8 +134,10 @@ async function sceneOverview(env: Env, market: "KR" | "US", animate: boolean): P
 
 async function sceneSector(env: Env, market: "KR" | "US", name: string, animate: boolean): Promise<string> {
   const v = await getVerdict(env, market);
-  const s = [...v.sectors.recommend, ...v.sectors.avoid].find((x) => x.sector === name);
-  if (!s) throw new ApiError(404, "sector_not_found", { sector: name, available: v.sectors.recommend.map((x) => x.sector) });
+  /* 추천·회피 상위 4개 밖이라도(오늘 픽의 업종이면 특히) 그릴 수 있어야 한다
+   * (2026-09-04 유튜브 파이프라인 요청 6번) — 전체 섹터 목록에서 찾는다. */
+  const s = v.sectors.all.find((x) => x.sector === name);
+  if (!s) throw new ApiError(404, "sector_not_found", { sector: name, available: v.sectors.all.map((x) => x.sector) });
   const stocks = v.stocks.recommend.filter((x) => x.sector === name).slice(0, 4);
 
   const nodeW = 430, nodeH = 92;
@@ -210,6 +228,126 @@ async function sceneStock(env: Env, market: "KR" | "US", code: string, animate: 
   );
 }
 
+/* ── chart:코드 — 일봉 + 이동평균 + 지지·저항 + 거래량 (2026-09-04 요청 2번) ────── */
+
+const MA20_COLOR = "#38bdf8", MA60_COLOR = "#a78bfa";
+
+async function sceneChart(env: Env, market: "KR" | "US", code: string, animate: boolean): Promise<string> {
+  const symbol = CODE_TO_SYMBOL.get(code);
+  if (!symbol) throw new ApiError(404, "stock_not_found", { code });
+  const [series] = await getManySeries(env, [symbol], "1y");
+  if (!series) throw new ApiError(404, "chart_data_unavailable", { code });
+  const cur = market === "US" ? "$" : "원";
+  const tz = market === "US" ? "America/New_York" : "Asia/Seoul";
+  const levels = computeLevels(series, series.price, tz);
+
+  const N = Math.min(90, series.closes.length);
+  const opens = series.opens.slice(-N), highs = series.highs.slice(-N), lows = series.lows.slice(-N);
+  const closes = series.closes.slice(-N), volumes = series.volumes.slice(-N);
+  // 이평선은 전체 이력으로 계산한 뒤(짧은 창에서 계산하면 왜곡된다) 표시 구간만 자른다
+  const ma20Full = smaSeries(series.closes, 20).slice(-N);
+  const ma60Full = smaSeries(series.closes, 60).slice(-N);
+
+  const chartX0 = 110, chartX1 = 1680, chartTop = 300, chartBottom = 740;
+  const volTop = 790, volBottom = 950;
+  const priceMax = Math.max(...highs) * 1.02;
+  const priceMin = Math.min(...lows) * 0.98;
+  const yFor = (p: number) => chartBottom - ((p - priceMin) / (priceMax - priceMin)) * (chartBottom - chartTop);
+  const barGap = (chartX1 - chartX0) / N;
+  const bodyW = Math.max(2, Math.min(13, barGap * 0.62));
+  const xFor = (i: number) => chartX0 + i * barGap + barGap / 2;
+  const maxVol = Math.max(1, ...volumes);
+
+  let candles = "";
+  for (let i = 0; i < N; i++) {
+    const x = xFor(i), up = closes[i] >= opens[i];
+    const color = up ? UP : DOWN;
+    candles += `<line x1="${x}" y1="${yFor(highs[i]).toFixed(1)}" x2="${x}" y2="${yFor(lows[i]).toFixed(1)}" stroke="${color}" stroke-width="1.5"/>`;
+    const yO = yFor(opens[i]), yC = yFor(closes[i]);
+    const top = Math.min(yO, yC), h = Math.max(1.5, Math.abs(yO - yC));
+    candles += `<rect x="${(x - bodyW / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${bodyW.toFixed(1)}" height="${h.toFixed(1)}" fill="${color}"/>`;
+    const vh = (volumes[i] / maxVol) * (volBottom - volTop);
+    candles += `<rect x="${(x - bodyW / 2).toFixed(1)}" y="${(volBottom - vh).toFixed(1)}" width="${bodyW.toFixed(1)}" height="${vh.toFixed(1)}" fill="${color}" opacity="0.55"/>`;
+  }
+
+  const maLine = (vals: number[], color: string) => {
+    const pts = vals.map((v, i) => (Number.isNaN(v) ? null : `${xFor(i).toFixed(1)},${yFor(v).toFixed(1)}`)).filter((p): p is string => p !== null);
+    return pts.length > 1 ? `<polyline points="${pts.join(" ")}" fill="none" stroke="${color}" stroke-width="2.5" opacity="0.9"/>` : "";
+  };
+  const mas = maLine(ma20Full, MA20_COLOR) + maLine(ma60Full, MA60_COLOR);
+
+  let srLines = "";
+  const drawLevel = (p: { price: number; touches: number; lastTouchDate: string | null }, color: string) => {
+    if (p.price < priceMin || p.price > priceMax) return;
+    const y = yFor(p.price);
+    srLines += `<line x1="${chartX0}" y1="${y.toFixed(1)}" x2="${chartX1}" y2="${y.toFixed(1)}" stroke="${color}" stroke-width="1.5" stroke-dasharray="10 8" opacity="0.7"/>`;
+    srLines += `<text x="${chartX1 + 14}" y="${(y + 6).toFixed(1)}" fill="${color}" font-size="19" font-weight="800" ${FONT}>${p.price.toLocaleString("ko-KR")} (${p.touches}회)</text>`;
+  };
+  for (const p of levels?.support ?? []) drawLevel(p, UP);
+  for (const p of levels?.resistance ?? []) drawLevel(p, DOWN);
+
+  const legend = `<text x="${chartX0}" y="${chartTop - 18}" fill="${MA20_COLOR}" font-size="19" font-weight="700" ${FONT}>— MA20</text>
+<text x="${chartX0 + 110}" y="${chartTop - 18}" fill="${MA60_COLOR}" font-size="19" font-weight="700" ${FONT}>— MA60</text>
+<text x="${chartX0 + 220}" y="${chartTop - 18}" fill="${UP}" font-size="19" font-weight="700" ${FONT}>┅ 지지</text>
+<text x="${chartX0 + 320}" y="${chartTop - 18}" fill="${DOWN}" font-size="19" font-weight="700" ${FONT}>┅ 저항</text>`;
+
+  const sub = `${kstDate()} · 일봉 ${N}개(약 ${Math.round(N / 21)}개월) · 현재가 ${series.price.toLocaleString("ko-KR")}${cur}` +
+    (levels?.atr14 ? ` · ATR(14) ${levels.atr14.toLocaleString("ko-KR")}${cur}` : "");
+  let note = "";
+  if (levels?.levelNote) note = `<text x="${chartX0}" y="${volBottom + 60}" fill="${GOLD}" font-size="24" font-weight="800" ${FONT}>${esc(levels.levelNote)}</text>`;
+  else note = `<text x="${chartX0}" y="${volBottom + 60}" fill="${DIM}" font-size="22" ${FONT}>두 번 이상 시험된 지지·저항 자리가 아직 확인되지 않았습니다 — 근거 없는 레벨은 표시하지 않습니다.</text>`;
+
+  return shell(header(`${esc(CODE_TO_NAME.get(code) ?? series.name)} — 일봉 차트`, sub, dirColor(series.changePct)) + legend + mas + candles + srLines + note, animate);
+}
+
+/* ── consensus — 종목(세로) × 엔진(가로) 합의 격자 (2026-09-04 요청 3번 부속) ────── */
+
+const ENGINE_ORDER = ["onto", "quant", "ta", "fusion"];
+
+async function sceneConsensus(env: Env, market: "KR" | "US"): Promise<string> {
+  const [v, lab] = await Promise.all([getVerdict(env, market), labOverview(env, market)]);
+  const cur = market === "US" ? "$" : "원";
+  const headlineCodes = new Set(v.stocks.recommend.slice(0, 5).map((s) => s.code));
+  const { agreement } = buildEnginesAndAgreement(market, lab.strategies, headlineCodes, cur);
+  const rows = agreement.slice(0, 7);
+  const engineNames = new Map(lab.strategies.map((s) => [s.id, s.nameKo]));
+
+  const nameColX = 90, nameColW = 460;
+  const engColW = 300, gap = 16;
+  const gridX0 = nameColX + nameColW + 30;
+  const rowH = 96, headerY = 300, firstRowY = 360;
+
+  let g = "";
+  ENGINE_ORDER.forEach((id, c) => {
+    const x = gridX0 + c * (engColW + gap);
+    const isDerived = id === "fusion";
+    g += `<text x="${x + engColW / 2}" y="${headerY}" text-anchor="middle" fill="${isDerived ? DIM : GOLD}" font-size="24" font-weight="900" ${FONT}>${esc(engineNames.get(id) ?? id)}${isDerived ? " (파생)" : ""}</text>`;
+  });
+  g += `<text x="${nameColX}" y="${headerY}" fill="${DIM}" font-size="22" letter-spacing="2" ${FONT}>동시 지목 종목</text>`;
+
+  rows.forEach((r, i) => {
+    const y = firstRowY + i * rowH;
+    g += `<rect x="${nameColX - 20}" y="${y - 54}" width="${gridX0 - nameColX + ENGINE_ORDER.length * (engColW + gap) - 4}" height="${rowH - 14}" rx="12" fill="${i % 2 ? "rgba(15,23,42,0.5)" : "rgba(15,23,42,0.85)"}"/>`;
+    g += `<text x="${nameColX}" y="${y - 8}" fill="${FG}" font-size="27" font-weight="800" ${FONT}>${esc(r.name)}</text>`;
+    g += `<text x="${nameColX}" y="${y + 20}" fill="${DIM}" font-size="18" ${FONT}>${esc(r.sector ?? "미분류")} · 독립 ${r.independentCount}표</text>`;
+    const hitById = new Map(r.engines.map((e) => [e.id, e]));
+    ENGINE_ORDER.forEach((id, c) => {
+      const x = gridX0 + c * (engColW + gap);
+      const hit = hitById.get(id);
+      const cx = x + engColW / 2, cy = y - 20;
+      if (hit) {
+        g += `<circle cx="${cx}" cy="${cy}" r="22" fill="${hit.derived ? "rgba(148,163,184,0.25)" : "rgba(217,164,65,0.25)"}" stroke="${hit.derived ? DIM : GOLD}" stroke-width="2"/>`;
+        g += `<text x="${cx}" y="${cy + 9}" text-anchor="middle" fill="${hit.derived ? DIM : GOLD}" font-size="26" font-weight="900" ${FONT}>✓</text>`;
+      } else {
+        g += `<circle cx="${cx}" cy="${cy}" r="22" fill="none" stroke="rgba(148,163,184,0.2)" stroke-width="1.5"/>`;
+      }
+    });
+  });
+
+  const sub = `${kstDate()} · 근거가 다른 방식이 같은 종목에서 만난 자리 — "파생" 열(융합)은 다른 두 표를 섞은 결과라 독립 표에서 뺀다`;
+  return shell(header(`${market === "US" ? "미국" : "한국"} 엔진 합의 격자`, sub) + g, false);
+}
+
 /* ── league — 전략실 4엔진 성적 ─────────────────────────── */
 
 async function sceneLeague(env: Env, market: "KR" | "US"): Promise<string> {
@@ -269,5 +407,7 @@ export async function sceneSvg(env: Env, market: "KR" | "US", view: string, anim
   if (view === "backtest") return sceneBacktest();
   if (view.startsWith("sector:")) return sceneSector(env, market, view.slice(7), animate);
   if (view.startsWith("stock:")) return sceneStock(env, market, view.slice(6), animate);
-  throw new ApiError(400, "bad_view", { allowed: ["overview", "sector:<이름>", "stock:<코드>", "league", "backtest"] });
+  if (view.startsWith("chart:")) return sceneChart(env, market, view.slice(6), animate);
+  if (view === "consensus") return sceneConsensus(env, market);
+  throw new ApiError(400, "bad_view", { allowed: ["overview", "sector:<이름>", "stock:<코드>", "chart:<코드>", "league", "backtest", "consensus"] });
 }
