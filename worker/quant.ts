@@ -32,16 +32,27 @@ import { round } from "./util";
 interface Seed { code: string; symbol: string; name: string; market: string; sector: string; src?: string }
 
 /**
- * 퀀트 유니버스 — 코스피200 편입 종목(120개).
- * 온톨로지 레이더(454종목)보다 좁힌 이유는 데이터 때문이다. 수급 지표(MFI·매집강도·
- * 거래대금)에는 거래량이 필요한데, 거래량이 오는 경로는 종목당 호출 1회다
- * (온톨로지 레이더가 쓰는 spark 배치는 종가만 준다). 크론 한 번의 서브리퀘스트
- * 예산이 50이라 조각으로 나눠 돈다.
+ * 매매 후보 유니버스 — 코스피200 편입 종목(120개).
+ *
+ * **실계좌·모의 리그가 살 수 있는 종목은 여기(+미국)에서만 나온다.** 분석·표시용
+ * 유니버스와 일부러 분리했다(2026-09-04): 화면에 더 많은 종목을 띄우고 싶다는 요구와
+ * "봇이 사는 종목을 검증 없이 넓히는 것"은 완전히 다른 일이다. 코스닥150·수동 선정
+ * 종목은 점수를 내되 매매 후보에는 넣지 않는다 — 넓히려면 백테스트가 먼저다.
  */
 const UNIVERSE: Seed[] = (seedData as Seed[]).filter((s) => (s.src ?? "").startsWith("k200"));
 
 /** 미국 유니버스 — S&P 주요 104종목 (2026-08-17 사용자 지시 "다 해놓자"로 수급·차트·리그 확장) */
 const UNIVERSE_US: Seed[] = usSeedData as Seed[];
+
+/** 분석·표시 확장분 — 코스닥150 + 수동 선정(230종목). 점수는 내지만 매매 후보는 아니다. */
+const UNIVERSE_EXT: Seed[] = (seedData as Seed[]).filter((s) => !(s.src ?? "").startsWith("k200"));
+
+/** 한국 전체(표시 기준) — 순위표·조합 화면이 다루는 모집단 */
+const UNIVERSE_KR_ALL: Seed[] = seedData as Seed[];
+
+/** 매매 후보 코드 집합 — 리그·실계좌가 이 밖의 종목을 사지 않게 잠그는 열쇠 */
+const TRADABLE = new Set<string>([...UNIVERSE, ...UNIVERSE_US].map((s) => s.code));
+export const isTradableCode = (code: string): boolean => TRADABLE.has(code);
 
 /** 스캔은 한국+미국을 한 바퀴로 돈다 — 점수 함수는 시장과 무관하게 동일하다 */
 const SCAN_UNIVERSE: Seed[] = [...UNIVERSE, ...UNIVERSE_US];
@@ -56,6 +67,17 @@ const turnoverOk = (r: { market?: string; turnover: number }, minKrw: number) =>
 /** 한 크론에서 훑는 종목 수 — 자동매매·레이더와 예산(50)을 나눠 쓴다.
  * 2026-08-19 미국 유니버스 104→155 확장에 맞춰 12→16 (한 바퀴 275종목 ≈ 17크론 ≈ 4.3시간) */
 const CHUNK = 16;
+
+/**
+ * 확장 티어(코스닥150·수동 선정 230종목)를 한 크론에서 추가로 훑는 수.
+ *
+ * 코어(CHUNK)를 줄여 확장에 나눠 주지 않고 **뒤에 덧붙이는** 이유: 코어는 실계좌
+ * 후보의 점수라 갱신이 늦어지면 매매 판단이 낡는다. 확장은 화면·콘텐츠용이라
+ * 늦어도 손해가 없으므로, 예산이 모자라 확장분이 실패하면 그냥 다음 크론에 밀린다
+ * (Promise.allSettled 라 실패해도 코어 결과 저장은 그대로 진행된다).
+ * 230종목 ÷ 4 ≈ 58크론 — 하루 약 1.5바퀴.
+ */
+const CHUNK_EXT = 4;
 
 /* ── 설정 ─────────────────────────────── */
 
@@ -226,9 +248,10 @@ export async function quantScanChunk(env: Env): Promise<{ scanned: number; curso
   const store = await loadRank(env);
   /* 스캔 순서: 한 번도 안 훑은 종목 → 가장 오래된 순. 순환 커서는 유니버스가
    * 커질 때(미국 104종목 추가) 새 종목이 하루 뒤에나 채워지는 문제가 있었다. */
-  const slice: Seed[] = [...SCAN_UNIVERSE]
-    .sort((a, b) => (store.rows[a.code]?.scannedAt ?? 0) - (store.rows[b.code]?.scannedAt ?? 0))
-    .slice(0, CHUNK);
+  const oldestFirst = (pool: Seed[], n: number) =>
+    [...pool].sort((a, b) => (store.rows[a.code]?.scannedAt ?? 0) - (store.rows[b.code]?.scannedAt ?? 0)).slice(0, n);
+  // 코어(매매 후보) 먼저 채우고, 확장 티어는 뒤에 덧붙인다 — 예산이 모자라면 뒤가 밀린다
+  const slice: Seed[] = [...oldestFirst(SCAN_UNIVERSE, CHUNK), ...oldestFirst(UNIVERSE_EXT, CHUNK_EXT)];
 
   // 시장 지수 — 상대강도 계산용. 이 조각에 미국 종목이 있으면 S&P500 도 받는다.
   let marketCloses: number[] = [];
@@ -296,7 +319,12 @@ export interface QuantRankResult {
   rows: (QuantRow & { score: number })[];
 }
 
-export async function quantRank(env: Env, profileId?: string, limit = 20, market: QuantMarket = "KR"): Promise<QuantRankResult> {
+/**
+ * @param tradableOnly 매매 후보(코스피200+미국)로만 좁힌다. 실계좌·리그가 쓰는 호출은
+ *   반드시 true — 화면용 순위(코스닥150·수동 포함)를 그대로 주문에 쓰면 검증하지 않은
+ *   종목을 사게 된다.
+ */
+export async function quantRank(env: Env, profileId?: string, limit = 20, market: QuantMarket = "KR", tradableOnly = false): Promise<QuantRankResult> {
   const c = cfg(env);
   const profile = profileId ? profileById(profileId) : c.profile;
   let store = await loadRank(env);
@@ -311,12 +339,12 @@ export async function quantRank(env: Env, profileId?: string, limit = 20, market
     }
   }
   const rows = Object.values(store.rows)
-    .filter((r) => rowMarket(r) === market && turnoverOk(r, c.minTurnover))
+    .filter((r) => rowMarket(r) === market && turnoverOk(r, c.minTurnover) && (!tradableOnly || TRADABLE.has(r.code)))
     .map((r) => ({ ...r, score: r.scores[profile.id] ?? 0 }))
     .sort((a, b) => b.score - a.score);
   return {
     profile: { id: profile.id, nameKo: profile.nameKo },
-    universe: market === "US" ? UNIVERSE_US.length : UNIVERSE.length,
+    universe: market === "US" ? UNIVERSE_US.length : tradableOnly ? UNIVERSE.length : UNIVERSE_KR_ALL.length,
     scanned: Object.values(store.rows).filter((r) => rowMarket(r) === market).length,
     updatedAt: store.updatedAt,
     rows: rows.slice(0, limit),
@@ -615,7 +643,10 @@ async function runLeague(env: Env, c: QuantConfig, market: QuantMarket): Promise
   const now = Date.now();
   const store = await loadRank(env);
   const byCode: Record<string, QuantRow> = {};
-  for (const r of Object.values(store.rows)) if (rowMarket(r) === market) byCode[r.code] = r;
+  /* 매매 후보 잠금 — 스캔 유니버스는 화면용으로 넓혔지만(코스닥150·수동 230종목 추가,
+   * 2026-09-04) 리그가 사는 종목은 코스피200+미국 그대로다. 리그는 실계좌 엔진을 고르는
+   * 근거라, 리그만 못 사는(혹은 실계좌만 못 사는) 종목이 섞이면 성적 비교가 성립하지 않는다. */
+  for (const r of Object.values(store.rows)) if (rowMarket(r) === market && TRADABLE.has(r.code)) byCode[r.code] = r;
 
   // 온톨로지 점수 — 레이더 DB에서 한 번에.
   // 레이더의 market 값은 "KOSPI"/"KOSDAQ"/"US" 다 — "KR" 로 필터하면 0건이 나온다(실측).
@@ -877,7 +908,8 @@ export async function comboRank(env: Env, wRaw: Partial<ComboWeights>, limit = 2
   rows.sort((a, b) => b.total - a.total);
   return {
     weights: w,
-    universe: market === "US" ? UNIVERSE_US.length : UNIVERSE.length,
+    // 조합 순위는 조회 전용 화면이라 확장 티어(코스닥150·수동)까지 모집단에 넣는다
+    universe: market === "US" ? UNIVERSE_US.length : UNIVERSE_KR_ALL.length,
     scanned: Object.values(store.rows).filter((r) => rowMarket(r) === market).length,
     updatedAt: store.updatedAt,
     rows: rows.slice(0, Math.min(50, Math.max(1, limit))),

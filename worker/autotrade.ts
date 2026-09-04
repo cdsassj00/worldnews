@@ -627,7 +627,10 @@ async function applyEngine(
 
   let rows: { code: string; score: number; taScore?: number }[] = [];
   try {
-    rows = (await quantRank(env, "breakout", 400)).rows.map((r) => ({ code: r.code, score: r.score, taScore: r.taScore }));
+    /* tradableOnly=true — 2026-09-04 스캔 유니버스를 화면용으로 넓히면서(코스닥150·수동
+     * 230종목 추가) 이 조회가 확장 종목까지 끌고 오면 상위 400 절단에 코스피200 종목이
+     * 밀려 수급·차트 점수를 잃고 순위가 흔들린다. 매매 경로는 후보 유니버스로 잠근다. */
+    rows = (await quantRank(env, "breakout", 400, "KR", true)).rows.map((r) => ({ code: r.code, score: r.score, taScore: r.taScore }));
   } catch {
     return { scores, note: `퀀트 점수를 불러오지 못해 온톨로지 점수로 대체했습니다 (목표 조합: ${mixKo}).` };
   }
