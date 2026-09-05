@@ -255,3 +255,43 @@ GET /api/scene.svg?view=backtest                       # 백테스트 성적표 
 - 이 값을 그대로 `/api/ta?symbol=` 에 넣으면 그 종목의 전략 13종 판정·매매 플랜이 나온다
   (배치 목록과 무관한 온디맨드 호출이라 코스닥 소형주도 된다).
 - 맵은 `worker/symbols.ts` 한 곳에서 만들고 brief·scene·agreement 가 공유한다.
+
+## 10) `swing` — 스윙 관점 목록 (2026-09-05 추가)
+
+"매일 종목이 바뀌면 신빙성이 떨어진다"에 답하는 블록. **새 예측 모델이 아니다** — 며칠 보유를
+전제로 한 점수를 새로 만들면 검증한 적 없는 숫자를 파는 것이라 하지 않았다. 대신 이미 있는
+기록으로 **순서만** 매긴다.
+
+```jsonc
+"swing": {
+  "ruleKo": "오늘 추천 중 최근 보관본에 오래 남아 있던 순으로 고른 목록입니다 — ...",
+  "headlineKo": "S-Oil은 6거래일째 같은 이유로 추천에 남아 있습니다 — 오늘 스윙 관점 4종목입니다.",
+  "lookbackSessions": 5,
+  "picks": [{
+    "code": "010950", "symbol": "010950.KS", "name": "S-Oil", "sector": "정유화학",
+    "price": 157300, "priceLabel": "157,300원", "changePct": 1.2,
+    "appearances": 5, "ofSessions": 5,        // 최근 보관본 5회 중 5회 잔류
+    "firstSeenDate": "2026-08-31", "firstSeenPrice": 150800, "changeSincePct": 4.31,
+    "independentCount": 1,                     // 파생(융합) 제외한 엔진 수
+    "engines": [{ "id": "onto", "nameKo": "온톨로지", "derived": false }],
+    "nearestSupport": 151580, "nearestSupportLabel": "5일선", "toSupportPct": -3.6,
+    "nearestResistance": 177100, "nearestResistanceLabel": "52주 최고", "toResistancePct": 12.6,
+    "stillAboveSupport": true,
+    "invalidationKo": "종가가 151,580원(5일선) 아래로 마감하면 이 자리는 깨진 것으로 봅니다",
+    "hookKo": "S-Oil — 6거래일째 추천에 남아 있는 종목, 온톨로지 기준 상위 · 지지 5일선 151,580원(-3.6%) / 저항 52주 최고 177,100원(+12.6%)"
+  }],
+  "note": "최근 보관본 5회와 비교해 잔류 일수·독립 엔진 수 순으로 정렬했습니다. 과거 성과로 거르지 않았습니다."
+}
+```
+
+- **과거 성과로 거르지 않는다.** 백테스트가 미래를 보장하지 않는데 그걸로 오늘 목록을 막으면
+  근거 없는 확신을 근거 있는 척 파는 것과 같다. `changeSincePct`(첫 등장가 대비)는 참고용
+  실측이며 **선정 기준이 아니다** — 마이너스면 마이너스로 나온다.
+- 정렬: 잔류 횟수 → 독립 엔진 수 → 점수. 매일 최대 4종목이 나오며, 조건 미달로 비는 날은 없다.
+- `nearestSupport`/`nearestResistance` 는 **가장 가까운** 자리다(가장 강한 자리가 아니다).
+  후보에 스윙 피벗·이동평균(5/20/60/120일선)·52주 고저를 모두 넣고 그중 먼저 닿는 것을 고르며,
+  어디서 나온 선인지 `...Label` 로 함께 준다. 저항은 잡음을 피하려 현재가 +2%(또는 0.8×ATR)
+  안쪽은 제외한다 — `shared/ta.ts` 의 `tradePlan()` 과 같은 기준.
+- `hookKo`/`headlineKo` 는 영상 첫 줄·게시물 캡션에 그대로 쓰라고 만든 완성 문장이며,
+  전부 실측값으로만 조립한다(보유 기간이나 수익률을 약속하는 표현은 넣지 않는다).
+- 대응 장면: `GET /api/scene.svg?market=KR|US&view=swing` (1920×1080, 상위 4종목 카드).

@@ -24,6 +24,7 @@ import { nextTradingDay } from "./holidays";
 import { getManySeries } from "./quotes";
 import { computeLevels, type Levels } from "./levels";
 import { buildEnginesAndAgreement, holdDaysFor } from "./agreement";
+import { buildSwing, swingCandidateCodes } from "./swing";
 import { ApiError, round } from "./util";
 import { CODE_TO_SYMBOL, symbolFor } from "./symbols";
 
@@ -199,16 +200,31 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
    * 1y 일봉을 픽마다 다시 받는다(레이더 스캔은 점수만 저장하고 원본 시계열을 안 남기므로) —
    * 픽이 5개뿐이라 사이클 예산에 영향 없다. 심볼을 못 찾거나 데이터가 모자라면 조용히 null. */
   const tz = market === "US" ? "America/New_York" : "Asia/Seoul";
+
+  /* 엔진별 추천 + 엔진 합의 — brief 와 scene.svg?view=consensus 가 같은 모듈을 쓴다
+   * (2026-09-04 요청 3번: 따로 계산하면 화면·영상이 다른 숫자를 말할 위험).
+   * 레벨 조회보다 먼저 계산하는 이유는 스윙 후보(합의 종목)의 지지·저항도 같은 호출로
+   * 한 번에 받기 위해서다 — 나중에 계산하면 종목당 시세를 두 번 받게 된다. */
+  const headlineCodes = new Set(rawPicks.map((s) => s.code));
+  const { engines: enginesOut, agreement } = buildEnginesAndAgreement(market, lab?.strategies, headlineCodes, cur);
+
+  const histChain = prevStored ? [prevStored, ...chain.slice(1)] : [];
   const symbolToCode = new Map<string, string>();
-  for (const s of rawPicks) {
-    const sym = CODE_TO_SYMBOL.get(s.code);
-    if (sym) symbolToCode.set(sym, s.code);
+  const levelTargets = [
+    ...rawPicks.map((s) => s.code),
+    ...agreement.filter((a) => a.independentCount >= 2).map((a) => a.code),
+    // 스윙 후보(잔류 조건 통과)도 지지·저항이 필요하다 — 같은 호출로 한 번에 받는다
+    ...swingCandidateCodes({ history: histChain, engines: enginesOut, todayPickCodes: rawPicks.map((s) => s.code) }),
+  ];
+  for (const code of new Set(levelTargets)) {
+    const sym = CODE_TO_SYMBOL.get(code);
+    if (sym) symbolToCode.set(sym, code);
   }
   const levelSeries = await getManySeries(env, [...symbolToCode.keys()], "1y").catch(() => []);
   const levelsByCode = new Map<string, Levels | null>();
   for (const sr of levelSeries) {
     const code = symbolToCode.get(sr.symbol);
-    if (code) levelsByCode.set(code, computeLevels(sr, rawPicks.find((s) => s.code === code)?.price ?? sr.price, tz));
+    if (code) levelsByCode.set(code, computeLevels(sr, rawPicks.find((s) => s.code === code)?.price ?? priceByCode.get(code) ?? sr.price, tz));
   }
   const ontoHorizon = holdDaysFor(market, "onto");
 
@@ -278,10 +294,16 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
       "온톨로지는 국면 추종 전략입니다 — 국면이 유지되는 동안 같은 섹터 클러스터가 이어지는 것은 정상이며(평균 보유 6~13일), 이 방식의 가치는 국면이 꺾이는 날 남보다 먼저 갈아타는 데 있습니다.",
   };
 
-  /* 엔진별 추천 + 엔진 합의 — brief 와 scene.svg?view=consensus 가 같은 모듈을 쓴다
-   * (2026-09-04 요청 3번: 따로 계산하면 화면·영상이 다른 숫자를 말할 위험). */
-  const headlineCodes = new Set(picks.map((p) => p.code));
-  const { engines: enginesOut, agreement } = buildEnginesAndAgreement(market, lab?.strategies, headlineCodes, cur);
+  /* 스윙 관점 — "매일 종목이 바뀌면 신빙성이 떨어진다"에 답하는 목록(2026-09-05).
+   * 새 점수를 만들지 않고 기록으로 거르기만 한다(worker/swing.ts 주석 참고). */
+  const swing = buildSwing({
+    cur,
+    history: histChain,
+    engines: enginesOut,
+    todayPicks: rawPicks.map((s) => ({ code: s.code, name: s.name, sector: s.sector, score: s.score, price: s.price, changePct: s.changePct })),
+    levelsByCode,
+    priceByCode,
+  });
 
   /* 이 계산에 쓴 시세의 실제 거래일 — 레이더 최신 갱신 시각의 로컬 날짜. 갱신 기록이 없으면
    * (레이더 조회 실패) 오늘 날짜로 보수적으로 대체한다. */
@@ -311,6 +333,9 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
       all: verdict.sectors.all.map((s) => ({ sector: s.sector, score: s.score, reasons: s.reasons })),
     },
     picks,
+    /** 스윙 관점 — 며칠째 같은 이유로 남아 있는 종목만 거른 목록.
+     * "며칠 오를 종목"이 아니다(그런 예측은 검증한 적이 없다) — ruleKo 를 그대로 읽어 소개할 것. */
+    swing,
     avoid: verdict.stocks.avoid.slice(0, 3).map((s) => ({
       code: s.code,
       ticker: market === "US" ? s.code : null,

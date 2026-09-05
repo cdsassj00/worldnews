@@ -9,6 +9,7 @@
  *   GET /api/scene.svg?market=KR&view=consensus                엔진 합의 격자(종목×엔진)
  *   GET /api/scene.svg?market=KR&view=flow                     수급(자금흐름·매집·거래대금) 순위
  *   GET /api/scene.svg?market=KR&view=combo                    온톨로지+수급+차트 조합 순위
+ *   GET /api/scene.svg?market=KR&view=swing                    스윙 관점 — 며칠째 남아 있는 종목
  *   GET /api/scene.svg?market=KR&view=league                  전략실 리그 4엔진 성적
  *   GET /api/scene.svg?view=backtest                          백테스트 성적표 (양 시장)
  *   공통: &animate=1 → 간선에 3초 흐름 루프(SMIL — 크롬/파폭 재생, 화면 녹화용)
@@ -25,6 +26,7 @@ import { backtestResults } from "./backtest";
 import { getManySeries } from "./quotes";
 import { computeLevels } from "./levels";
 import { buildEnginesAndAgreement } from "./agreement";
+import { dailyBrief } from "./brief";
 import { taCached } from "./ta";
 import { smaSeries, VERDICT_KO } from "../shared/ta";
 import { ApiError, round } from "./util";
@@ -470,6 +472,40 @@ async function sceneConsensus(env: Env, market: "KR" | "US"): Promise<string> {
   return shell(header(`${market === "US" ? "미국" : "한국"} 엔진 합의 격자`, sub) + g, false);
 }
 
+/* ── swing — 며칠째 남아 있는 종목 (스윙 관점, 2026-09-05) ────── */
+
+async function sceneSwing(env: Env, market: "KR" | "US"): Promise<string> {
+  const brief = await dailyBrief(env, market) as {
+    briefs: { swing?: { headlineKo: string; ruleKo: string; picks: {
+      name: string; sector: string | null; priceLabel: string; appearances: number;
+      independentCount: number; engines: { nameKo: string; derived: boolean }[];
+      nearestSupport: number | null; nearestSupportLabel: string | null; toSupportPct: number | null;
+      nearestResistance: number | null; nearestResistanceLabel: string | null; toResistancePct: number | null;
+    }[] } }[];
+  };
+  const sw = brief.briefs[0]?.swing;
+  if (!sw || !sw.picks.length) throw new ApiError(404, "swing_unavailable", { market });
+  const cur = market === "US" ? "$" : "원";
+
+  const x0 = 80, cardW = W - 160, cardH = 150, gap = 20, y0 = 300;
+  let g = "";
+  sw.picks.slice(0, 4).forEach((p, i) => {
+    const y = y0 + i * (cardH + gap);
+    const strong = p.independentCount >= 2;
+    g += `<rect x="${x0}" y="${y}" width="${cardW}" height="${cardH}" rx="16" fill="${PANEL}" stroke="${strong ? GOLD : "rgba(148,163,184,0.35)"}" stroke-width="${strong ? 2.5 : 1.5}"/>`;
+    g += `<text x="${x0 + 30}" y="${y + 52}" fill="${FG}" font-size="34" font-weight="900" ${FONT}>${esc(p.name)} <tspan fill="${DIM}" font-size="20">${esc(p.sector ?? "미분류")} · ${esc(p.priceLabel)}</tspan></text>`;
+    g += `<text x="${x0 + 30}" y="${y + 92}" fill="${GOLD}" font-size="24" font-weight="800" ${FONT}>${p.appearances + 1}거래일째 추천 유지</text>`;
+    g += `<text x="${x0 + 330}" y="${y + 92}" fill="${strong ? GOLD : DIM}" font-size="22" ${FONT}>${esc(p.engines.filter((e) => !e.derived).map((e) => e.nameKo).join(" · "))}${strong ? ` (독립 ${p.independentCount}개 일치)` : ""}</text>`;
+    const sup = p.nearestSupport ? `지지 ${p.nearestSupportLabel} ${p.nearestSupport.toLocaleString("ko-KR")}${cur} (${p.toSupportPct}%)` : "지지 자리 미확인";
+    const res = p.nearestResistance ? `저항 ${p.nearestResistanceLabel} ${p.nearestResistance.toLocaleString("ko-KR")}${cur} (+${p.toResistancePct}%)` : "위쪽 저항 미확인";
+    g += `<text x="${x0 + 30}" y="${y + 128}" fill="${UP}" font-size="21" font-weight="700" ${FONT}>${esc(sup)}</text>`;
+    g += `<text x="${x0 + 620}" y="${y + 128}" fill="${DOWN}" font-size="21" font-weight="700" ${FONT}>${esc(res)}</text>`;
+  });
+  g += `<text x="${x0}" y="${y0 + 4 * (cardH + gap) + 8}" fill="${DIM}" font-size="20" ${FONT}>${esc(trunc(sw.ruleKo, 96))}</text>`;
+
+  return shell(header(`${market === "US" ? "미국" : "한국"} 스윙 관점 — 며칠째 남아 있는 종목`, `${kstDate()} · ${trunc(sw.headlineKo, 60)}`) + g, false);
+}
+
 /* ── league — 전략실 4엔진 성적 ─────────────────────────── */
 
 async function sceneLeague(env: Env, market: "KR" | "US"): Promise<string> {
@@ -534,7 +570,8 @@ export async function sceneSvg(env: Env, market: "KR" | "US", view: string, anim
   if (view === "consensus") return sceneConsensus(env, market);
   if (view === "flow") return sceneFlow(env, market);
   if (view === "combo") return sceneCombo(env, market);
+  if (view === "swing") return sceneSwing(env, market);
   throw new ApiError(400, "bad_view", {
-    allowed: ["overview", "sector:<이름>", "stock:<코드>", "chart:<코드>", "strategies:<코드>", "league", "backtest", "consensus", "flow", "combo"],
+    allowed: ["overview", "sector:<이름>", "stock:<코드>", "chart:<코드>", "strategies:<코드>", "league", "backtest", "consensus", "flow", "combo", "swing"],
   });
 }
