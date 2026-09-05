@@ -27,6 +27,7 @@ GET https://stockontology.cc/api/daily-brief?market=KR&date=2026-08-20   # 과�
   "sectors": { "recommend": [{ "sector", "score", "reasons": [] }], "avoid": [...] },
   "picks": [{
     "code": "096770", "ticker": null,        // 미국은 ticker=거래소 티커, 한국은 null (2-6)
+    "symbol": "096770.KS",                   // 야후 심볼 — 코드로 추측하지 말 것 (2026-09-05 추가, §9)
     "name", "sector", "score", "price", "priceLabel", "changePct",
     "reason": "짧은 한 줄",
     "reasons": ["유가(WTI) +2.09% → 에너지 민감도 +0.85", "..."],   // 종목별 실제 기여 (1-3)
@@ -236,3 +237,21 @@ GET /api/scene.svg?view=backtest                       # 백테스트 성적표 
 - 전략 13종에는 `author` 필드가 있다(예: "J. Welles Wilder, 1978") — 영상에서 근거 출처를 밝힐 때 그대로 쓰면 된다.
 - `plan` 은 전부 **절대 가격**이다. `bias`(long/wait/avoid)·`grade`(good/fair/poor)·`invalidation`(계획이 깨지는 조건 문장)까지 완성 문장으로 온다.
 - **엣지 캐시 주의**: scene/카드 SVG 는 `cache-control: public, max-age=300` 이라 Cloudflare 엣지가 URL 단위로 캐시한다. 같은 URL 을 5분 안에 다시 부르면 갱신 전 이미지가 올 수 있으니, 반드시 최신본이 필요하면 무의미한 쿼리 하나(`&cb=<타임스탬프>`)를 붙여 우회한다.
+
+## 9) `symbol` 필드 — 코드→심볼 추측 제거 (2026-09-05 추가)
+
+한국 종목은 거래소에 따라 접미사가 갈린다(코스피 `.KS` / 코스닥 `.KQ`). 코드만 보고 규칙으로
+만들면 코스닥 종목에서 조용히 틀린 심볼이 되므로(예: 네오셈 `253590` → `253590.KQ`),
+**코드가 등장하는 모든 블록에 야후 심볼을 값으로 실어 보낸다.**
+
+| 블록 | 필드 |
+|---|---|
+| `picks[]` | `symbol` (미국은 티커와 같은 값) |
+| `avoid[]` | `symbol` |
+| `agreement[]` | `symbol` |
+| `engines[].picks[]` | `symbol` |
+
+- 시드에 없는 코드면 `null` 이다 — 규칙으로 만들어 채우지 않는다(틀린 심볼은 다른 종목의 시세를 가져온다).
+- 이 값을 그대로 `/api/ta?symbol=` 에 넣으면 그 종목의 전략 13종 판정·매매 플랜이 나온다
+  (배치 목록과 무관한 온디맨드 호출이라 코스닥 소형주도 된다).
+- 맵은 `worker/symbols.ts` 한 곳에서 만들고 brief·scene·agreement 가 공유한다.

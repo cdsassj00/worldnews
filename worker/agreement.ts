@@ -6,6 +6,7 @@
  * API 의 engines[]/agreement 와 scene.svg?view=consensus 가 이 모듈 하나를 함께 쓴다.
  */
 import { backtestResults } from "./backtest";
+import { symbolFor } from "./symbols";
 import { round } from "../shared/scoring";
 
 type BriefMarket = "KR" | "US";
@@ -25,11 +26,11 @@ export interface EngineOut {
   leaguePnlPct: number;
   horizonDays: number | null;
   horizonNote: string | null;
-  picks: { code: string; ticker: string | null; name: string; sector: string | null; score: number; price: number; priceLabel: string; changePct: number; reasons: string[] }[];
+  picks: { code: string; ticker: string | null; symbol: string | null; name: string; sector: string | null; score: number; price: number; priceLabel: string; changePct: number; reasons: string[] }[];
 }
 
 export interface AgreementRow {
-  code: string; name: string; sector: string | null;
+  code: string; symbol: string | null; name: string; sector: string | null;
   independentCount: number;
   engines: { id: string; nameKo: string; derived: boolean; reason: string }[];
   inHeadlineList: boolean;
@@ -70,6 +71,7 @@ export function buildEnginesAndAgreement(
       picks: st.picks.map((p) => ({
         code: p.code,
         ticker: market === "US" ? p.code : null,
+        symbol: symbolFor(p.code),
         name: p.name,
         sector: p.sector ?? null,
         score: p.score,
@@ -97,7 +99,7 @@ export function buildEnginesAndAgreement(
       const pnlSum = round(x.hits.filter((h) => !h.derived).reduce((s, h) => s + h.leaguePnlPct, 0), 2);
       const bestScore = Math.max(...x.hits.map((h) => h.score));
       return {
-        code: x.code, name: x.name, sector: x.sector,
+        code: x.code, symbol: symbolFor(x.code), name: x.name, sector: x.sector,
         independentCount,
         engines: x.hits.map((h) => ({ id: h.id, nameKo: h.nameKo, derived: h.derived, reason: h.reason })),
         inHeadlineList: headlineCodes.has(x.code),

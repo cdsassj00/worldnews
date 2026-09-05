@@ -25,14 +25,7 @@ import { getManySeries } from "./quotes";
 import { computeLevels, type Levels } from "./levels";
 import { buildEnginesAndAgreement, holdDaysFor } from "./agreement";
 import { ApiError, round } from "./util";
-import krSeed from "../shared/radar-universe.json";
-import usSeed from "../shared/us-universe.json";
-
-/** 종목코드 → 야후 심볼. 한국은 코드와 심볼이 다르다(예: 005930 → 005930.KS), 미국은 같다. */
-const CODE_TO_SYMBOL = new Map<string, string>([
-  ...(krSeed as { code: string; symbol: string }[]).map((t): [string, string] => [t.code, t.symbol]),
-  ...(usSeed as { code: string; symbol: string }[]).map((t): [string, string] => [t.code, t.symbol]),
-]);
+import { CODE_TO_SYMBOL, symbolFor } from "./symbols";
 
 type BriefMarket = "KR" | "US";
 
@@ -223,6 +216,9 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
     code: s.code,
     /** 미국은 거래소 티커 그대로, 한국은 6자리 종목코드라 별도 티커 없음 */
     ticker: market === "US" ? s.code : null,
+    /** 야후 심볼 — 한국은 거래소에 따라 .KS/.KQ 가 갈려 코드만으로는 추측할 수 없다
+     * (예: 네오셈 253590 → 253590.KQ). 소비자가 규칙으로 만들지 않게 값으로 준다. */
+    symbol: symbolFor(s.code),
     name: s.name,
     sector: s.sector,
     score: s.score,
@@ -318,6 +314,7 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
     avoid: verdict.stocks.avoid.slice(0, 3).map((s) => ({
       code: s.code,
       ticker: market === "US" ? s.code : null,
+      symbol: symbolFor(s.code),
       name: s.name,
       sector: s.sector,
       score: s.score,

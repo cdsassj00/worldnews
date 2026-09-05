@@ -28,18 +28,7 @@ import { buildEnginesAndAgreement } from "./agreement";
 import { taCached } from "./ta";
 import { smaSeries, VERDICT_KO } from "../shared/ta";
 import { ApiError, round } from "./util";
-import krSeed from "../shared/radar-universe.json";
-import usSeed from "../shared/us-universe.json";
-
-const CODE_TO_SYMBOL = new Map<string, string>([
-  ...(krSeed as { code: string; symbol: string }[]).map((t): [string, string] => [t.code, t.symbol]),
-  ...(usSeed as { code: string; symbol: string }[]).map((t): [string, string] => [t.code, t.symbol]),
-]);
-/** 야후 meta.shortName 은 한국 종목도 영문("SamsungElec")으로 온다 — 화면엔 우리 시드의 한글명을 쓴다 */
-const CODE_TO_NAME = new Map<string, string>([
-  ...(krSeed as { code: string; name: string }[]).map((t): [string, string] => [t.code, t.name]),
-  ...(usSeed as { code: string; name: string }[]).map((t): [string, string] => [t.code, t.name]),
-]);
+import { CODE_TO_SYMBOL, CODE_TO_NAME } from "./symbols";
 
 const W = 1920, H = 1080;
 const GOLD = "#d9a441", UP = "#e0524a", DOWN = "#3b82f6", FG = "#e2e8f0", DIM = "#94a3b8", PANEL = "rgba(15,23,42,0.92)";
