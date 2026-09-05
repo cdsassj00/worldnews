@@ -332,3 +332,89 @@ GET /api/scene.svg?view=backtest                       # 백테스트 성적표 
 `swing.picks[].whyKo` 는 그 종목이 뽑힌 근거 문장 그대로다(예: "유가(WTI) +9.38% → 정유화학
 민감도 +0.65"). 가공하지 않고 인용하면 "왜 이 종목인지"가 자동으로 설명된다 — 시스템 자랑과
 종목 소개가 같은 문장에서 이어지는 지점이라, 콘텐츠에서 가장 중요한 필드다.
+
+## 12) 수시 발행용 API — feed · bundle (2026-09-05 요청 반영)
+
+하루 한 편(daily-brief)으로는 505종목 분석량을 다 내보내지 못한다는 요청에 대한 답.
+**"왜 하필 지금 이 종목인가"** 를 이벤트로 만들어 준다.
+
+### 12-1) `/api/feed` — 발행 후보 이벤트 (요청 1번)
+
+```
+GET /api/feed?market=KR|US&since=<ms 또는 ISO>&limit=20&excludeCodes=285130,005830
+```
+
+```jsonc
+{
+  "market": "KR", "asOf": 1788591123348,
+  "sessionState": "closed",              // pre | open | closed
+  "sessionKo": "장 마감 — 오늘 종가 기준입니다",
+  "staleAfterMinutes": 720,              // 장중이면 15
+  "logRetentionDays": 3,
+  "events": [{
+    "id": "evt_20260905_285130_new_agreement",   // 하루 한 종목 한 종류당 하나 — 중복 발행 방지
+    "at": 1788570000000,
+    "code": "285130", "symbol": "285130.KS", "name": "SK케미칼", "sector": "정유화학",
+    "kind": "new_agreement",
+    "headlineKo": "근거가 다른 분석 3개가 같은 종목을 지목했습니다",
+    "whyNowKo": "직전까지는 온톨로지만 들고 있었는데, 수급·차트가 새로 들어왔습니다. 거래대금이 평소의 2.79배로 늘어난 시점입니다.",
+    "strength": 0.9,     // 신호 자체의 세기
+    "priority": 0.855,   // strength × 종류 가중치 — 정렬은 이 값 기준
+    "price": 55200, "changePct": 5.75
+  }]
+}
+```
+
+`kind`: `new_agreement` · `agreement_lost` · `breakout` · `volume_surge` · `support_test` ·
+`plan_upgrade` · `plan_downgrade` · `regime_shift`(code=null, 시장 단위) · `streak`
+
+**동작 원리 — 이것을 알고 쓰는 것이 중요하다.**
+- 이벤트는 **직전 스냅샷과의 차이**다. 값이 크다고 나오는 게 아니라 **바뀌었을 때** 나온다
+  (거래대금 3배가 어제도 3배였으면 이벤트가 아니다).
+- 새로 생긴 이벤트는 **KV 로그에 append** 된다(3일 보관, 최근 200건). 그래서 `since` 로
+  폴링하면 그 사이에 생긴 것을 놓치지 않는다. 호출할 때마다 델타를 새로 계산해 돌려주는
+  방식이었다면 두 번째 호출이 빈 목록이 됐을 것이다.
+- 갱신은 3분에 한 번(공개 엔드포인트 보호) + 15분 크론에서도 돈다.
+- **처음 호출이나 스냅샷이 없을 때는 이벤트가 0이다** — 비교 대상이 없는데 "새로 겹쳤다"고
+  말하면 거짓이기 때문이다. 다음 갱신부터 실제 변화가 나온다.
+- `priority` 로 정렬한다: 거래대금 급증은 매일 여러 건 나오지만 "서로 다른 분석이 처음 겹쳤다"는
+  드물다 — 세기만으로 줄 세우면 흔한 이벤트가 목록을 도배한다.
+
+### 12-2) `/api/stock/<코드|심볼>/bundle` — 종목 한 편 묶음 (요청 2·3번)
+
+```
+GET /api/stock/285130/bundle          # 6자리 코드
+GET /api/stock/285130.KS/bundle       # 야후 심볼
+GET /api/stock/RIVN/bundle            # 미국 티커 — 유니버스 밖도 온디맨드로 동작
+GET /api/stock/bundle?symbol=285130   # 쿼리형도 같음
+```
+
+한 번 호출로 `why`(거시·수급·차트 세 갈래 한 문장씩) · `ontology` · `flow` · `levels` ·
+`plan`(진입·손절·목표·손익비) · `strategies`(13종 + author) · `consensus` · `trend` ·
+`indicators` · `chart`(close/ma20/ma60/volume) · `views`(scene.svg 주소) · `shortsBrief` 를 준다.
+
+- 유니버스 밖 종목은 `ontology`·`flow`·`views` 가 `null` 이다(레이더·수급 스캔 대상이 아니므로).
+  **없는 축을 "특이사항 없음"으로 채우지 않는다** — 하지도 않은 분석을 한 것처럼 보이기 때문이다.
+- 캐시 3분.
+
+### 12-3) `shortsBrief` — 30~45초 세로 영상 한 편 (요청 3번)
+
+```jsonc
+"shortsBrief": {
+  "hookKo": "유가가 9.38% 올랐습니다",
+  "bodyKo": ["SK케미칼은 정유화학 업종입니다.", "거래대금이 평소의 2.8배로 늘었습니다.",
+             "차트 전략 13종 중 매수가 8개, 매도가 4개입니다.", "지금 55,200원, 위쪽 저항은 58,800원입니다."],
+  "closeKo": "다만 아직 대기 — 조건 미충족 구간입니다 — 종가가 52,501원 아래면 이 계획은 무효입니다.",
+  "numbers": ["온톨로지 +0.28", "거래대금 2.79배", "+0.6%", "목표 58,800원"]
+}
+```
+
+### 12-4) `/api/session` — 장 상태만 가볍게 (요청 4번)
+
+```
+GET /api/session?market=KR   → { sessionState, sessionKo, staleAfterMinutes, asOf }
+```
+
+발행 직전에 이것만 불러 "마감 기준"이라고 말해도 되는지 확인하면 된다. `sessionState`가
+`open`이면 나레이션을 "장중 기준"으로 바꾸고, `staleAfterMinutes`(장중 15분)를 넘긴 값으로는
+발행하지 않는 것을 권장한다.

@@ -38,6 +38,8 @@ import { briefIndex, briefPage, rssXml, sitemapXml } from "./rss";
 import { getVerdict } from "./verdict";
 import { briefCardSvg, dailyBrief } from "./brief";
 import { sceneSvg } from "./scenes";
+import { getFeed, refreshFeed, sessionStateOf } from "./feed";
+import { stockBundle } from "./bundle";
 import { liveSensitivity, promoteSensitivity, rollbackSensitivity } from "./senslive";
 
 export { RadarDB } from "./radar";
@@ -645,6 +647,32 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     return json(data);
   }
 
+  if (path === "/api/feed") {
+    /* 발행 후보 피드 — "지금 무슨 일이 일어났는가"를 종목 단위 이벤트로.
+     * 이벤트는 KV 로그에 쌓이므로 since 로 폴링하면 놓치지 않는다(요청 1번). */
+    const market = url.searchParams.get("market")?.toUpperCase() === "US" ? "US" : "KR";
+    const sinceRaw = url.searchParams.get("since");
+    const since = sinceRaw ? (Number.isFinite(Number(sinceRaw)) ? Number(sinceRaw) : Date.parse(sinceRaw)) : undefined;
+    const excludeCodes = new Set((url.searchParams.get("excludeCodes") ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+    const limit = Math.floor(num(url.searchParams.get("limit"), 20));
+    return json(await getFeed(env, market, { since: Number.isFinite(since as number) ? (since as number) : undefined, limit, excludeCodes }));
+  }
+
+  if (path === "/api/stock/bundle" || /^\/api\/stock\/[^/]+\/bundle$/.test(path)) {
+    /* 종목 한 편 묶음 — 온디맨드 발행용(요청 2·3번). 경로형·쿼리형 둘 다 받는다. */
+    const fromPath = path.startsWith("/api/stock/") ? decodeURIComponent(path.split("/")[3] ?? "") : "";
+    const sym = (url.searchParams.get("symbol") ?? url.searchParams.get("code") ?? fromPath).trim();
+    if (!sym) throw new ApiError(400, "symbol_required");
+    const { data } = await cached(env, `bundle:v1:${sym.toUpperCase()}`, 180, () => stockBundle(env, sym));
+    return json(data);
+  }
+
+  if (path === "/api/session") {
+    // 장 상태만 가볍게 — 발행 직전 "마감 기준"이라고 말해도 되는지 확인용(요청 4번)
+    const market = url.searchParams.get("market")?.toUpperCase() === "US" ? "US" : "KR";
+    return json({ market, asOf: Date.now(), ...sessionStateOf(market) });
+  }
+
   if (path === "/api/scene.svg") {
     // 영상 파이프라인용 장면 렌더 — 공개 데이터만(결론·리그·백테스트), 5분 캐시
     const market = url.searchParams.get("market")?.toUpperCase() === "US" ? "US" : "KR";
@@ -873,6 +901,9 @@ export default {
         // 먼저 쓰고, 모의매매는 남은 예산으로 돈다(실패해도 손해가 없다).
         .then(() => quantScanChunk(env))
         .then(() => (skipTrade ? undefined : labCycle(env)))
+        /* 발행 피드 갱신 — 이벤트는 "직전 상태와의 차이"라, 아무도 API를 안 부르면
+         * 변화가 지나가 버린다. 크론이 스냅샷을 갱신해 로그에 남긴다(실패해도 손해 없음). */
+        .then(() => refreshFeed(env, usCron || usFallback ? "US" : "KR").catch(() => undefined))
         .catch(() => undefined),
     );
   },
