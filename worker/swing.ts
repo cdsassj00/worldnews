@@ -75,6 +75,8 @@ export interface SwingPick {
   stillAboveSupport: boolean | null;
   /** 이 자리가 깨졌다고 볼 조건 — 지지 가격이 있을 때만 */
   invalidationKo: string | null;
+  /** 왜 이 종목인가 — 온톨로지/수급/차트가 남긴 근거 문장 그대로(가공하지 않는다) */
+  whyKo: string | null;
   /** 영상·게시물 첫 줄로 쓸 한 문장 — 전부 실측값으로만 만든다 */
   hookKo: string;
 }
@@ -152,7 +154,7 @@ export function buildSwing(params: {
   history: SwingHistEntry[];
   engines: EngineOut[];
   /** 오늘 헤드라인 픽(온톨로지 상위) */
-  todayPicks: { code: string; name: string; sector: string | null; score: number; price: number; changePct: number }[];
+  todayPicks: { code: string; name: string; sector: string | null; score: number; price: number; changePct: number; reason?: string | null }[];
   levelsByCode: Map<string, Levels | null>;
   priceByCode: Map<string, number>;
   maxPicks?: number;
@@ -164,13 +166,16 @@ export function buildSwing(params: {
   const headline = new Set(todayPicks.map((p) => p.code));
 
   /** 후보 정보 — 헤드라인 픽에 없으면 엔진 픽에서 이름·섹터·가격을 가져온다 */
-  const meta = new Map<string, { name: string; sector: string | null; score: number; price: number; changePct: number }>();
+  const meta = new Map<string, { name: string; sector: string | null; score: number; price: number; changePct: number; reason: string | null }>();
   for (const e of engines) {
     for (const p of e.picks) {
-      if (!meta.has(p.code)) meta.set(p.code, { name: p.name, sector: p.sector, score: p.score, price: p.price, changePct: p.changePct });
+      if (!meta.has(p.code)) meta.set(p.code, { name: p.name, sector: p.sector, score: p.score, price: p.price, changePct: p.changePct, reason: p.reasons[0] ?? null });
     }
   }
-  for (const p of todayPicks) meta.set(p.code, { name: p.name, sector: p.sector, score: p.score, price: p.price, changePct: p.changePct });
+  for (const p of todayPicks) {
+    const prev = meta.get(p.code);
+    meta.set(p.code, { name: p.name, sector: p.sector, score: p.score, price: p.price, changePct: p.changePct, reason: p.reason ?? prev?.reason ?? null });
+  }
 
   const codes = swingCandidateCodes({ history, engines, todayPickCodes: todayPicks.map((p) => p.code), max: 12 });
   const rows: (SwingPick & { _score: number })[] = [];
@@ -246,6 +251,7 @@ export function buildSwing(params: {
       invalidationKo: nearestSupport === null
         ? null
         : `종가가 ${nearestSupport.toLocaleString("ko-KR")}${cur}(${supportLabel}) 아래로 마감하면 이 자리는 깨진 것으로 봅니다`,
+      whyKo: m.reason,
       hookKo: `${m.name} — ${daysKo}, ${engineKo}${levelKo}`,
       _score: m.score,
     });

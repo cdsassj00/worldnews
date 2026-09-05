@@ -25,6 +25,7 @@ import { getManySeries } from "./quotes";
 import { computeLevels, type Levels } from "./levels";
 import { buildEnginesAndAgreement, holdDaysFor } from "./agreement";
 import { buildSwing, swingCandidateCodes } from "./swing";
+import { buildShowcase } from "./showcase";
 import { ApiError, round } from "./util";
 import { CODE_TO_SYMBOL, symbolFor } from "./symbols";
 
@@ -300,7 +301,7 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
     cur,
     history: histChain,
     engines: enginesOut,
-    todayPicks: rawPicks.map((s) => ({ code: s.code, name: s.name, sector: s.sector, score: s.score, price: s.price, changePct: s.changePct })),
+    todayPicks: rawPicks.map((s) => ({ code: s.code, name: s.name, sector: s.sector, score: s.score, price: s.price, changePct: s.changePct, reason: s.reasons?.[0] ?? s.reason ?? null })),
     levelsByCode,
     priceByCode,
   });
@@ -308,6 +309,7 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
   /* 이 계산에 쓴 시세의 실제 거래일 — 레이더 최신 갱신 시각의 로컬 날짜. 갱신 기록이 없으면
    * (레이더 조회 실패) 오늘 날짜로 보수적으로 대체한다. */
   const dataSessionDate = dataAsOf ? localDate(dataAsOf, tz) : today;
+  const showcaseBlock = buildShowcase();
 
   const brief = {
     market,
@@ -336,6 +338,8 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
     /** 스윙 관점 — 며칠째 같은 이유로 남아 있는 종목만 거른 목록.
      * "며칠 오를 종목"이 아니다(그런 예측은 검증한 적이 없다) — ruleKo 를 그대로 읽어 소개할 것. */
     swing,
+    /** 시스템 소개 — SNS·유튜브가 "이 시스템이 뭘 하는지" 자랑할 때 쓸 완성 문장(전부 실측 숫자) */
+    showcase: showcaseBlock,
     avoid: verdict.stocks.avoid.slice(0, 3).map((s) => ({
       code: s.code,
       ticker: market === "US" ? s.code : null,
@@ -356,6 +360,19 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
       ...buildSpeech(market === "US" ? "미국" : "한국", verdict, picks),
       /** 국면 지속/전환 서사 — 오프닝 바로 뒤에 읽기 좋은 완성 문장 */
       narrative: summaryKo,
+      /* 스윙 섹션 나레이션 — SNS·유튜브가 이 순서로 읽으면 한 편이 된다:
+       * system(무슨 시스템인지) → swingIntro(오늘 스윙 관점) → swing[](종목별) → closing */
+      system: speakable(showcaseBlock.oneLinerKo),
+      swingIntro: speakable(swing.headlineKo),
+      swing: swing.picks.map((p, i) => {
+        const days = p.appearances >= 2 ? `${p.appearances + 1}거래일째 추천에 남아 있는 종목입니다.` : "오늘 새로 올라온 종목입니다.";
+        const why = p.whyKo ? ` ${speakable(p.whyKo)}.` : "";
+        const engineKo = p.independentCount >= 2 ? ` 근거가 다른 분석 ${p.independentCount}개가 같은 종목을 지목했습니다.` : "";
+        const lv = p.nearestSupport
+          ? ` 지지는 ${p.nearestSupportLabel} ${p.nearestSupport.toLocaleString("ko-KR")}${cur} 부근이고, ${p.nearestResistance ? `위쪽 저항은 ${p.nearestResistance.toLocaleString("ko-KR")}${cur} 부근입니다.` : "위쪽 저항은 아직 뚜렷하지 않습니다."}`
+          : "";
+        return `${["첫", "두", "세", "네"][i] ?? i + 1} 번째는 ${p.name}입니다. ${days}${why}${engineKo}${lv}`;
+      }),
     },
     /** 엔진(분석 방식)별 추천 — 온톨로지·수급·차트·융합 각각 "무엇을 보고 골랐는지"
      * 근거 문장 포함. 전략실 리그와 같은 점수 함수라 화면·리그와 어긋나지 않는다.
