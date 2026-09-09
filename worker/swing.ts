@@ -16,7 +16,7 @@
  * 그래서 이 목록은 "며칠 오를 종목"이 아니라 **"며칠째 같은 이유로 남아 있는 종목"** 이다.
  * 대본·게시물에서도 그렇게 소개해야 한다 — 보유 기간을 약속하는 순간 근거 없는 말이 된다.
  */
-import type { Levels } from "./levels";
+import { nearestLevels, type Levels } from "./levels";
 import type { EngineOut } from "./agreement";
 import { symbolFor } from "./symbols";
 import { round } from "./util";
@@ -206,31 +206,11 @@ export function buildSwing(params: {
     const now = priceByCode.get(code) ?? m.price;
     const lv = levelsByCode.get(code) ?? null;
 
-    /* 가장 가까운 자리를 쓴다 — computeLevels 의 지지·저항은 "많이 부딪힌 순"이라
-     * 몇 달 전 바닥이 잡히곤 한다(현재가 대비 -30% 같은 자리). 손절·목표로 쓸 자리는
-     * 강한 자리가 아니라 **먼저 닿는 자리**라, 살아 있는 지지·저항으로 널리 쓰이는
-     * 이동평균과 52주 고저까지 후보에 넣고 그중 가장 가까운 것을 고른다.
-     * 어디서 나온 선인지는 라벨로 같이 낸다 — 근거 없는 숫자를 내지 않기 위해서다. */
-    const cands: { price: number; label: string }[] = [
-      ...(lv?.support ?? []).map((s) => ({ price: s.price, label: `${s.touches}번 지지받은 자리` })),
-      ...(lv?.resistance ?? []).map((s) => ({ price: s.price, label: `${s.touches}번 저항받은 자리` })),
-      ...(lv?.ma?.ma5 ? [{ price: lv.ma.ma5, label: "5일선" }] : []),
-      ...(lv?.ma?.ma20 ? [{ price: lv.ma.ma20, label: "20일선" }] : []),
-      ...(lv?.ma?.ma60 ? [{ price: lv.ma.ma60, label: "60일선" }] : []),
-      ...(lv?.ma?.ma120 ? [{ price: lv.ma.ma120, label: "120일선" }] : []),
-      ...(lv?.week52?.low ? [{ price: lv.week52.low, label: "52주 최저" }] : []),
-      ...(lv?.week52?.high ? [{ price: lv.week52.high, label: "52주 최고" }] : []),
-    ];
-    /* 저항은 "의미 있는 거리"부터 인정한다 — 현재가 +0.4% 자리를 목표라고 부르면
-     * 손익비가 허위로 나빠지고 대본도 우스워진다. shared/ta.ts tradePlan 과 같은 기준
-     * (2% 또는 0.8×ATR 중 큰 쪽). 지지는 가까울수록 손절 기준으로 쓸모가 있어 그대로 둔다. */
-    const minGap = Math.max(now * 0.02, (lv?.atr14 ?? 0) * 0.8);
-    const below = cands.filter((c) => c.price < now).sort((a, b) => b.price - a.price)[0] ?? null;
-    const above = cands.filter((c) => c.price > now + minGap).sort((a, b) => a.price - b.price)[0] ?? null;
-    const nearestSupport = below?.price ?? null;
-    const nearestResistance = above?.price ?? null;
-    const supportLabel = below?.label ?? null;
-    const resistanceLabel = above?.label ?? null;
+    const near = nearestLevels(lv, now);
+    const nearestSupport = near.support?.price ?? null;
+    const nearestResistance = near.resistance?.price ?? null;
+    const supportLabel = near.support?.label ?? null;
+    const resistanceLabel = near.resistance?.label ?? null;
     const toSupportPct = nearestSupport ? round(((nearestSupport - now) / now) * 100, 1) : null;
     const toResistancePct = nearestResistance ? round(((nearestResistance - now) / now) * 100, 1) : null;
 

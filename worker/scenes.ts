@@ -24,7 +24,7 @@ import { labOverview, quantRank, comboRank } from "./quant";
 import { radarFind } from "./radarscan";
 import { backtestResults } from "./backtest";
 import { getManySeries } from "./quotes";
-import { computeLevels } from "./levels";
+import { computeLevels, nearestLevels } from "./levels";
 import { buildEnginesAndAgreement } from "./agreement";
 import { dailyBrief } from "./brief";
 import { taCached } from "./ta";
@@ -274,15 +274,20 @@ async function sceneChart(env: Env, market: "KR" | "US", code: string, animate: 
   };
   const mas = maLine(ma20Full, MA20_COLOR) + maLine(ma60Full, MA60_COLOR);
 
+  /* 지지·저항은 **가장 먼저 닿는 자리**를 그린다(levels.nearestLevels 공용).
+   * "많이 부딪힌 자리"만 그리면 현재가 56,000원인데 지지선이 36,168원으로 찍혀,
+   * 같은 공지의 글(지지 5일선 54,440원)과 그림이 서로 다른 말을 하게 된다. */
   let srLines = "";
-  const drawLevel = (p: { price: number; touches: number; lastTouchDate: string | null }, color: string) => {
+  const drawLevel = (p: { price: number; label: string }, color: string) => {
     if (p.price < priceMin || p.price > priceMax) return;
     const y = yFor(p.price);
+    const pct = ((p.price - series.price) / series.price) * 100;
     srLines += `<line x1="${chartX0}" y1="${y.toFixed(1)}" x2="${chartX1}" y2="${y.toFixed(1)}" stroke="${color}" stroke-width="1.5" stroke-dasharray="10 8" opacity="0.7"/>`;
-    srLines += `<text x="${chartX1 + 14}" y="${(y + 6).toFixed(1)}" fill="${color}" font-size="19" font-weight="800" ${FONT}>${p.price.toLocaleString("ko-KR")} (${p.touches}회)</text>`;
+    srLines += `<text x="${chartX1 + 14}" y="${(y + 6).toFixed(1)}" fill="${color}" font-size="19" font-weight="800" ${FONT}>${p.price.toLocaleString("ko-KR")} <tspan font-size="16" font-weight="600">${esc(p.label)} ${sgn(pct, 1)}%</tspan></text>`;
   };
-  for (const p of levels?.support ?? []) drawLevel(p, UP);
-  for (const p of levels?.resistance ?? []) drawLevel(p, DOWN);
+  const near = nearestLevels(levels, series.price);
+  if (near.support) drawLevel(near.support, UP);
+  if (near.resistance) drawLevel(near.resistance, DOWN);
 
   const legend = `<text x="${chartX0}" y="${chartTop - 18}" fill="${MA20_COLOR}" font-size="19" font-weight="700" ${FONT}>— MA20</text>
 <text x="${chartX0 + 110}" y="${chartTop - 18}" fill="${MA60_COLOR}" font-size="19" font-weight="700" ${FONT}>— MA60</text>
@@ -292,7 +297,14 @@ async function sceneChart(env: Env, market: "KR" | "US", code: string, animate: 
   const sub = `${kstDate()} · 일봉 ${N}개(약 ${Math.round(N / 21)}개월) · 현재가 ${series.price.toLocaleString("ko-KR")}${cur}` +
     (levels?.atr14 ? ` · ATR(14) ${levels.atr14.toLocaleString("ko-KR")}${cur}` : "");
   let note = "";
-  if (levels?.levelNote) note = `<text x="${chartX0}" y="${volBottom + 60}" fill="${GOLD}" font-size="24" font-weight="800" ${FONT}>${esc(levels.levelNote)}</text>`;
+  if (near.support || near.resistance) {
+    const parts = [
+      near.support ? `지지 ${near.support.label} ${near.support.price.toLocaleString("ko-KR")}${cur}` : null,
+      near.resistance ? `저항 ${near.resistance.label} ${near.resistance.price.toLocaleString("ko-KR")}${cur}` : null,
+      levels?.levelNote ?? null,
+    ].filter(Boolean);
+    note = `<text x="${chartX0}" y="${volBottom + 60}" fill="${GOLD}" font-size="24" font-weight="800" ${FONT}>${esc(parts.join(" · "))}</text>`;
+  }
   else note = `<text x="${chartX0}" y="${volBottom + 60}" fill="${DIM}" font-size="22" ${FONT}>두 번 이상 시험된 지지·저항 자리가 아직 확인되지 않았습니다 — 근거 없는 레벨은 표시하지 않습니다.</text>`;
 
   return shell(header(`${esc(CODE_TO_NAME.get(code) ?? series.name)} — 일봉 차트`, sub, dirColor(series.changePct)) + legend + mas + candles + srLines + note, animate);

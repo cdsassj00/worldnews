@@ -125,3 +125,36 @@ export function computeLevels(series: Series, currentPrice: number, tz: string):
     levelNote,
   };
 }
+
+/**
+ * 가장 가까운 지지·저항 — 손절·목표로 실제로 쓸 자리.
+ *
+ * computeLevels 의 support/resistance 는 "많이 부딪힌 순"이라 몇 달 전 바닥이 잡히곤 한다
+ * (현재가 56,000원인데 지지 36,168원 같은 값). 살아 있는 지지·저항으로 널리 쓰이는
+ * 이동평균·52주 고저까지 후보에 넣고 **먼저 닿는 자리**를 고른다.
+ *
+ * 스윙 목록(swing.ts)과 차트 화면(scenes.ts)이 이 함수를 함께 쓴다 — 한 공지 안에서
+ * 글과 그림이 다른 지지선을 말하면 그 순간 둘 다 못 믿을 숫자가 된다.
+ */
+export function nearestLevels(lv: Levels | null, price: number): {
+  support: { price: number; label: string } | null;
+  resistance: { price: number; label: string } | null;
+} {
+  if (!lv || !price) return { support: null, resistance: null };
+  const cands: { price: number; label: string }[] = [
+    ...lv.support.map((s) => ({ price: s.price, label: `${s.touches}번 지지받은 자리` })),
+    ...lv.resistance.map((s) => ({ price: s.price, label: `${s.touches}번 저항받은 자리` })),
+    ...(lv.ma.ma5 ? [{ price: lv.ma.ma5, label: "5일선" }] : []),
+    ...(lv.ma.ma20 ? [{ price: lv.ma.ma20, label: "20일선" }] : []),
+    ...(lv.ma.ma60 ? [{ price: lv.ma.ma60, label: "60일선" }] : []),
+    ...(lv.ma.ma120 ? [{ price: lv.ma.ma120, label: "120일선" }] : []),
+    ...(lv.week52.low ? [{ price: lv.week52.low, label: "52주 최저" }] : []),
+    ...(lv.week52.high ? [{ price: lv.week52.high, label: "52주 최고" }] : []),
+  ];
+  /* 저항은 잡음을 피해 현재가 +2%(또는 0.8×ATR) 밖에서 찾는다 — shared/ta.ts tradePlan 과 같은 기준.
+   * 지지는 가까울수록 손절 기준으로 쓸모가 있어 그대로 가장 가까운 것을 쓴다. */
+  const minGap = Math.max(price * 0.02, (lv.atr14 ?? 0) * 0.8);
+  const below = cands.filter((c) => c.price < price).sort((a, b) => b.price - a.price)[0] ?? null;
+  const above = cands.filter((c) => c.price > price + minGap).sort((a, b) => a.price - b.price)[0] ?? null;
+  return { support: below, resistance: above };
+}
