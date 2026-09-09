@@ -16,7 +16,7 @@
  */
 import type { Env } from "./env";
 import { getVerdict, type OntoVerdict } from "./verdict";
-import { labOverview, usMarketOpen } from "./quant";
+import { comboRank, labOverview, usMarketOpen } from "./quant";
 import { marketPhase } from "./autotrade";
 import { radarTop } from "./radarscan";
 import { backtestResults } from "./backtest";
@@ -210,12 +210,17 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
   const { engines: enginesOut, agreement } = buildEnginesAndAgreement(market, lab?.strategies, headlineCodes, cur);
 
   const histChain = prevStored ? [prevStored, ...chain.slice(1)] : [];
+  /* 삼합 순위 — 스윙 목록의 정렬 기준(조합 전략 탭과 같은 계산). 레벨 조회보다 **먼저** 구해야
+   * 삼합 상위 종목의 지지·저항도 같은 호출로 받아 온다(나중에 구하면 목록엔 있는데 지지선이 빈다). */
+  const combo = await comboRank(env, {}, 20, market).catch(() => null);
   const symbolToCode = new Map<string, string>();
   const levelTargets = [
     ...rawPicks.map((s) => s.code),
     ...agreement.filter((a) => a.independentCount >= 2).map((a) => a.code),
     // 스윙 후보(잔류 조건 통과)도 지지·저항이 필요하다 — 같은 호출로 한 번에 받는다
     ...swingCandidateCodes({ history: histChain, engines: enginesOut, todayPickCodes: rawPicks.map((s) => s.code) }),
+    // 삼합 상위도 목록에 들 수 있으니 함께 받는다
+    ...(combo?.rows ?? []).slice(0, 6).map((r) => r.code),
   ];
   for (const code of new Set(levelTargets)) {
     const sym = CODE_TO_SYMBOL.get(code);
@@ -300,6 +305,7 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
   const swing = buildSwing({
     cur,
     history: histChain,
+    comboRows: combo?.rows ?? [],
     engines: enginesOut,
     todayPicks: rawPicks.map((s) => ({ code: s.code, name: s.name, sector: s.sector, score: s.score, price: s.price, changePct: s.changePct, reason: s.reasons?.[0] ?? s.reason ?? null })),
     levelsByCode,

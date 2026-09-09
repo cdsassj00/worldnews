@@ -16,6 +16,7 @@ import type { Env } from "./env";
 import { dailyBrief } from "./brief";
 import { getFeed } from "./feed";
 import { buildShowcase } from "./showcase";
+import { sceneShot } from "./shot";
 
 const API = "https://api.telegram.org";
 const SITE = "https://stockontology.cc";
@@ -68,7 +69,43 @@ export async function tgSend(env: Env, text: string): Promise<{ ok: boolean; err
   }
 }
 
+/** 사진 한 장 — 캡션은 텔레그램 상한이 1024자라 본문보다 짧게 넣는다 */
+export async function tgSendPhoto(env: Env, png: ArrayBuffer, caption: string): Promise<{ ok: boolean; error?: string }> {
+  const token = env.TELEGRAM_BOT_TOKEN;
+  const chatId = env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) return { ok: false, error: "TELEGRAM_BOT_TOKEN 또는 TELEGRAM_CHAT_ID 가 설정되지 않았습니다" };
+  try {
+    const form = new FormData();
+    form.append("chat_id", chatId);
+    form.append("caption", caption.slice(0, 1000));
+    form.append("parse_mode", "HTML");
+    form.append("photo", new Blob([png], { type: "image/png" }), "chart.png");
+    const res = await fetch(`${API}/bot${token}/sendPhoto`, { method: "POST", body: form });
+    if (!res.ok) return { ok: false, error: `telegram ${res.status}: ${(await res.text()).slice(0, 200)}` };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /* ── 메시지 만들기 ─────────────────────────────── */
+
+/** 공지에 함께 붙일 차트 — 상위 몇 종목의 scene.svg 를 PNG 로 찍는다 */
+export async function sendPickCharts(env: Env, market: "KR" | "US", picks: { code?: string; symbol: string | null; name: string; priceLabel: string; nearestSupport: number | null; nearestResistance: number | null }[], max = 2): Promise<string[]> {
+  const cur = market === "US" ? "$" : "원";
+  const sent: string[] = [];
+  for (const p of picks.slice(0, max)) {
+    const code = p.code ?? (p.symbol ?? "").split(".")[0];
+    if (!code) continue;
+    const png = await sceneShot(env, `chart:${code}`, market);
+    if (!png) continue;
+    const sup = p.nearestSupport ? ` · 지지 ${p.nearestSupport.toLocaleString("ko-KR")}${cur}` : "";
+    const res = p.nearestResistance ? ` · 저항 ${p.nearestResistance.toLocaleString("ko-KR")}${cur}` : "";
+    const r = await tgSendPhoto(env, png, `<b>${esc(p.name)}</b> ${esc(p.priceLabel)}${esc(sup)}${esc(res)}`);
+    if (r.ok) sent.push(`chart:${code}`);
+  }
+  return sent;
+}
 
 interface BriefForTg {
   date?: string;
@@ -193,6 +230,15 @@ export async function tgAnnounce(env: Env, opts: {
     const r = await tgSend(env, m.text);
     if (r.ok) { sent.push(m.id); log.ids.push(m.id); } else { skipped.push(`${m.id}(실패)`); error = r.error; break; }
   }
+  /* 정기 공지에는 상위 2종목 차트를 함께 붙인다 — "숫자만 있고 그림이 없다"는 지적(2026-09-09).
+   * 이미지 실패는 공지 자체를 막지 않는다(텍스트는 이미 나갔다). */
+  if (!error && sent.length && opts.kind === "daily") {
+    const res = (await dailyBrief(env, opts.market)) as { briefs: BriefForTg[] };
+    const picks = res.briefs[0]?.swing.picks ?? [];
+    const shots = await sendPickCharts(env, opts.market, picks.map((p) => ({ ...p, code: undefined })));
+    sent.push(...shots);
+  }
+
   if (sent.length) await saveSent(env, log);
   return { ok: !error, sent, skipped, error };
 }

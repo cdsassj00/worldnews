@@ -5,6 +5,8 @@ export interface Env {
   CACHE: KVNamespace;
   /** 전 시장 레이더 저장소 (SQLite Durable Object) */
   RADAR?: DurableObjectNamespace<RadarDB>;
+  /** Browser Rendering — scene.svg 를 PNG 로 찍어 텔레그램·SNS 에 붙일 때 쓴다(shot.ts) */
+  BROWSER?: Fetcher;
   /** Cloudflare Workers AI (선택). 있으면 Anthropic 키 없이도 AI 분석이 동작한다. */
   AI?: { run: (model: string, input: unknown) => Promise<unknown> };
 

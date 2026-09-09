@@ -860,6 +860,8 @@ export interface ComboRow {
   price: number; changePct: number;
   onto: number | null; flow: number | null; chart: number | null;
   total: number;
+  /** 수급 스캔이 남긴 근거 문장 중 첫 줄 — 순위만 주면 "왜"를 말할 수 없다 */
+  reason: string | null;
 }
 
 export async function comboRank(env: Env, wRaw: Partial<ComboWeights>, limit = 20, market: QuantMarket = "KR"): Promise<{
@@ -903,6 +905,7 @@ export async function comboRank(env: Env, wRaw: Partial<ComboWeights>, limit = 2
       flow: flow !== undefined ? round(flow, 3) : null,
       chart: chart !== undefined ? round(chart, 3) : null,
       total: round(comps.reduce((a, x) => a + x.wgt * x.val, 0) / denom, 3),
+      reason: r.reasons?.[0]?.text ?? null,
     });
   }
   rows.sort((a, b) => b.total - a.total);

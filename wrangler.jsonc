@@ -28,6 +28,7 @@
   // 전 시장 레이더 저장소 — SQLite Durable Object.
   // KV(쓰기 1,000/일)로는 350종목 주기 갱신이 불가능해서 DB를 썼다.
   // D1이 아닌 이유: 배포 토큰에 D1 권한이 없고, DO는 Worker 배포에 딸려 나간다.
+  "browser": { "binding": "BROWSER" },
   "durable_objects": {
     "bindings": [{ "name": "RADAR", "class_name": "RadarDB" }]
   },

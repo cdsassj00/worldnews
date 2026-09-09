@@ -57,6 +57,8 @@ export interface SwingPick {
   firstSeenPrice: number | null;
   /** 처음 등장가 대비 현재가 — 실측이며, 마이너스면 마이너스로 나온다 */
   changeSincePct: number | null;
+  /** 삼합(온톨로지+수급+차트) 종합 점수와 축별 점수 — 순위의 근거 */
+  combo: { total: number; onto: number | null; flow: number | null; chart: number | null } | null;
   /** 오늘 이 종목을 든 엔진 중 파생(융합)을 뺀 수 */
   independentCount: number;
   engines: { id: string; nameKo: string; derived: boolean }[];
@@ -92,9 +94,13 @@ export interface SwingBlock {
 }
 
 const RULE_KO =
-  "오늘 추천 중 최근 보관본에 오래 남아 있던 순으로 고른 목록입니다 — 매일 바뀌는 종목이 아니라 며칠째 같은 이유로 남아 있는 종목을 앞에 둡니다. " +
-  "과거 성과로 거르지 않으며(백테스트는 미래를 보장하지 않습니다), 잔류 일수·엔진 수·지지·저항을 그대로 보여드립니다. " +
-  "보유 기간을 보장하지 않습니다.";
+  "온톨로지·수급·차트를 같은 비중으로 섞은 삼합 종합 점수 순위에서 고른 목록입니다. " +
+  "한 업종에 몰리지 않게 같은 업종은 최대 2종목까지만 넣고, 며칠째 남아 있는지는 함께 표시합니다. " +
+  "과거 성과로 거르지 않으며(백테스트는 미래를 보장하지 않습니다), 보유 기간도 보장하지 않습니다.";
+
+/** 같은 업종 최대 몇 종목까지 — 백테스트에서 섹터당 2종목(QKC2)이 3종목(QKC3)보다 나았다
+ * (+5.85% vs -3.76%, 2026-09-08 측정). 한 업종이 꺾이는 날 목록이 통째로 지는 걸 막는다. */
+const SECTOR_CAP = 2;
 
 function sessionsOf(history: SwingHistEntry[]): Session[] {
   return history.map((h) => {
@@ -157,9 +163,11 @@ export function buildSwing(params: {
   todayPicks: { code: string; name: string; sector: string | null; score: number; price: number; changePct: number; reason?: string | null }[];
   levelsByCode: Map<string, Levels | null>;
   priceByCode: Map<string, number>;
+  /** 삼합 순위(조합 전략 탭과 같은 계산) — 이 목록의 정렬 기준이다 */
+  comboRows?: { code: string; name: string; sector: string | null; price: number; changePct: number; total: number; onto: number | null; flow: number | null; chart: number | null; reason?: string | null }[];
   maxPicks?: number;
 }): SwingBlock {
-  const { cur, history, engines, todayPicks, levelsByCode, priceByCode, maxPicks = 4 } = params;
+  const { cur, history, engines, todayPicks, levelsByCode, priceByCode, comboRows = [], maxPicks = 4 } = params;
 
   const sessions = sessionsOf(history);
   const oldestFirst = [...sessions].reverse(); // history 는 최신순 — 첫 등장을 찾으려면 뒤집는다
@@ -177,7 +185,16 @@ export function buildSwing(params: {
     meta.set(p.code, { name: p.name, sector: p.sector, score: p.score, price: p.price, changePct: p.changePct, reason: p.reason ?? prev?.reason ?? null });
   }
 
-  const codes = swingCandidateCodes({ history, engines, todayPickCodes: todayPicks.map((p) => p.code), max: 12 });
+  /* 후보 = 삼합 상위 + 오늘 헤드라인/엔진 픽. 삼합을 먼저 넣는 이유는 이 목록의 순위 기준이
+   * 삼합 종합 점수이기 때문이다(2026-09-09: 잔류 일수로 줄 세우니 같은 종목만 며칠씩 남았다). */
+  const comboByCode = new Map(comboRows.map((r) => [r.code, r]));
+  for (const r of comboRows) {
+    if (!meta.has(r.code)) meta.set(r.code, { name: r.name, sector: r.sector, score: r.total, price: r.price, changePct: r.changePct, reason: r.reason ?? null });
+  }
+  const codes = [...new Set([
+    ...comboRows.slice(0, 12).map((r) => r.code),
+    ...swingCandidateCodes({ history, engines, todayPickCodes: todayPicks.map((p) => p.code), max: 8 }),
+  ])];
   const rows: (SwingPick & { _score: number })[] = [];
   for (const code of codes) {
     const m = meta.get(code);
@@ -225,6 +242,7 @@ export function buildSwing(params: {
     const resKo = nearestResistance ? `저항 ${resistanceLabel} ${nearestResistance.toLocaleString("ko-KR")}${cur}(+${toResistancePct}%)` : "";
     const levelKo = supKo || resKo ? ` · ${[supKo, resKo].filter(Boolean).join(" / ")}` : "";
 
+    const cb = comboByCode.get(code);
     rows.push({
       code,
       symbol: symbolFor(code),
@@ -238,6 +256,7 @@ export function buildSwing(params: {
       firstSeenDate: first?.date ?? null,
       firstSeenPrice,
       changeSincePct: firstSeenPrice ? round(((now - firstSeenPrice) / firstSeenPrice) * 100, 2) : null,
+      combo: cb ? { total: cb.total, onto: cb.onto, flow: cb.flow, chart: cb.chart } : null,
       independentCount: hits.filter((h) => !h.derived).length,
       engines: hits,
       levels: lv,
@@ -251,27 +270,46 @@ export function buildSwing(params: {
       invalidationKo: nearestSupport === null
         ? null
         : `종가가 ${nearestSupport.toLocaleString("ko-KR")}${cur}(${supportLabel}) 아래로 마감하면 이 자리는 깨진 것으로 봅니다`,
-      whyKo: m.reason,
+      whyKo: m.reason ?? (cb
+        ? `삼합 종합 ${cb.total >= 0 ? "+" : ""}${cb.total.toFixed(2)} — 온톨로지 ${cb.onto ?? "-"} · 수급 ${cb.flow ?? "-"} · 차트 ${cb.chart ?? "-"}`
+        : null),
       hookKo: `${m.name} — ${daysKo}, ${engineKo}${levelKo}`,
       _score: m.score,
     });
   }
 
-  rows.sort((a, b) => b.appearances - a.appearances || b.independentCount - a.independentCount || b._score - a._score);
-  const picks = rows.slice(0, maxPicks).map(({ _score, ...rest }) => rest);
+  /* 정렬은 삼합 종합 점수 — 잔류 일수는 동점일 때만 본다. 잔류를 1순위로 두면 한 번 오른
+   * 종목이 계속 자리를 차지해 "며칠째 같은 종목"이 되고, 점수가 더 높은 종목이 밀린다. */
+  rows.sort((a, b) =>
+    (b.combo?.total ?? -9) - (a.combo?.total ?? -9)
+    || b.independentCount - a.independentCount
+    || b.appearances - a.appearances
+    || b._score - a._score);
 
-  const longest = picks[0];
+  /* 같은 업종은 최대 SECTOR_CAP 개까지 — 오늘처럼 상위 4개 중 3개가 정유화학이면
+   * 그 업종이 꺾이는 날 목록이 통째로 진다(백테스트 QKC2 > QKC3 으로도 확인). */
+  const bySector = new Map<string, number>();
+  const capped: typeof rows = [];
+  for (const r of rows) {
+    const key = r.sector ?? "미분류";
+    const n = bySector.get(key) ?? 0;
+    if (n >= SECTOR_CAP) continue;
+    bySector.set(key, n + 1);
+    capped.push(r);
+    if (capped.length >= maxPicks) break;
+  }
+  const picks = capped.map(({ _score, ...rest }) => rest);
+
+  const top = picks[0];
   const headlineKo = !picks.length
     ? "오늘은 스윙 관점으로 추릴 종목이 없습니다."
-    : longest.appearances >= 2
-      ? `${longest.name}은 ${longest.appearances + 1}거래일째 같은 이유로 추천에 남아 있습니다 — 오늘 스윙 관점 ${picks.length}종목입니다.`
-      : `오늘 스윙 관점 ${picks.length}종목 — 어제까지의 목록에서 얼마나 살아남았는지까지 함께 봅니다.`;
+    : `오늘 삼합 종합 1위는 ${top.name}(${top.combo ? (top.combo.total >= 0 ? "+" : "") + top.combo.total.toFixed(2) : "-"})입니다 — 업종이 겹치지 않게 고른 ${picks.length}종목입니다.`;
 
   return {
     ruleKo: RULE_KO,
     lookbackSessions: sessions.length,
     picks,
     headlineKo,
-    note: `최근 보관본 ${sessions.length}회와 비교해 잔류 일수·독립 엔진 수 순으로 정렬했습니다. 과거 성과로 거르지 않았습니다.`,
+    note: `삼합 종합 점수 순으로 고르고 같은 업종은 최대 ${SECTOR_CAP}종목까지만 넣었습니다. 잔류 일수는 최근 보관본 ${sessions.length}회와 비교한 값이며, 과거 성과로 거르지 않았습니다.`,
   };
 }
