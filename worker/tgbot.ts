@@ -13,8 +13,8 @@ import { dailyBrief } from "./brief";
 import { comboRank, quantRank } from "./quant";
 import { getFeed } from "./feed";
 import { stockBundle } from "./bundle";
-import { buildDailyMessage, tgAnnounce, tgSendPhoto, tgTargets } from "./telegram";
-import { sceneShot } from "./shot";
+import { buildDailyMessage, tgAnnounce, tgSendAlbum, tgTargets } from "./telegram";
+import { sceneShots, type ShotRequest } from "./shot";
 import { CODE_TO_NAME } from "./symbols";
 
 const API = "https://api.telegram.org";
@@ -28,7 +28,7 @@ const HELP = [
   "/삼합 — 온톨로지+수급+차트 종합 순위 상위 8",
   "/수급 — 자금흐름·매집·거래대금 순위 상위 8",
   "/지금 — 방금 일어난 변화(합의 형성·급증·돌파 등)",
-  "/종목 삼성전자 — 그 종목 판정·매매 플랜·차트 이미지",
+  "/종목 삼성전자 — 판정·매매 플랜 + 일봉·전략표·온톨로지 이미지",
   "/공지 — 정기 공지를 지금 채널에 올리기(차트 이미지 포함)",
   "/도움 — 이 목록",
   "",
@@ -93,9 +93,9 @@ async function cmdFeed(env: Env): Promise<string> {
   return lines.join("\n");
 }
 
-async function cmdStock(env: Env, query: string): Promise<{ text: string; code: string | null }> {
+async function cmdStock(env: Env, query: string): Promise<{ text: string; code: string | null; market: "KR" | "US" }> {
   const code = findCode(query);
-  if (!code) return { text: `"${esc(query)}" 를 찾지 못했습니다. 종목명이나 6자리 코드로 다시 넣어 주세요.`, code: null };
+  if (!code) return { text: `"${esc(query)}" 를 찾지 못했습니다. 종목명이나 6자리 코드로 다시 넣어 주세요.`, code: null, market: "KR" };
   const b = await stockBundle(env, code);
   const p = b.plan;
   const cur = b.market === "US" ? "$" : "원";
@@ -113,7 +113,17 @@ async function cmdStock(env: Env, query: string): Promise<{ text: string; code: 
   lines.push(`손절 ${p.stop.price.toLocaleString("ko-KR")}${cur} (${p.stop.pct}%) · 목표 ${p.targets[0].price.toLocaleString("ko-KR")}${cur} (+${p.targets[0].pct}%)`);
   lines.push(`손익비 ${p.rr.toFixed(2)} · ${esc(p.invalidation)}`);
   lines.push("", `<i>${DISCLAIMER}</i>`);
-  return { text: lines.join("\n"), code };
+  return { text: lines.join("\n"), code, market: b.market as "KR" | "US" };
+}
+
+/**
+ * 명령 응답에 붙일 그림. 글만 오면 "표는 어디 있냐"가 되고, 넉 장을 낱장으로 올리면
+ * 방이 지저분해진다 — 앨범 한 묶음으로 보낸다. 렌더가 비싸서 등록된 방에서만 부른다.
+ */
+async function replyShots(env: Env, chatId: number | string, reqs: ShotRequest[]): Promise<void> {
+  const shots = await sceneShots(env, reqs);
+  if (!shots.length) return;
+  await tgSendAlbum(env, shots.map((s) => ({ png: s.png, caption: s.caption })), chatId);
 }
 
 /** 텔레그램 업데이트 한 건 처리 — 명령이 아니면 조용히 넘긴다(잡담에 끼어들지 않는다) */
@@ -156,6 +166,12 @@ export async function handleTelegramUpdate(env: Env, update: unknown): Promise<{
     if (cmd === "/추천" || cmd === "/picks") {
       const m = await buildDailyMessage(env, "KR");
       await reply(env, chatId, m?.text ?? "오늘 스윙 목록을 만들지 못했습니다.");
+      if (isHome) {
+        await replyShots(env, chatId, [
+          { view: "swing", caption: "<b>스윙 관점 종목</b> — 삼합 종합 순위·업종 분산" },
+          { view: "combo", caption: "삼합 종합 순위" },
+        ]);
+      }
       return { handled: cmd };
     }
     if (cmd === "/공지" || cmd === "/announce") {
@@ -164,18 +180,31 @@ export async function handleTelegramUpdate(env: Env, update: unknown): Promise<{
       await reply(env, chatId, r.ok ? `공지 완료 — ${r.sent.join(", ") || "보낸 항목 없음"}` : `실패: ${esc(r.error ?? "알 수 없음")}`);
       return { handled: cmd };
     }
-    if (cmd === "/삼합" || cmd === "/combo") { await reply(env, chatId, await cmdCombo(env)); return { handled: cmd }; }
-    if (cmd === "/수급" || cmd === "/flow") { await reply(env, chatId, await cmdFlow(env)); return { handled: cmd }; }
+    if (cmd === "/삼합" || cmd === "/combo") {
+      await reply(env, chatId, await cmdCombo(env));
+      if (isHome) await replyShots(env, chatId, [{ view: "combo", caption: "<b>삼합 종합 순위</b> — 온톨로지+수급+차트" }]);
+      return { handled: cmd };
+    }
+    if (cmd === "/수급" || cmd === "/flow") {
+      await reply(env, chatId, await cmdFlow(env));
+      if (isHome) await replyShots(env, chatId, [{ view: "flow", caption: "<b>수급 순위</b> — 자금흐름·매집·거래대금" }]);
+      return { handled: cmd };
+    }
     if (cmd === "/지금" || cmd === "/feed") { await reply(env, chatId, await cmdFeed(env)); return { handled: cmd }; }
 
     if (cmd === "/종목" || cmd === "/stock") {
       if (!arg) { await reply(env, chatId, "종목명이나 코드를 함께 넣어 주세요. 예: <code>/종목 삼성전자</code>"); return { handled: cmd }; }
-      const { text: out, code } = await cmdStock(env, arg);
+      const { text: out, code, market } = await cmdStock(env, arg);
       await reply(env, chatId, out);
-      // 차트 이미지는 등록된 방에서만 — 렌더가 비싸다
+      // 그림은 등록된 방에서만 — 렌더가 비싸다. 차트 한 장으로는 "표는 어디 있냐"가 된다.
       if (code && isHome) {
-        const png = await sceneShot(env, `chart:${code}`, "KR");
-        if (png) await tgSendPhoto(env, png, `<b>${esc(CODE_TO_NAME.get(code) ?? code)}</b> 일봉 · 지지/저항`);
+        const nm = esc(CODE_TO_NAME.get(code) ?? code);
+        await replyShots(env, chatId, [
+          { view: `chart:${code}`, market, caption: `<b>${nm}</b> 일봉 · 이동평균 · 지지/저항` },
+          { view: `strategies:${code}`, market, caption: `${nm} 전략 13종 판정` },
+          // 온톨로지 카드는 레이더 유니버스 안에서만 그려진다 — 밖이면 조용히 빠진다
+          { view: `stock:${code}`, market, caption: `${nm} 온톨로지 · 거시 연결` },
+        ]);
       }
       return { handled: cmd };
     }

@@ -26,3 +26,28 @@ export const CODE_TO_NAME = new Map<string, string>([
 
 /** 시드에 없는 코드면 null — 규칙으로 추측해 만들지 않는다(.KS/.KQ 를 틀리면 조용히 다른 종목이 된다) */
 export const symbolFor = (code: string): string | null => CODE_TO_SYMBOL.get(code) ?? null;
+
+/**
+ * 6자리 코드 · 티커 · 야후 심볼 아무거나 받아 (code, symbol) 로 정규화한다.
+ *
+ * 시드 밖 종목도 차트·전략은 심볼만 있으면 계산되므로 여기서 막지 않는다 — 막으면
+ * "ING 는 글은 나오는데 그림은 안 나온다" 같은 반쪽 응답이 된다(2026-09-09 실측).
+ * 다만 접미사 없는 6자리 코드만은 null: .KS/.KQ 를 찍으면 절반이 빈 차트가 된다.
+ */
+export function resolveTicker(input: string): { code: string; symbol: string } | null {
+  const raw = input.trim();
+  if (!raw) return null;
+  const up = raw.toUpperCase();
+  const bySymbol = [...CODE_TO_SYMBOL.entries()].find(([, s]) => s.toUpperCase() === up);
+  if (bySymbol) return { code: bySymbol[0], symbol: bySymbol[1] };
+  const sym = symbolFor(up);
+  if (sym) return { code: up, symbol: sym };
+  if (/^[A-Z][A-Z.-]*$/.test(up) || /^\d{6}\.[A-Z]{2}$/.test(up)) {
+    return { code: up.split(".")[0], symbol: up };
+  }
+  return null;
+}
+
+/** 심볼 접미사로 시장을 정한다 — 호출자가 넘긴 market 파라미터보다 이쪽이 항상 맞다 */
+export const marketOfSymbol = (symbol: string): "KR" | "US" =>
+  symbol.endsWith(".KS") || symbol.endsWith(".KQ") ? "KR" : "US";

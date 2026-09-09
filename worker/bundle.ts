@@ -13,23 +13,13 @@ import { computeLevels } from "./levels";
 import { radarFind } from "./radarscan";
 import { quantRank } from "./quant";
 import { sessionStateOf } from "./feed";
-import { CODE_TO_NAME, CODE_TO_SYMBOL, symbolFor } from "./symbols";
+import { CODE_TO_NAME, CODE_TO_SYMBOL, resolveTicker } from "./symbols";
 import { ApiError, round } from "./util";
 
 const SITE = "https://stockontology.cc";
 
-/** 6자리 코드/티커/야후 심볼 아무거나 받아 (code, symbol) 로 정규화한다 */
-function resolve(input: string): { code: string; symbol: string } | null {
-  const raw = input.trim();
-  if (!raw) return null;
-  const bySymbol = [...CODE_TO_SYMBOL.entries()].find(([, s]) => s.toUpperCase() === raw.toUpperCase());
-  if (bySymbol) return { code: bySymbol[0], symbol: bySymbol[1] };
-  const sym = symbolFor(raw.toUpperCase());
-  if (sym) return { code: raw.toUpperCase(), symbol: sym };
-  // 시드 밖 종목도 온디맨드로 다룰 수 있어야 한다 — 심볼을 그대로 쓰고 코드는 심볼에서 뽑는다
-  if (/^[A-Z.]+$/i.test(raw) || /^\d{6}\.[A-Z]{2}$/i.test(raw)) return { code: raw.split(".")[0].toUpperCase(), symbol: raw.toUpperCase() };
-  return null;
-}
+/** 6자리 코드/티커/야후 심볼 아무거나 받아 (code, symbol) 로 정규화한다 — scenes 와 같은 규칙을 쓴다 */
+const resolve = resolveTicker;
 
 
 /**
@@ -127,15 +117,16 @@ export async function stockBundle(env: Env, input: string) {
       numbers: shortsNumbers,
     },
 
-    /** 영상에 바로 쓸 화면 주소 — 시드 밖 종목은 scene 이 코드→심볼 변환을 못 해 null */
-    views: CODE_TO_SYMBOL.has(code)
-      ? {
-        chart: `${SITE}/api/scene.svg?market=${market}&view=chart:${code}`,
-        strategies: `${SITE}/api/scene.svg?market=${market}&view=strategies:${code}`,
-        stock: `${SITE}/api/scene.svg?market=${market}&view=stock:${code}`,
-        overview: `${SITE}/api/scene.svg?market=${market}&view=overview`,
-      }
-      : null,
+    /**
+     * 영상에 바로 쓸 화면 주소. 차트·전략은 심볼만 있으면 그려지므로 시드 밖 종목도 준다.
+     * stock(온톨로지 카드)만 레이더 행이 있어야 해서 시드 안에서만 채운다.
+     */
+    views: {
+      chart: `${SITE}/api/scene.svg?market=${market}&view=chart:${code}`,
+      strategies: `${SITE}/api/scene.svg?market=${market}&view=strategies:${code}`,
+      stock: CODE_TO_SYMBOL.has(code) ? `${SITE}/api/scene.svg?market=${market}&view=stock:${code}` : null,
+      overview: `${SITE}/api/scene.svg?market=${market}&view=overview`,
+    },
 
     disclaimerKo: "공개 데이터 기반 자동 분석이며 투자 자문·권유가 아닙니다. 투자 판단과 책임은 이용자 본인에게 있습니다.",
     generatedAt: Date.now(),

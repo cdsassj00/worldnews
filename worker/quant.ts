@@ -41,11 +41,18 @@ interface Seed { code: string; symbol: string; name: string; market: string; sec
  */
 const UNIVERSE: Seed[] = (seedData as Seed[]).filter((s) => (s.src ?? "").startsWith("k200"));
 
-/** 미국 유니버스 — S&P 주요 104종목 (2026-08-17 사용자 지시 "다 해놓자"로 수급·차트·리그 확장) */
-const UNIVERSE_US: Seed[] = usSeedData as Seed[];
+/** 미국 매매 후보 — S&P 지수 구성(sp100/sp150). 한국과 같은 원칙으로, 손으로 추가한
+ * 종목(src=hand)은 분석·표시만 하고 매매 후보에는 넣지 않는다(2026-09-09 DELL 등 12종 추가). */
+const UNIVERSE_US: Seed[] = (usSeedData as Seed[]).filter((s) => (s.src ?? "").startsWith("sp"));
 
-/** 분석·표시 확장분 — 코스닥150 + 수동 선정(230종목). 점수는 내지만 매매 후보는 아니다. */
-const UNIVERSE_EXT: Seed[] = (seedData as Seed[]).filter((s) => !(s.src ?? "").startsWith("k200"));
+/** 미국 전체(표시 기준) — 순위표·조합 화면이 다루는 모집단 */
+const UNIVERSE_US_ALL: Seed[] = usSeedData as Seed[];
+
+/** 분석·표시 확장분 — 코스닥150·수동 선정(한국) + 손으로 넣은 미국 종목. 점수는 내되 매매 후보는 아니다. */
+const UNIVERSE_EXT: Seed[] = [
+  ...(seedData as Seed[]).filter((s) => !(s.src ?? "").startsWith("k200")),
+  ...(usSeedData as Seed[]).filter((s) => !(s.src ?? "").startsWith("sp")),
+];
 
 /** 한국 전체(표시 기준) — 순위표·조합 화면이 다루는 모집단 */
 const UNIVERSE_KR_ALL: Seed[] = seedData as Seed[];
@@ -344,7 +351,9 @@ export async function quantRank(env: Env, profileId?: string, limit = 20, market
     .sort((a, b) => b.score - a.score);
   return {
     profile: { id: profile.id, nameKo: profile.nameKo },
-    universe: market === "US" ? UNIVERSE_US.length : tradableOnly ? UNIVERSE.length : UNIVERSE_KR_ALL.length,
+    universe: tradableOnly
+      ? (market === "US" ? UNIVERSE_US.length : UNIVERSE.length)
+      : (market === "US" ? UNIVERSE_US_ALL.length : UNIVERSE_KR_ALL.length),
     scanned: Object.values(store.rows).filter((r) => rowMarket(r) === market).length,
     updatedAt: store.updatedAt,
     rows: rows.slice(0, limit),
@@ -911,8 +920,8 @@ export async function comboRank(env: Env, wRaw: Partial<ComboWeights>, limit = 2
   rows.sort((a, b) => b.total - a.total);
   return {
     weights: w,
-    // 조합 순위는 조회 전용 화면이라 확장 티어(코스닥150·수동)까지 모집단에 넣는다
-    universe: market === "US" ? UNIVERSE_US.length : UNIVERSE_KR_ALL.length,
+    // 조합 순위는 조회 전용 화면이라 확장 티어(코스닥150·수동 선정)까지 모집단에 넣는다
+    universe: market === "US" ? UNIVERSE_US_ALL.length : UNIVERSE_KR_ALL.length,
     scanned: Object.values(store.rows).filter((r) => rowMarket(r) === market).length,
     updatedAt: store.updatedAt,
     rows: rows.slice(0, Math.min(50, Math.max(1, limit))),

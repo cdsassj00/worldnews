@@ -1043,6 +1043,16 @@ function setupTaPane(): void {
  * 위쪽 종목 검색과 따로 둔 이유는 쓰임이 다르기 때문이다. 저쪽은 온톨로지 경로를
  * 보러 가는 입구이고, 여기는 차트만 보러 오는 사람의 입구다. 하나로 묶으면
  * 차트를 보려고 스크롤을 위로 올라갔다 다시 내려와야 한다. */
+/** 배치 목록 밖의 입력을 바로 분석 가능한 심볼로 바꾼다.
+ *  6자리 코드는 거래소를 알 수 없으니 코스피·코스닥을 둘 다 내놓고 사용자가 고르게 한다
+ *  (규칙으로 한쪽을 찍으면 절반은 빈 차트가 뜬다). */
+function directSymbols(qUp: string): { symbol: string; label: string }[] {
+  if (/^\d{6}$/.test(qUp)) return [{ symbol: `${qUp}.KS`, label: "코스피" }, { symbol: `${qUp}.KQ`, label: "코스닥" }];
+  if (/^[A-Z0-9-]{1,10}\.[A-Z]{1,3}$/.test(qUp)) return [{ symbol: qUp, label: "입력한 심볼" }];
+  if (/^[A-Z]{1,5}(-[A-Z])?$/.test(qUp)) return [{ symbol: qUp, label: "미국" }];
+  return [];
+}
+
 function setupTaSearch(): void {
   const input = $<HTMLInputElement>("ta-search");
   const results = $<HTMLUListElement>("ta-results");
@@ -1068,16 +1078,32 @@ function setupTaSearch(): void {
       .slice(0, 5);
     try {
       const { items } = await api.radarFind(q).catch(() => ({ items: [] as never[] }));
-      if (!items.length && !usHits.length) {
-        results.replaceChildren(el("li", { class: "note", text: "일치하는 종목이 없습니다 (국내 350 + 미국 104 종목에서 검색)" }));
-        results.hidden = false;
-        return;
-      }
       const pick = (symbol: string, name: string) => {
         void taPanel?.show(symbol, name);
         input.value = "";
         close();
       };
+      if (!items.length && !usHits.length) {
+        // 배치 목록에 없다고 못 보는 게 아니다 — 차트·전략은 심볼만 있으면 그 자리에서 계산된다
+        const direct = directSymbols(qUp);
+        results.replaceChildren(
+          el("li", {
+            class: "note",
+            text: direct.length
+              ? "배치 분석 목록에는 없습니다 — 아래를 누르면 지금 바로 계산합니다"
+              : "일치하는 종목이 없습니다 (6자리 종목코드나 미국 티커를 입력하면 바로 분석합니다)",
+          }),
+          ...direct.map((d) => {
+            const btn = el("button", { type: "button" }, [
+              el("span", {}, [el("span", { text: d.symbol }), el("span", { class: "cc", text: ` ${d.label} · 즉시 분석` })]),
+            ]);
+            btn.addEventListener("click", () => pick(d.symbol, ""));
+            return el("li", {}, [btn]);
+          }),
+        );
+        results.hidden = false;
+        return;
+      }
       results.replaceChildren(
         ...items.map((r) => {
           const btn = el("button", { type: "button" }, [

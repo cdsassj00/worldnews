@@ -30,7 +30,7 @@ import { dailyBrief } from "./brief";
 import { taCached } from "./ta";
 import { smaSeries, VERDICT_KO } from "../shared/ta";
 import { ApiError, round } from "./util";
-import { CODE_TO_SYMBOL, CODE_TO_NAME } from "./symbols";
+import { CODE_TO_NAME, marketOfSymbol, resolveTicker } from "./symbols";
 
 const W = 1920, H = 1080;
 const GOLD = "#d9a441", UP = "#e0524a", DOWN = "#3b82f6", FG = "#e2e8f0", DIM = "#94a3b8", PANEL = "rgba(15,23,42,0.92)";
@@ -230,9 +230,13 @@ async function sceneStock(env: Env, market: "KR" | "US", code: string, animate: 
 
 const MA20_COLOR = "#38bdf8", MA60_COLOR = "#a78bfa";
 
-async function sceneChart(env: Env, market: "KR" | "US", code: string, animate: boolean): Promise<string> {
-  const symbol = CODE_TO_SYMBOL.get(code);
-  if (!symbol) throw new ApiError(404, "stock_not_found", { code });
+async function sceneChart(env: Env, _marketHint: "KR" | "US", code: string, animate: boolean): Promise<string> {
+  const r = resolveTicker(code);
+  if (!r) throw new ApiError(404, "stock_not_found", { code });
+  const symbol = r.symbol;
+  // 시장은 심볼 접미사로 정한다 — 호출자가 market 을 KR 로 굳혀 보내면
+  // 미국 종목 차트가 "36,000원"으로 나온다(텔레그램 /종목 에서 실측)
+  const market = marketOfSymbol(symbol);
   const [series] = await getManySeries(env, [symbol], "1y");
   if (!series) throw new ApiError(404, "chart_data_unavailable", { code });
   const cur = market === "US" ? "$" : "원";
@@ -319,13 +323,15 @@ const STRAT_SHORT: Record<string, string> = {
 };
 const TREND_KO: Record<string, string> = { up: "상승", down: "하락", flat: "횡보" };
 
-async function sceneStrategies(env: Env, market: "KR" | "US", code: string, animate: boolean): Promise<string> {
-  const symbol = CODE_TO_SYMBOL.get(code);
-  if (!symbol) throw new ApiError(404, "stock_not_found", { code });
+async function sceneStrategies(env: Env, _marketHint: "KR" | "US", code: string, animate: boolean): Promise<string> {
+  const r = resolveTicker(code);
+  if (!r) throw new ApiError(404, "stock_not_found", { code });
+  const symbol = r.symbol;
+  const market = marketOfSymbol(symbol);
   const rep = await taCached(env, symbol);
   if (!rep.strategies.length) throw new ApiError(404, "not_enough_history", { code });
   const cur = market === "US" ? "$" : "원";
-  const name = CODE_TO_NAME.get(code) ?? rep.name;
+  const name = CODE_TO_NAME.get(r.code) ?? rep.name;
 
   // 13개 전략 칩 — 7열×2행
   const gx0 = 80, gx1 = 1840, cols = 7, gap = 16;

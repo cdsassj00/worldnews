@@ -16,7 +16,7 @@ import type { Env } from "./env";
 import { dailyBrief } from "./brief";
 import { getFeed } from "./feed";
 import { buildShowcase } from "./showcase";
-import { sceneShot } from "./shot";
+import { sceneShots, type ShotRequest } from "./shot";
 
 const API = "https://api.telegram.org";
 const SITE = "https://stockontology.cc";
@@ -85,9 +85,49 @@ export async function tgSend(env: Env, text: string): Promise<{ ok: boolean; err
 }
 
 /** 사진 한 장 — 캡션은 텔레그램 상한이 1024자라 본문보다 짧게 넣는다 */
-export async function tgSendPhoto(env: Env, png: ArrayBuffer, caption: string): Promise<{ ok: boolean; error?: string }> {
+/**
+ * 여러 장을 한 묶음(앨범)으로 보낸다 — 낱장으로 네 번 올리면 방이 지저분해지고,
+ * 텔레그램 알림도 네 번 울린다. 캡션은 첫 장에만 붙이는 게 텔레그램 규칙이다.
+ * `to` 를 주면 그 방에만(명령 응답), 안 주면 등록된 모든 대상에(정기 공지).
+ */
+export async function tgSendAlbum(
+  env: Env,
+  photos: { png: ArrayBuffer; caption?: string }[],
+  to?: string | number,
+): Promise<{ ok: boolean; error?: string }> {
   const token = env.TELEGRAM_BOT_TOKEN;
-  const targets = tgTargets(env);
+  const targets = to !== undefined ? [String(to)] : tgTargets(env);
+  const items = photos.slice(0, 10); // 텔레그램 앨범 상한
+  if (!token || !targets.length) return { ok: false, error: "TELEGRAM_BOT_TOKEN 또는 TELEGRAM_CHAT_ID 가 설정되지 않았습니다" };
+  if (!items.length) return { ok: false, error: "보낼 이미지가 없습니다" };
+  if (items.length === 1) return tgSendPhoto(env, items[0].png, items[0].caption ?? "", to);
+
+  let lastError: string | undefined;
+  let anyOk = false;
+  for (const chatId of targets) {
+    try {
+      const form = new FormData();
+      form.append("chat_id", chatId);
+      form.append("media", JSON.stringify(items.map((p, i) => ({
+        type: "photo",
+        media: `attach://p${i}`,
+        // 앨범 캡션은 1024자 상한이고, 두 번째 장부터는 열어 봐야 보인다 — 첫 장에 몰아 쓴다
+        ...(p.caption ? { caption: p.caption.slice(0, 1000), parse_mode: "HTML" } : {}),
+      }))));
+      items.forEach((p, i) => form.append(`p${i}`, new Blob([p.png], { type: "image/png" }), `scene${i}.png`));
+      const res = await fetch(`${API}/bot${token}/sendMediaGroup`, { method: "POST", body: form });
+      if (res.ok) anyOk = true;
+      else lastError = `${chatId}: telegram ${res.status} ${(await res.text()).slice(0, 120)}`;
+    } catch (e) {
+      lastError = `${chatId}: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  }
+  return { ok: anyOk, error: anyOk ? undefined : lastError };
+}
+
+export async function tgSendPhoto(env: Env, png: ArrayBuffer, caption: string, to?: string | number): Promise<{ ok: boolean; error?: string }> {
+  const token = env.TELEGRAM_BOT_TOKEN;
+  const targets = to !== undefined ? [String(to)] : tgTargets(env);
   if (!token || !targets.length) return { ok: false, error: "TELEGRAM_BOT_TOKEN 또는 TELEGRAM_CHAT_ID 가 설정되지 않았습니다" };
   let lastError: string | undefined;
   let anyOk = false;
@@ -113,18 +153,28 @@ export async function tgSendPhoto(env: Env, png: ArrayBuffer, caption: string): 
 /** 공지에 함께 붙일 차트 — 상위 몇 종목의 scene.svg 를 PNG 로 찍는다 */
 export async function sendPickCharts(env: Env, market: "KR" | "US", picks: { code?: string; symbol: string | null; name: string; priceLabel: string; nearestSupport: number | null; nearestResistance: number | null }[], max = 2): Promise<string[]> {
   const cur = market === "US" ? "$" : "원";
-  const sent: string[] = [];
+
+  /* 차트 낱장만 보내면 "이 종목이 왜 뽑혔는지"가 그림에 없다 — 스윙 목록·삼합 순위·
+   * 수급 순위 표를 앞에 세우고 그 뒤에 종목 차트를 붙인다. 앨범 한 묶음이라 알림도 한 번. */
+  const reqs: ShotRequest[] = [
+    { view: "swing", market, caption: "" },
+    { view: "combo", market, caption: "" },
+    { view: "flow", market, caption: "" },
+  ];
   for (const p of picks.slice(0, max)) {
     const code = p.code ?? (p.symbol ?? "").split(".")[0];
     if (!code) continue;
-    const png = await sceneShot(env, `chart:${code}`, market);
-    if (!png) continue;
     const sup = p.nearestSupport ? ` · 지지 ${p.nearestSupport.toLocaleString("ko-KR")}${cur}` : "";
     const res = p.nearestResistance ? ` · 저항 ${p.nearestResistance.toLocaleString("ko-KR")}${cur}` : "";
-    const r = await tgSendPhoto(env, png, `<b>${esc(p.name)}</b> ${esc(p.priceLabel)}${esc(sup)}${esc(res)}`);
-    if (r.ok) sent.push(`chart:${code}`);
+    reqs.push({ view: `chart:${code}`, market, caption: `${esc(p.name)} ${esc(p.priceLabel)}${esc(sup)}${esc(res)}` });
   }
-  return sent;
+
+  const shots = await sceneShots(env, reqs);
+  if (!shots.length) return [];
+  // 앨범 캡션은 첫 장에만 보인다 — 한 줄 요약을 거기 몰아 쓰고 나머지는 비워 둔다
+  const head = `<b>오늘의 분석</b> — 스윙 목록 · 삼합 순위 · 수급 순위 · 상위 종목 일봉 (${shots.length}장)`;
+  const r = await tgSendAlbum(env, shots.map((s, i) => ({ png: s.png, caption: i === 0 ? head : s.caption })));
+  return r.ok ? shots.map((s) => s.view) : [];
 }
 
 interface BriefForTg {
