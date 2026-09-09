@@ -13,7 +13,7 @@ import { dailyBrief } from "./brief";
 import { comboRank, quantRank } from "./quant";
 import { getFeed } from "./feed";
 import { stockBundle } from "./bundle";
-import { buildDailyMessage, tgAnnounce, tgSendPhoto } from "./telegram";
+import { buildDailyMessage, tgAnnounce, tgSendPhoto, tgTargets } from "./telegram";
 import { sceneShot } from "./shot";
 import { CODE_TO_NAME } from "./symbols";
 
@@ -146,9 +146,9 @@ export async function handleTelegramUpdate(env: Env, update: unknown): Promise<{
   const arg = rest.join(" ");
   /* 공개 채널은 @username 으로 지정할 수 있다(인원 증가로 숫자 id 가 바뀌어도 안 끊긴다).
    * 그 경우 들어온 숫자 id 와 설정값이 달라지므로, username 도 함께 비교한다. */
-  const home = String(env.TELEGRAM_CHAT_ID ?? "");
-  const uname = u.message?.chat?.username ? `@${u.message.chat.username}` : "";
-  const isHome = home !== "" && (String(chatId) === home || uname.toLowerCase() === home.toLowerCase());
+  const homes = tgTargets(env).map((t) => t.toLowerCase());
+  const uname = u.message?.chat?.username ? `@${u.message.chat.username}`.toLowerCase() : "";
+  const isHome = homes.includes(String(chatId)) || (uname !== "" && homes.includes(uname));
 
   try {
     if (cmd === "/도움" || cmd === "/help" || cmd === "/start") { await reply(env, chatId, HELP); return { handled: cmd }; }

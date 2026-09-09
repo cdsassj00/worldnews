@@ -28,6 +28,15 @@ const DISCLAIMER = "공개 데이터 기반 자동 분석이며 투자 자문·�
 
 export interface TgResult { ok: boolean; sent: string[]; skipped: string[]; error?: string }
 
+/**
+ * 공지 대상 — 쉼표로 여러 곳을 넣을 수 있다("@채널,-100123...").
+ * 채널은 공지가 안 묻히고 링크로 뿌리기 좋고, 그룹은 슬래시 명령이 먹는다.
+ * 둘 중 하나를 고를 이유가 없어서 둘 다 보낼 수 있게 뒀다(2026-09-09).
+ */
+export function tgTargets(env: Env): string[] {
+  return String(env.TELEGRAM_CHAT_ID ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+}
+
 /** HTML 파스모드에서 깨지지 않게 — 텔레그램은 &, <, > 만 이스케이프하면 된다 */
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -48,44 +57,55 @@ async function saveSent(env: Env, log: SentLog): Promise<void> {
 /** 한 건 전송. 토큰·방 번호가 없으면 보내지 않고 그대로 알린다(조용히 실패하지 않는다). */
 export async function tgSend(env: Env, text: string): Promise<{ ok: boolean; error?: string }> {
   const token = env.TELEGRAM_BOT_TOKEN;
-  const chatId = env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) return { ok: false, error: "TELEGRAM_BOT_TOKEN 또는 TELEGRAM_CHAT_ID 가 설정되지 않았습니다" };
-  try {
-    const res = await fetch(`${API}/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: "HTML",
-        // 링크 미리보기가 붙으면 공지가 길어져 방이 지저분해진다
-        link_preview_options: { is_disabled: true },
-      }),
-    });
-    if (!res.ok) return { ok: false, error: `telegram ${res.status}: ${(await res.text()).slice(0, 200)}` };
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  const targets = tgTargets(env);
+  if (!token || !targets.length) return { ok: false, error: "TELEGRAM_BOT_TOKEN 또는 TELEGRAM_CHAT_ID 가 설정되지 않았습니다" };
+  let lastError: string | undefined;
+  let anyOk = false;
+  for (const chatId of targets) {
+    try {
+      const res = await fetch(`${API}/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          parse_mode: "HTML",
+          // 링크 미리보기가 붙으면 공지가 길어져 방이 지저분해진다
+          link_preview_options: { is_disabled: true },
+        }),
+      });
+      // 한 곳이 실패해도 나머지에는 보낸다 — 방 하나 때문에 전체 공지를 접지 않는다
+      if (res.ok) anyOk = true;
+      else lastError = `${chatId}: telegram ${res.status} ${(await res.text()).slice(0, 120)}`;
+    } catch (e) {
+      lastError = `${chatId}: ${e instanceof Error ? e.message : String(e)}`;
+    }
   }
+  return { ok: anyOk, error: anyOk ? undefined : lastError };
 }
 
 /** 사진 한 장 — 캡션은 텔레그램 상한이 1024자라 본문보다 짧게 넣는다 */
 export async function tgSendPhoto(env: Env, png: ArrayBuffer, caption: string): Promise<{ ok: boolean; error?: string }> {
   const token = env.TELEGRAM_BOT_TOKEN;
-  const chatId = env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) return { ok: false, error: "TELEGRAM_BOT_TOKEN 또는 TELEGRAM_CHAT_ID 가 설정되지 않았습니다" };
-  try {
-    const form = new FormData();
-    form.append("chat_id", chatId);
-    form.append("caption", caption.slice(0, 1000));
-    form.append("parse_mode", "HTML");
-    form.append("photo", new Blob([png], { type: "image/png" }), "chart.png");
-    const res = await fetch(`${API}/bot${token}/sendPhoto`, { method: "POST", body: form });
-    if (!res.ok) return { ok: false, error: `telegram ${res.status}: ${(await res.text()).slice(0, 200)}` };
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  const targets = tgTargets(env);
+  if (!token || !targets.length) return { ok: false, error: "TELEGRAM_BOT_TOKEN 또는 TELEGRAM_CHAT_ID 가 설정되지 않았습니다" };
+  let lastError: string | undefined;
+  let anyOk = false;
+  for (const chatId of targets) {
+    try {
+      const form = new FormData();
+      form.append("chat_id", chatId);
+      form.append("caption", caption.slice(0, 1000));
+      form.append("parse_mode", "HTML");
+      form.append("photo", new Blob([png], { type: "image/png" }), "chart.png");
+      const res = await fetch(`${API}/bot${token}/sendPhoto`, { method: "POST", body: form });
+      if (res.ok) anyOk = true;
+      else lastError = `${chatId}: telegram ${res.status} ${(await res.text()).slice(0, 120)}`;
+    } catch (e) {
+      lastError = `${chatId}: ${e instanceof Error ? e.message : String(e)}`;
+    }
   }
+  return { ok: anyOk, error: anyOk ? undefined : lastError };
 }
 
 /* ── 메시지 만들기 ─────────────────────────────── */
