@@ -41,6 +41,7 @@ import { sceneSvg } from "./scenes";
 import { getFeed, refreshFeed, sessionStateOf } from "./feed";
 import { stockBundle } from "./bundle";
 import { tgAnnounce, tgCron } from "./telegram";
+import { handleTelegramUpdate } from "./tgbot";
 import { liveSensitivity, promoteSensitivity, rollbackSensitivity } from "./senslive";
 
 export { RadarDB } from "./radar";
@@ -646,6 +647,18 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     const date = url.searchParams.get("date") ?? undefined;
     const { data } = await cached(env, `brief:v2:${m}:${date ?? "today"}`, 300, () => dailyBrief(env, m, date));
     return json(data);
+  }
+
+  if (path === "/api/telegram/webhook") {
+    /* 텔레그램이 방의 메시지를 여기로 보내 준다 — 방에서 /추천 같은 명령을 칠 수 있게.
+     * 공개 URL 이라 누구나 POST 할 수 있으므로 secret_token 헤더가 맞을 때만 처리한다. */
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    const given = request.headers.get("x-telegram-bot-api-secret-token") ?? "";
+    if (!env.TELEGRAM_WEBHOOK_SECRET || given !== env.TELEGRAM_WEBHOOK_SECRET) throw new ApiError(401, "unauthorized");
+    const update = await request.json().catch(() => ({}));
+    /* 텔레그램은 응답이 늦으면 같은 업데이트를 다시 보낸다 — 즉시 200 을 주고 뒤에서 처리한다 */
+    ctx.waitUntil(handleTelegramUpdate(env, update).catch(() => undefined));
+    return json({ ok: true });
   }
 
   if (path === "/api/telegram/announce") {

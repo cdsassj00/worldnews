@@ -24,6 +24,8 @@ export interface Env {
   TELEGRAM_ENABLED?: string; // "true" 여야 크론이 공지를 보낸다. 기본 꺼짐
   TELEGRAM_CHAT_ID?: string; // 그룹방 id (예: -1001234567890)
   TELEGRAM_BOT_TOKEN?: string; // 시크릿 — @BotFather 발급 토큰
+  /** 시크릿 — setWebhook 에 넘긴 값. 텔레그램이 헤더로 되돌려 주며, 이 값이 맞을 때만 명령을 처리한다 */
+  TELEGRAM_WEBHOOK_SECRET?: string;
 
   // secrets
   KIS_APP_KEY?: string;
