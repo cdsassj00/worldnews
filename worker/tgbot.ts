@@ -117,7 +117,12 @@ async function cmdStock(env: Env, query: string): Promise<{ text: string; code: 
 
 /** 텔레그램 업데이트 한 건 처리 — 명령이 아니면 조용히 넘긴다(잡담에 끼어들지 않는다) */
 export async function handleTelegramUpdate(env: Env, update: unknown): Promise<{ handled: string | null }> {
-  const u = update as { message?: { text?: string; chat?: { id: number; type?: string; title?: string } } };
+  const raw = update as {
+    message?: { text?: string; chat?: { id: number; type?: string; title?: string; username?: string } };
+    channel_post?: { text?: string; chat?: { id: number; type?: string; title?: string; username?: string } };
+  };
+  // 채널은 message 가 아니라 channel_post 로 온다 — 설치할 때 채널 id 를 잡으려면 둘 다 봐야 한다
+  const u = { message: raw.message ?? raw.channel_post };
   const text = u.message?.text?.trim();
   const chatId = u.message?.chat?.id;
   if (chatId === undefined) return { handled: null };
@@ -125,7 +130,11 @@ export async function handleTelegramUpdate(env: Env, update: unknown): Promise<{
   /* 방 번호를 기록해 둔다 — 설치할 때 chat_id 를 찾는 유일한 방법이다.
    * 웹훅을 걸면 getUpdates 가 막히기 때문에, 방에서 아무 말이나 하면 여기 남게 해 둔다. */
   await env.CACHE.put("tg:lastchat", JSON.stringify({
-    id: chatId, type: u.message?.chat?.type ?? null, title: u.message?.chat?.title ?? null, at: Date.now(),
+    id: chatId,
+    type: u.message?.chat?.type ?? null,
+    title: u.message?.chat?.title ?? null,
+    username: u.message?.chat?.username ?? null,
+    at: Date.now(),
   }), { expirationTtl: 86_400 }).catch(() => undefined);
 
   if (!text) return { handled: null };
@@ -134,7 +143,11 @@ export async function handleTelegramUpdate(env: Env, update: unknown): Promise<{
   const [rawCmd, ...rest] = text.split(/\s+/);
   const cmd = rawCmd.split("@")[0];
   const arg = rest.join(" ");
-  const isHome = String(chatId) === String(env.TELEGRAM_CHAT_ID);
+  /* 공개 채널은 @username 으로 지정할 수 있다(인원 증가로 숫자 id 가 바뀌어도 안 끊긴다).
+   * 그 경우 들어온 숫자 id 와 설정값이 달라지므로, username 도 함께 비교한다. */
+  const home = String(env.TELEGRAM_CHAT_ID ?? "");
+  const uname = u.message?.chat?.username ? `@${u.message.chat.username}` : "";
+  const isHome = home !== "" && (String(chatId) === home || uname.toLowerCase() === home.toLowerCase());
 
   try {
     if (cmd === "/도움" || cmd === "/help" || cmd === "/start") { await reply(env, chatId, HELP); return { handled: cmd }; }
