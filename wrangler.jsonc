@@ -34,6 +34,9 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RadarDB"] }],
   "vars": {
+    // 텔레그램 공지 — 봇이 참여한 그룹방 번호와 스위치(토큰은 시크릿)
+    "TELEGRAM_ENABLED": "true",
+    "TELEGRAM_CHAT_ID": "-5488559177",
     // "vts" = 모의투자 도메인(29443), "prod" = 실전투자 도메인(9443).
     // 사용자 계좌가 실전 전용이므로 "prod". 주문은 아래 스위치들로 여전히 막혀 있다
     // (ORDER_ENABLED=false, ORDER_DRY_RUN=true) — 조회와 검증만 가능한 상태다.
