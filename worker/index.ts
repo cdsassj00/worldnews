@@ -40,6 +40,7 @@ import { briefCardSvg, dailyBrief } from "./brief";
 import { sceneSvg } from "./scenes";
 import { getFeed, refreshFeed, sessionStateOf } from "./feed";
 import { stockBundle } from "./bundle";
+import { tgAnnounce, tgCron } from "./telegram";
 import { liveSensitivity, promoteSensitivity, rollbackSensitivity } from "./senslive";
 
 export { RadarDB } from "./radar";
@@ -647,6 +648,22 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     return json(data);
   }
 
+  if (path === "/api/telegram/announce") {
+    /* 텔레그램 공지 — 운영자 전용(무단 발송 방지).
+     *   POST /api/telegram/announce?kind=daily|events|intro&market=KR|US&dry=1
+     * dry=1 이면 만들어만 보고 보내지 않는다(문구 점검용). */
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    const market = url.searchParams.get("market")?.toUpperCase() === "US" ? "US" : "KR";
+    const kindRaw = url.searchParams.get("kind") ?? "daily";
+    const kind = kindRaw === "events" || kindRaw === "intro" ? kindRaw : "daily";
+    return json(await tgAnnounce(env, {
+      market, kind,
+      dryRun: url.searchParams.get("dry") === "1",
+      force: url.searchParams.get("force") === "1",
+    }));
+  }
+
   if (path === "/api/feed") {
     /* 발행 후보 피드 — "지금 무슨 일이 일어났는가"를 종목 단위 이벤트로.
      * 이벤트는 KV 로그에 쌓이므로 since 로 폴링하면 놓치지 않는다(요청 1번). */
@@ -904,6 +921,8 @@ export default {
         /* 발행 피드 갱신 — 이벤트는 "직전 상태와의 차이"라, 아무도 API를 안 부르면
          * 변화가 지나가 버린다. 크론이 스냅샷을 갱신해 로그에 남긴다(실패해도 손해 없음). */
         .then(() => refreshFeed(env, usCron || usFallback ? "US" : "KR").catch(() => undefined))
+        /* 텔레그램 공지 — 피드 갱신 뒤라야 오늘 변화가 반영된다. 꺼져 있으면 즉시 빠진다. */
+        .then(() => tgCron(env).catch(() => undefined))
         .catch(() => undefined),
     );
   },

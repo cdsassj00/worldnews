@@ -17,6 +17,12 @@ export interface Env {
   KIS_TRANSPORT?: string; // "auto" | "fetch" | "socket"
   KIS_OVERSEAS?: string; // "auto" | "on" | "off" — 해외주식 주문/잔고 사용 가능 여부
 
+  /* 텔레그램 공지 (telegram.ts) — 봇이 그룹방에 오늘의 스윙 관점·주요 변화를 올린다.
+   * 토큰은 시크릿, 방 번호와 스위치는 vars 로 둔다(방을 바꾸는 건 비밀이 아니다). */
+  TELEGRAM_ENABLED?: string; // "true" 여야 크론이 공지를 보낸다. 기본 꺼짐
+  TELEGRAM_CHAT_ID?: string; // 그룹방 id (예: -1001234567890)
+  TELEGRAM_BOT_TOKEN?: string; // 시크릿 — @BotFather 발급 토큰
+
   // secrets
   KIS_APP_KEY?: string;
   KIS_APP_SECRET?: string;

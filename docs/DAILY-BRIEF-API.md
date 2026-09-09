@@ -418,3 +418,53 @@ GET /api/session?market=KR   → { sessionState, sessionKo, staleAfterMinutes, a
 발행 직전에 이것만 불러 "마감 기준"이라고 말해도 되는지 확인하면 된다. `sessionState`가
 `open`이면 나레이션을 "장중 기준"으로 바꾸고, `staleAfterMinutes`(장중 15분)를 넘긴 값으로는
 발행하지 않는 것을 권장한다.
+
+## 13) 텔레그램 그룹방 공지 (2026-09-09 추가)
+
+구조는 단순하다. **이 워커의 크론 → Telegram Bot API → 봇이 참여한 그룹방.** 외부 서버가
+필요 없다(크론·KV·데이터가 이미 여기 있다).
+
+### 13-1) 붙이는 순서 (운영자가 하는 일)
+
+1. 텔레그램에서 **@BotFather** 에게 `/newbot` — 이름과 아이디를 정하면 **토큰**을 준다.
+2. 그 봇을 **그룹방에 초대**한다. (공지만 할 거면 관리자 권한은 필요 없다. 다만 BotFather 에서
+   `/setprivacy` 를 Disabled 로 두면 봇이 방의 모든 메시지를 보게 되므로, 공지만 할 거면 **켜둔 채로**(Enabled) 두는 편이 안전하다.)
+3. **방 id 확인** — 방에 아무 메시지나 하나 쓴 뒤
+   `https://api.telegram.org/bot<토큰>/getUpdates` 를 브라우저로 열면 `"chat":{"id":-1001234567890 …}` 이 보인다.
+   그룹은 **음수**로 시작한다(슈퍼그룹은 `-100…`).
+4. 워커에 값을 넣는다.
+   ```
+   npx wrangler secret put TELEGRAM_BOT_TOKEN     # 토큰(비밀)
+   # wrangler.jsonc vars 에 추가 — 비밀이 아니다
+   #   "TELEGRAM_CHAT_ID": "-1001234567890",
+   #   "TELEGRAM_ENABLED": "true"
+   npx wrangler deploy
+   ```
+5. 먼저 **dry-run** 으로 문구만 확인하고, 괜찮으면 실제 발송을 한 번 눌러 본다.
+   ```
+   curl -X POST -H "Authorization: Bearer $TRADE_TOKEN" \
+     "https://stockontology.cc/api/telegram/announce?kind=daily&dry=1"     # 만들기만
+   curl -X POST -H "Authorization: Bearer $TRADE_TOKEN" \
+     "https://stockontology.cc/api/telegram/announce?kind=intro"           # 방 소개 1회
+   ```
+
+### 13-2) 무엇이 언제 나가나
+
+| 시각(KST) | 종류 | 내용 |
+|---|---|---|
+| 16시대, 평일 | `daily` | 오늘의 스윙 관점 4종목 — 국면·다음 거래일·며칠째 유지·왜(온톨로지 인과)·지지/저항 |
+| 09:00~15:30, 평일 | `events` | `/api/feed` 이벤트 중 **priority 0.8 이상**만(합의 형성·국면 전환·플랜 상향 등) |
+| 수동 | `intro` | 시스템 소개(showcase) — 방에 처음 붙일 때 한 번 |
+
+- **중복 방지**: 발송 id 를 KV(`tg:sent:v1`, 7일)에 남겨 같은 공지를 두 번 보내지 않는다.
+  크론은 15분마다 도는데 그때마다 같은 글이 나가면 그냥 스팸이다.
+- **하루 상한 4건** — 이벤트가 쏟아지는 날 방을 도배하지 않게. `force=1` 로만 넘길 수 있다.
+- **모든 메시지에 면책 문구**가 붙는다. 종목 이야기를 반복 발신하는 채널이라 빠뜨리면 안 된다.
+- 계좌·주문·손익은 **어떤 메시지에도 넣지 않는다**(운영자 전용 데이터).
+- 끄려면 `TELEGRAM_ENABLED` 를 `"false"` 로 두거나 지우면 된다(기본값도 꺼짐).
+
+### 13-3) 주의 — 수익화와 유사투자자문업
+
+무료·비수익 방이면 정보 공유로 볼 여지가 크지만, **구독료를 받거나 유료 채널로 운영하면
+유사투자자문업 신고 대상**이 될 수 있다. 종목·매수가·손절가를 반복 발신하는 형태라 더 그렇다.
+지금 구성은 면책 문구를 매 메시지에 붙이고 실계좌 수치를 넣지 않는 선까지만 자동화해 두었다.
