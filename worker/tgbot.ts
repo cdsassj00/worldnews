@@ -13,7 +13,7 @@ import { dailyBrief } from "./brief";
 import { comboRank, quantRank } from "./quant";
 import { getFeed } from "./feed";
 import { stockBundle } from "./bundle";
-import { buildDailyMessage, tgSendPhoto } from "./telegram";
+import { buildDailyMessage, tgAnnounce, tgSendPhoto } from "./telegram";
 import { sceneShot } from "./shot";
 import { CODE_TO_NAME } from "./symbols";
 
@@ -29,6 +29,7 @@ const HELP = [
   "/수급 — 자금흐름·매집·거래대금 순위 상위 8",
   "/지금 — 방금 일어난 변화(합의 형성·급증·돌파 등)",
   "/종목 삼성전자 — 그 종목 판정·매매 플랜·차트 이미지",
+  "/공지 — 정기 공지를 지금 채널에 올리기(차트 이미지 포함)",
   "/도움 — 이 목록",
   "",
   `<i>${DISCLAIMER}</i>`,
@@ -155,6 +156,12 @@ export async function handleTelegramUpdate(env: Env, update: unknown): Promise<{
     if (cmd === "/추천" || cmd === "/picks") {
       const m = await buildDailyMessage(env, "KR");
       await reply(env, chatId, m?.text ?? "오늘 스윙 목록을 만들지 못했습니다.");
+      return { handled: cmd };
+    }
+    if (cmd === "/공지" || cmd === "/announce") {
+      if (!isHome) { await reply(env, chatId, "이 명령은 등록된 채널·방에서만 씁니다."); return { handled: cmd }; }
+      const r = await tgAnnounce(env, { market: "KR", kind: "daily", force: true });
+      await reply(env, chatId, r.ok ? `공지 완료 — ${r.sent.join(", ") || "보낸 항목 없음"}` : `실패: ${esc(r.error ?? "알 수 없음")}`);
       return { handled: cmd };
     }
     if (cmd === "/삼합" || cmd === "/combo") { await reply(env, chatId, await cmdCombo(env)); return { handled: cmd }; }
