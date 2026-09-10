@@ -13,7 +13,7 @@ import { dailyBrief } from "./brief";
 import { comboRank, quantRank } from "./quant";
 import { getFeed } from "./feed";
 import { stockBundle } from "./bundle";
-import { buildDailyMessage, tgAnnounce, tgSendAlbum, tgTargets } from "./telegram";
+import { buildDailyMessage, buildGuideMessage, planBlock, tgAnnounce, tgPostGuide, tgSendAlbum, tgTargets, whyLines } from "./telegram";
 import { sceneShots, type ShotRequest } from "./shot";
 import { CODE_TO_NAME } from "./symbols";
 
@@ -31,6 +31,7 @@ const HELP = [
   "/지금 — 방금 일어난 변화(합의 형성·급증·돌파 등)",
   "/종목 삼성전자 — 판정·매매 플랜 + 일봉·전략표·온톨로지 이미지",
   "/공지 — 정기 공지를 지금 채널에 올리기(차트 이미지 포함)",
+  "/안내 — 방 상단에 고정할 안내문 올리기",
   "/도움 — 이 목록",
   "",
   `<i>${DISCLAIMER}</i>`,
@@ -109,7 +110,13 @@ async function cmdHorizon(env: Env, id: "day" | "swing" | "long"): Promise<{ tex
           picks: {
             code: string; name: string; symbol: string | null; sector: string | null; priceLabel: string; changePct: number;
             why: { ontologyKo: string | null; flowKo: string | null; chartKo: string | null };
-            plan: { stop: number; stopPct: number; target: number | null; targetPct: number | null; rr: number | null; stopWhyKo: string; targetWhyKo: string; levelNoteKo: string | null };
+            plan: {
+              stop: number; stopPct: number;
+              target: number | null; targetPct: number | null;
+              rr: number | null; stopWhyKo: string; targetWhyKo: string; levelNoteKo: string | null;
+              nearestSupport: { price: number; label: string; pct: number } | null;
+              nearestResistance: { price: number; label: string; pct: number } | null;
+            };
           }[];
         }[];
       } | null;
@@ -118,32 +125,33 @@ async function cmdHorizon(env: Env, id: "day" | "swing" | "long"): Promise<{ tex
   const b = res.briefs[0];
   const k = b?.horizons?.buckets.find((x) => x.id === id);
   if (!k) return { text: "아직 구간별 추천을 만들지 못했습니다. 잠시 뒤 다시 시도해 주세요.", nameKo: id, codes: [] };
+  const cur = "원"; // 이 명령은 한국 시장만 다룬다
 
-  const won = (v: number) => `${Math.round(v).toLocaleString("ko-KR")}원`;
+  /* 숫자는 문장에서 빼내 등폭 표로 세운다 — 목표·손절·지지·저항을 문장 속에 섞으면
+   * 찾으려고 읽어야 한다(2026-09-11 "글이 자글자글하다"). 손익비까지 한 줄에 넣는다. */
   const lines = [
-    `<b>${esc(k.nameKo)} 관점</b> — ${esc(k.holdKo)}`,
+    `${esc(k.nameKo)} <b>관점</b>  <i>${esc(k.holdKo)}</i>`,
     `<i>${esc(k.ruleKo)}</i>`,
-    `매수 시점: <b>${esc(b.targetSession)} 시가</b>`,
-    "",
+    `🕘 매수 <b>${esc(b.targetSession)} 시가</b>`,
   ];
-  if (k.track) lines.push(`📉 ${esc(k.track.summaryKo)}`, "");
+  if (k.track) lines.push("", `📉 <i>${esc(k.track.summaryKo)}</i>`);
+
   for (const p of k.picks) {
-    lines.push(`<b>${esc(p.name)}</b> <code>${esc(p.symbol ?? p.code)}</code> ${esc(p.priceLabel)} (${p.changePct >= 0 ? "+" : ""}${p.changePct.toFixed(1)}%)`);
-    if (p.why.ontologyKo) lines.push(`  🌍 거시 — ${esc(p.why.ontologyKo)}`);
-    if (p.why.flowKo) lines.push(`  💰 수급 — ${esc(p.why.flowKo)}`);
-    if (p.why.chartKo) lines.push(`  📈 차트 — ${esc(p.why.chartKo)}`);
-    lines.push(`  🛑 손절 ${esc(won(p.plan.stop))} (${p.plan.stopPct}%) — ${esc(p.plan.stopWhyKo)}`);
-    lines.push(p.plan.target !== null
-      ? `  🎯 목표 ${esc(won(p.plan.target))} (${p.plan.targetPct! >= 0 ? "+" : ""}${p.plan.targetPct}%)${p.plan.rr !== null ? ` · 손익비 ${p.plan.rr}` : ""} — ${esc(p.plan.targetWhyKo)}`
-      : `  🎯 ${esc(p.plan.targetWhyKo)}`);
-    if (p.plan.levelNoteKo) lines.push(`  📐 ${esc(p.plan.levelNoteKo)}`);
     lines.push("");
+    lines.push("━━━━━━━━━━━━━━━");
+    lines.push(`<b>▎${esc(p.name)}</b> ${esc(p.priceLabel)} <i>(${p.changePct >= 0 ? "+" : ""}${p.changePct.toFixed(1)}%${p.sector ? ` · ${esc(p.sector)}` : ""})</i>`);
+    lines.push(planBlock(p.plan, cur));
+    if (p.plan.rr !== null) lines.push(`<i>손익비 ${p.plan.rr}</i>`);
+    lines.push(...whyLines(p.why, 70));
   }
+
+  lines.push("");
+  lines.push("━━━━━━━━━━━━━━━");
   lines.push(`<i>${esc(k.orderKo)}</i>`);
   lines.push(`<i>⚠ ${esc(k.cautionKo)}</i>`);
   lines.push(`<i>${DISCLAIMER}</i>`);
   let text = lines.join("\n");
-  if (text.length > 4000) text = `${text.slice(0, 3900)}\n…`;
+  if (text.length > 4000) text = `${text.slice(0, 3880)}</pre>\n…`;
   return { text, nameKo: k.nameKo, codes: k.picks.map((p) => ({ code: p.code, name: p.name })) };
 }
 
@@ -216,6 +224,16 @@ export async function handleTelegramUpdate(env: Env, update: unknown): Promise<{
 
   try {
     if (cmd === "/도움" || cmd === "/help" || cmd === "/start") { await reply(env, chatId, HELP); return { handled: cmd }; }
+
+    if (cmd === "/안내" || cmd === "/guide") {
+      /* 방 상단에 고정할 안내문. 등록된 방이면 실제로 올리고 고정까지 하고,
+       * 그 밖에서는 내용만 보여 준다(아무 방에나 글을 고정하면 안 된다). */
+      if (!isHome) { await reply(env, chatId, buildGuideMessage().text); return { handled: cmd }; }
+      const r = await tgPostGuide(env);
+      if (!r.ok) await reply(env, chatId, `안내문을 올리지 못했습니다: ${esc(r.error ?? "알 수 없음")}`);
+      else if (r.skipped.length) await reply(env, chatId, `안내문을 올렸습니다. 다만: ${esc(r.skipped.join(" / "))}`);
+      return { handled: cmd };
+    }
 
     if (cmd === "/추천" || cmd === "/picks") {
       const m = await buildDailyMessage(env, "KR");

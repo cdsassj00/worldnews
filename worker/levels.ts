@@ -141,9 +141,12 @@ export function nearestLevels(lv: Levels | null, price: number): {
   resistance: { price: number; label: string } | null;
 } {
   if (!lv || !price) return { support: null, resistance: null };
+  /* 라벨에 지지/저항을 박지 않는다 — 한 번 저항이던 자리가 뚫리면 지지가 된다.
+   * 그대로 두면 "지지 21,588 (4번 저항받은 자리)" 처럼 자기모순인 문장이 나간다
+   * (2026-09-11 실측). 역할은 현재가 대비 위/아래로 이미 정해지므로 여기선 횟수만 말한다. */
   const cands: { price: number; label: string }[] = [
-    ...lv.support.map((s) => ({ price: s.price, label: `${s.touches}번 지지받은 자리` })),
-    ...lv.resistance.map((s) => ({ price: s.price, label: `${s.touches}번 저항받은 자리` })),
+    ...lv.support.map((s) => ({ price: s.price, label: `${s.touches}번 부딪힌 자리` })),
+    ...lv.resistance.map((s) => ({ price: s.price, label: `${s.touches}번 부딪힌 자리` })),
     ...(lv.ma.ma5 ? [{ price: lv.ma.ma5, label: "5일선" }] : []),
     ...(lv.ma.ma20 ? [{ price: lv.ma.ma20, label: "20일선" }] : []),
     ...(lv.ma.ma60 ? [{ price: lv.ma.ma60, label: "60일선" }] : []),

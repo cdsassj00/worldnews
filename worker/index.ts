@@ -40,7 +40,7 @@ import { briefCardSvg, dailyBrief } from "./brief";
 import { sceneSvg } from "./scenes";
 import { getFeed, refreshFeed, sessionStateOf } from "./feed";
 import { stockBundle } from "./bundle";
-import { tgAnnounce, tgCron } from "./telegram";
+import { tgAnnounce, tgCron, tgPostGuide } from "./telegram";
 import { handleTelegramUpdate } from "./tgbot";
 import { liveSensitivity, promoteSensitivity, rollbackSensitivity } from "./senslive";
 
@@ -661,6 +661,15 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     /* 텔레그램은 응답이 늦으면 같은 업데이트를 다시 보낸다 — 즉시 200 을 주고 뒤에서 처리한다 */
     ctx.waitUntil(handleTelegramUpdate(env, update).catch(() => undefined));
     return json({ ok: true });
+  }
+
+  if (path === "/api/telegram/guide") {
+    /* 방 안내문을 올리고 고정한다 + "/" 명령 메뉴를 등록한다.
+     * 새로 들어온 사람이 봇에게 뭘 시킬 수 있는지 알게 하는 게 목적이라, 방을 새로 만들거나
+     * 명령을 바꿨을 때 한 번씩 부르면 된다. 운영자 전용 — 아무나 방에 글을 고정하면 안 된다. */
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    assertTradeAuth(env, request);
+    return json(await tgPostGuide(env));
   }
 
   if (path === "/api/telegram/announce") {
