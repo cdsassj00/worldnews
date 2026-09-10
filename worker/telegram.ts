@@ -486,6 +486,46 @@ export async function tgPostGuide(env: Env): Promise<TgResult> {
   return { ok: sent.length > 0, sent, skipped, error };
 }
 
+/**
+ * 고정이 살아 있는지 확인하고, 없어졌으면 다시 올려 고정한다.
+ *
+ * "공지를 늘 띄워놓으라"는 요청(2026-09-11). 고정은 사람이 풀 수도 있고 다른 글이
+ * 고정되면 밀린다. 그래서 하루 한 번 확인한다 — 매번 다시 올리면 방이 안내문으로
+ * 도배되므로, **고정이 실제로 없을 때만** 다시 올린다.
+ */
+export async function tgEnsureGuidePinned(env: Env): Promise<TgResult> {
+  const token = env.TELEGRAM_BOT_TOKEN;
+  const targets = tgTargets(env);
+  if (!token || !targets.length) return { ok: false, sent: [], skipped: ["토큰 또는 대상 없음"] };
+
+  const sent: string[] = [];
+  const skipped: string[] = [];
+  let needPost = false;
+
+  for (const chatId of targets) {
+    try {
+      const res = await fetch(`${API}/bot${token}/getChat?chat_id=${encodeURIComponent(chatId)}`);
+      if (!res.ok) { skipped.push(`${chatId}: getChat ${res.status}`); continue; }
+      const body = (await res.json()) as { result?: { pinned_message?: { text?: string } } };
+      const pinned = body.result?.pinned_message?.text ?? "";
+      // 안내문인지 본문 첫 줄로 판별한다 — 다른 글이 고정돼 있으면 건드리지 않는다
+      if (pinned.includes("이 방은 무엇을 올리나요")) { sent.push(`pinned-ok:${chatId}`); continue; }
+      needPost = true;
+      skipped.push(`${chatId}: 안내문 고정이 없어 다시 올림`);
+    } catch (e) {
+      skipped.push(`${chatId}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  if (needPost) {
+    const r = await tgPostGuide(env);
+    sent.push(...r.sent);
+    skipped.push(...r.skipped);
+    return { ok: r.ok, sent, skipped, error: r.error };
+  }
+  return { ok: true, sent, skipped };
+}
+
 /** 시스템 소개 — 방에 처음 붙일 때 한 번 쓰는 고정 안내(수동 호출용) */
 export function buildIntroMessage(): { id: string; text: string } {
   const sc = buildShowcase();
@@ -559,6 +599,11 @@ export async function tgCron(env: Env): Promise<TgResult> {
   const hhmm = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
   const weekday = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", weekday: "short" }).format(now);
   if (weekday === "Sat" || weekday === "Sun") return { ok: true, sent: [], skipped: ["주말"] };
+
+  /* 장 시작 전(08시대)에 안내문 고정을 한 번 확인한다. 공지 시각과 떼어 놓는 이유는
+   * 정기 공지 직후에 확인하면 방금 올린 공지가 고정을 밀어낸 상태로 잡혀 매일 다시
+   * 올리게 되기 때문이다. 고정이 살아 있으면 아무것도 하지 않는다. */
+  if (hhmm >= "08:00" && hhmm < "09:00") return tgEnsureGuidePinned(env);
 
   // 16시대 = 한국장 마감 정리 후. 하루 한 번만 나가도록 id 로 걸러진다.
   if (hhmm >= "16:00" && hhmm < "17:00") return tgAnnounce(env, { market: "KR", kind: "daily" });

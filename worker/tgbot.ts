@@ -188,10 +188,84 @@ async function replyShots(env: Env, chatId: number | string, reqs: ShotRequest[]
   await tgSendAlbum(env, shots.map((s) => ({ png: s.png, caption: s.caption })), chatId);
 }
 
+/* ── 새로 들어온 사람 맞이 ──────────────────────────────
+ * 고정 안내문을 올려 놔도 대부분 안 보고 지나친다. 들어오는 순간 짧은 인사로 명령을
+ * 알려 주는 게 확실하다. 다만 두 가지를 지킨다:
+ *  ① **짧게.** 긴 글은 새로 들어온 사람이 더 안 읽는다. 자세한 건 고정 안내문에 있다.
+ *  ② **몰려 들어와도 한 번만.** 초대로 열 명이 한꺼번에 들어오면 열 번 울린다.
+ *     방마다 10분 쿨다운을 두고, 그 사이 들어온 사람은 이름만 묶어 한 번에 인사한다. */
+
+const WELCOME_COOLDOWN_SEC = 600;
+
+/** 봇 자신이 초대됐는지 — 그때는 인사 대신 안내문을 올리고 고정한다 */
+async function botUsername(env: Env): Promise<string | null> {
+  const cached = await env.CACHE.get("tg:me", "text").catch(() => null);
+  if (cached) return cached;
+  try {
+    const res = await fetch(`${API}/bot${env.TELEGRAM_BOT_TOKEN}/getMe`);
+    if (!res.ok) return null;
+    const body = (await res.json()) as { result?: { username?: string } };
+    const name = body.result?.username ?? null;
+    if (name) await env.CACHE.put("tg:me", name, { expirationTtl: 86_400 }).catch(() => undefined);
+    return name;
+  } catch {
+    return null;
+  }
+}
+
+async function welcomeJoiners(
+  env: Env,
+  chatId: number,
+  members: { id: number; is_bot?: boolean; first_name?: string; username?: string }[],
+): Promise<void> {
+  const me = await botUsername(env);
+
+  // 봇 자신이 방에 들어왔다 — 설치 순간이다. 인사 대신 안내문을 올리고 고정한다.
+  if (me && members.some((m) => m.is_bot && m.username === me)) {
+    await tgPostGuide(env).catch(() => undefined);
+    return;
+  }
+
+  const people = members.filter((m) => !m.is_bot);
+  if (!people.length) return; // 다른 봇이 들어온 것뿐이면 조용히 넘긴다
+
+  const key = `tg:welcomed:${chatId}`;
+  if (await env.CACHE.get(key).catch(() => null)) return; // 쿨다운 중 — 도배 방지
+  await env.CACHE.put(key, "1", { expirationTtl: WELCOME_COOLDOWN_SEC }).catch(() => undefined);
+
+  const names = people.slice(0, 5).map((m) => esc(m.first_name ?? m.username ?? "새 멤버")).join(", ");
+  const more = people.length > 5 ? ` 외 ${people.length - 5}명` : "";
+
+  await reply(env, chatId, [
+    `👋 <b>${names}</b>${more}님 반갑습니다.`,
+    "",
+    "이 방은 매일 한국장 마감 뒤 <b>단타 · 스윙 · 장기</b> 세 구간으로",
+    "종목을 <b>손절·목표 가격과 함께</b> 올립니다.",
+    "",
+    "<b>바로 써보세요</b>",
+    "<pre>" + esc([
+      "/추천   오늘 종목 추천 전부",
+      "/단타   짧게 (익절 +10% · 손절 -5%)",
+      "/스윙   중간 (익절 +15% · 손절 -6%)",
+      "/장기   길게 (고점 대비 -25% 추적)",
+      "/종목   예: /종목 삼성전자",
+      "/도움   전체 명령 목록",
+    ].join("\n")) + "</pre>",
+    "입력창에 <b>/</b> 만 쳐도 목록이 뜹니다.",
+    "",
+    "📌 <b>고정된 안내문</b>에 자세한 설명이 있습니다 — 매수 시점, 보유 기간, 백테스트 성적까지.",
+    `<i>${DISCLAIMER}</i>`,
+  ].join("\n"));
+}
+
 /** 텔레그램 업데이트 한 건 처리 — 명령이 아니면 조용히 넘긴다(잡담에 끼어들지 않는다) */
 export async function handleTelegramUpdate(env: Env, update: unknown): Promise<{ handled: string | null }> {
   const raw = update as {
-    message?: { text?: string; chat?: { id: number; type?: string; title?: string; username?: string } };
+    message?: {
+      text?: string;
+      chat?: { id: number; type?: string; title?: string; username?: string };
+      new_chat_members?: { id: number; is_bot?: boolean; first_name?: string; username?: string }[];
+    };
     channel_post?: { text?: string; chat?: { id: number; type?: string; title?: string; username?: string } };
   };
   // 채널은 message 가 아니라 channel_post 로 온다 — 설치할 때 채널 id 를 잡으려면 둘 다 봐야 한다
@@ -199,6 +273,14 @@ export async function handleTelegramUpdate(env: Env, update: unknown): Promise<{
   const text = u.message?.text?.trim();
   const chatId = u.message?.chat?.id;
   if (chatId === undefined) return { handled: null };
+
+  /* 새로 들어온 사람 — 고정 안내문을 안 보고 지나치는 사람이 대부분이라,
+   * 들어오는 순간 짧은 인사로 명령을 알려 준다(2026-09-11 요청). */
+  const joined = raw.message?.new_chat_members;
+  if (joined?.length) {
+    await welcomeJoiners(env, chatId, joined);
+    return { handled: "join" };
+  }
 
   /* 방 번호를 기록해 둔다 — 설치할 때 chat_id 를 찾는 유일한 방법이다.
    * 웹훅을 걸면 getUpdates 가 막히기 때문에, 방에서 아무 말이나 하면 여기 남게 해 둔다. */
