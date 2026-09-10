@@ -154,12 +154,14 @@ export async function tgSendPhoto(env: Env, png: ArrayBuffer, caption: string, t
 export async function sendPickCharts(env: Env, market: "KR" | "US", picks: { code?: string; symbol: string | null; name: string; priceLabel: string; nearestSupport: number | null; nearestResistance: number | null }[], max = 2): Promise<string[]> {
   const cur = market === "US" ? "$" : "원";
 
-  /* 차트 낱장만 보내면 "이 종목이 왜 뽑혔는지"가 그림에 없다 — 스윙 목록·삼합 순위·
-   * 수급 순위 표를 앞에 세우고 그 뒤에 종목 차트를 붙인다. 앨범 한 묶음이라 알림도 한 번. */
+  /* 차트 낱장만 보내면 "이 종목이 왜 뽑혔는지"가 그림에 없다 — 기간별 추천 카드를 맨 앞에
+   * 세우고, 그 뒤에 세 관점(온톨로지·수급·삼합) 표, 마지막에 종목 일봉을 붙인다.
+   * 순서가 곧 읽는 순서다: 뭘 사나 → 왜 → 어디서 손절하나. 앨범 한 묶음이라 알림도 한 번. */
   const reqs: ShotRequest[] = [
-    { view: "swing", market, caption: "" },
+    { view: "horizons", market, caption: "" },
     { view: "combo", market, caption: "" },
     { view: "flow", market, caption: "" },
+    { view: "consensus", market, caption: "" },
   ];
   for (const p of picks.slice(0, max)) {
     const code = p.code ?? (p.symbol ?? "").split(".")[0];
@@ -172,7 +174,7 @@ export async function sendPickCharts(env: Env, market: "KR" | "US", picks: { cod
   const shots = await sceneShots(env, reqs);
   if (!shots.length) return [];
   // 앨범 캡션은 첫 장에만 보인다 — 한 줄 요약을 거기 몰아 쓰고 나머지는 비워 둔다
-  const head = `<b>오늘의 분석</b> — 스윙 목록 · 삼합 순위 · 수급 순위 · 상위 종목 일봉 (${shots.length}장)`;
+  const head = `<b>오늘의 분석</b> — 기간별 추천 · 삼합 순위 · 수급 순위 · 엔진 합의 · 종목 일봉 (${shots.length}장)`;
   const r = await tgSendAlbum(env, shots.map((s, i) => ({ png: s.png, caption: i === 0 ? head : s.caption })));
   return r.ok ? shots.map((s) => s.view) : [];
 }
@@ -192,38 +194,109 @@ interface BriefForTg {
       nearestResistance: number | null; nearestResistanceLabel: string | null; toResistancePct: number | null;
     }[];
   };
+  /** 투자 기간별 추천 — 공지 본문의 원천. worker/horizons.ts 의 HorizonsBlock 중 쓰는 부분만 */
+  horizons?: {
+    noteKo: string;
+    buckets: {
+      id: string; nameKo: string; holdKo: string; ruleKo: string;
+      track: { windows: string[]; returns: number[]; winRate: number[]; trades: number[]; benchmarkReturns: number[] } | null;
+      picks: {
+        code: string; symbol: string | null; name: string; sector: string | null;
+        priceLabel: string; changePct: number;
+        why: { ontologyKo: string | null; flowKo: string | null; chartKo: string | null };
+        plan: { stop: number; stopPct: number; target: number | null; targetPct: number | null; rr: number | null; levelNoteKo: string | null };
+      }[];
+    }[];
+  } | null;
 }
 
-/** 정기 공지 — 하루 한 번, 마감 뒤. 스윙 관점 목록이 본문이다. */
+const BUCKET_ICON: Record<string, string> = { day: "⚡", swing: "🌀", long: "🌳" };
+
+/**
+ * 정기 공지 — 하루 한 번, 마감 뒤.
+ *
+ * 본문은 **투자 기간별 추천**이다(2026-09-10 개편). 예전에는 "스윙 관점" 한 덩어리만 보내서
+ * 받는 사람이 하루 만에 팔지 석 달을 들지 알 수가 없었다. 이제 단타·스윙·장기를 나누고,
+ * 구간마다 청산 규칙과 그 규칙의 백테스트 성적을 같이 싣는다 — 성적이 나쁘면 나쁜 대로.
+ *
+ * 종목마다 세 관점(거시·수급·차트)과 손절·목표 절대가를 붙인다. 텔레그램 한 메시지는
+ * 4096자 제한이 있어, 구간당 종목 수와 문장 길이를 여기서 잘라 쓴다.
+ */
 export async function buildDailyMessage(env: Env, market: "KR" | "US"): Promise<{ id: string; text: string } | null> {
   const res = (await dailyBrief(env, market)) as { date?: string; briefs: BriefForTg[] };
   const b = res.briefs[0];
-  if (!b || !b.swing.picks.length) return null;
+  if (!b) return null;
   const cur = market === "US" ? "$" : "원";
   const mk = market === "US" ? "미국" : "한국";
   const day = res.date ?? kstDay();
+  const money = (v: number) => (cur === "$" ? `${v.toLocaleString("en-US", { maximumFractionDigits: v >= 100 ? 0 : 2 })}$` : `${Math.round(v).toLocaleString("ko-KR")}원`);
+
+  const h = b.horizons;
+  // horizons 가 없으면(옛 캐시 등) 예전 스윙 형식으로 떨어진다 — 공지를 거르는 것보다 낫다
+  if (!h?.buckets?.length) return buildLegacySwingMessage(b, market, day, cur);
 
   const lines: string[] = [];
-  lines.push(`<b>📊 ${esc(mk)} 스윙 관점 · ${esc(day)}</b>`);
-  lines.push(`${esc(b.regime.label)}`);
-  lines.push(`다음 거래일 <b>${esc(b.targetSession)}</b> 기준 · ${b.sessionClosed ? "마감 데이터" : "장중 데이터(숫자가 계속 바뀝니다)"}`);
-  lines.push("");
-  lines.push(esc(b.swing.headlineKo));
+  lines.push(`<b>📊 ${esc(mk)} 종목 추천 · ${esc(day)}</b>`);
+  lines.push(esc(b.regime.label));
+  lines.push(`매수 시점 <b>${esc(b.targetSession)} 시가</b> · ${b.sessionClosed ? "마감 데이터 기준" : "장중 데이터 — 마감 뒤 바뀝니다"}`);
   lines.push("");
 
+  for (const k of h.buckets) {
+    if (!k.picks.length) continue;
+    lines.push(`${BUCKET_ICON[k.id] ?? "•"} <b>${esc(k.nameKo)}</b> — ${esc(k.holdKo)}`);
+    lines.push(`<i>${esc(k.ruleKo)}</i>`);
+    if (k.track) {
+      const i = k.track.windows.length - 1;
+      const r = k.track.returns[i], bm = k.track.benchmarkReturns[i];
+      const gap = Math.round((r - bm) * 10) / 10;
+      lines.push(`<i>1년 백테스트 ${r >= 0 ? "+" : ""}${r}% · 지수 ${gap >= 0 ? `${gap}%p 초과` : `${Math.abs(gap)}%p 미달`} · ${k.track.trades[i]}건 · 승률 ${k.track.winRate[i]}%</i>`);
+    }
+    lines.push("");
+    for (const p of k.picks) {
+      lines.push(`<b>${esc(p.name)}</b> <code>${esc(p.symbol ?? p.code)}</code> ${esc(p.priceLabel)} (${p.changePct >= 0 ? "+" : ""}${p.changePct.toFixed(1)}%)${p.sector ? ` · ${esc(p.sector)}` : ""}`);
+      if (p.why.ontologyKo) lines.push(`  🌍 ${esc(cut(p.why.ontologyKo, 90))}`);
+      if (p.why.flowKo) lines.push(`  💰 ${esc(cut(p.why.flowKo, 90))}`);
+      if (p.why.chartKo) lines.push(`  📈 ${esc(cut(p.why.chartKo, 90))}`);
+      const tgt = p.plan.target !== null
+        ? `목표 ${money(p.plan.target)}(${p.plan.targetPct! >= 0 ? "+" : ""}${p.plan.targetPct}%)`
+        : `목표 없음 — 고점 대비 −25%에서 청산`;
+      lines.push(`  🎯 ${esc(tgt)} · 손절 ${esc(money(p.plan.stop))}(${p.plan.stopPct}%)${p.plan.rr !== null ? ` · 손익비 ${p.plan.rr}` : ""}`);
+      if (p.plan.levelNoteKo) lines.push(`  📐 ${esc(cut(p.plan.levelNoteKo, 120))}`);
+      lines.push("");
+    }
+  }
+
+  lines.push(`<i>${esc(h.noteKo)}</i>`);
+  lines.push(`🔗 ${SITE}`);
+  lines.push(`<i>${esc(DISCLAIMER)}</i>`);
+
+  // 텔레그램 상한 4096자 — 넘으면 장기 구간부터 잘라내지 말고 문장을 줄인다
+  let text = lines.join("\n");
+  if (text.length > 4000) text = `${text.slice(0, 3900)}\n…\n🔗 ${SITE}`;
+  return { id: `tg_daily_${market}_${day}`, text };
+}
+
+const cut = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1)}…`);
+
+/** horizons 가 없을 때의 예전 형식 — 캐시 전환기에만 쓰인다 */
+function buildLegacySwingMessage(b: BriefForTg, market: "KR" | "US", day: string, cur: string): { id: string; text: string } | null {
+  if (!b.swing?.picks.length) return null;
+  const lines = [
+    `<b>📊 ${esc(market === "US" ? "미국" : "한국")} 스윙 관점 · ${esc(day)}</b>`,
+    esc(b.regime.label),
+    "",
+    esc(b.swing.headlineKo),
+    "",
+  ];
   b.swing.picks.forEach((p, i) => {
-    const agree = p.independentCount >= 2 ? ` · <b>독립 ${p.independentCount}개 일치</b>` : "";
-    lines.push(`<b>${i + 1}. ${esc(p.name)}</b> <code>${esc(p.symbol ?? "")}</code> ${esc(p.priceLabel)}`);
-    lines.push(`   ${p.appearances + 1}거래일째 유지${agree}${p.sector ? ` · ${esc(p.sector)}` : ""}`);
+    lines.push(`<b>${i + 1}. ${esc(p.name)}</b> ${esc(p.priceLabel)}`);
     if (p.whyKo) lines.push(`   💡 ${esc(p.whyKo)}`);
-    const sup = p.nearestSupport ? `지지 ${esc(p.nearestSupportLabel ?? "")} ${p.nearestSupport.toLocaleString("ko-KR")}${cur}(${p.toSupportPct}%)` : null;
-    const resv = p.nearestResistance ? `저항 ${p.nearestResistance.toLocaleString("ko-KR")}${cur}(+${p.toResistancePct}%)` : null;
+    const sup = p.nearestSupport ? `지지 ${p.nearestSupport.toLocaleString("ko-KR")}${cur}` : null;
+    const resv = p.nearestResistance ? `저항 ${p.nearestResistance.toLocaleString("ko-KR")}${cur}` : null;
     if (sup || resv) lines.push(`   📐 ${[sup, resv].filter(Boolean).join(" / ")}`);
     lines.push("");
   });
-
-  lines.push(`🔗 ${SITE}`);
-  lines.push(`<i>${esc(DISCLAIMER)}</i>`);
+  lines.push(`🔗 ${SITE}`, `<i>${esc(DISCLAIMER)}</i>`);
   return { id: `tg_daily_${market}_${day}`, text: lines.join("\n") };
 }
 

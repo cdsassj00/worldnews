@@ -25,6 +25,7 @@ import { getManySeries } from "./quotes";
 import { computeLevels, type Levels } from "./levels";
 import { buildEnginesAndAgreement, holdDaysFor } from "./agreement";
 import { buildSwing, swingCandidateCodes } from "./swing";
+import { buildHorizons } from "./horizons";
 import { buildShowcase } from "./showcase";
 import { ApiError, round } from "./util";
 import { CODE_TO_SYMBOL, symbolFor } from "./symbols";
@@ -98,6 +99,20 @@ async function latestHistBefore(env: Env, market: BriefMarket, today: string): P
 /* ── 나레이션(TTS) 문장 ─────────────────────────────── */
 
 /** 표시용 문자열의 기호를 소리 내어 읽을 수 있게 정리 */
+/**
+ * 차트 근거에 붙일 위치 한 마디 — "합의 0.39" 만으로는 지금 어디에 서 있는지 알 수 없다.
+ * 이동평균 기준 위치는 지지·저항 계산에 이미 들어 있는 값이라 추가 조회가 없다.
+ */
+function chartPosKo(code: string, price: number, levelsByCode: Map<string, Levels | null>): string {
+  const lv = levelsByCode.get(code);
+  if (!lv || !price) return ".";
+  const ma20 = lv.ma.ma20, ma60 = lv.ma.ma60;
+  if (!ma20 || !ma60) return ".";
+  const above20 = price >= ma20, above60 = price >= ma60;
+  const where = above20 && above60 ? "20일선·60일선 위" : above20 ? "20일선 위·60일선 아래" : above60 ? "20일선 아래·60일선 위" : "20일선·60일선 아래";
+  return `, 현재가는 ${where}입니다.`;
+}
+
 function speakable(s: string): string {
   return s
     .replace(/([+-]?\d+(?:\.\d+)?)%/g, (_, n: string) => `${n.replace("+", "플러스 ").replace("-", "마이너스 ")}퍼센트`)
@@ -219,8 +234,10 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
     ...agreement.filter((a) => a.independentCount >= 2).map((a) => a.code),
     // 스윙 후보(잔류 조건 통과)도 지지·저항이 필요하다 — 같은 호출로 한 번에 받는다
     ...swingCandidateCodes({ history: histChain, engines: enginesOut, todayPickCodes: rawPicks.map((s) => s.code) }),
-    // 삼합 상위도 목록에 들 수 있으니 함께 받는다
-    ...(combo?.rows ?? []).slice(0, 6).map((r) => r.code),
+    /* 삼합 상위 — 스윙 목록과 구간별 추천(horizons)이 둘 다 여기서 나온다.
+     * 12개까지 받는 이유: 구간이 셋이고 각 구간이 섹터캡 2로 3~4종목을 고르므로,
+     * 6개만 받으면 뒤쪽 구간에서 지지·저항이 빈 채로 계획이 나간다. */
+    ...(combo?.rows ?? []).slice(0, 12).map((r) => r.code),
   ];
   for (const code of new Set(levelTargets)) {
     const sym = CODE_TO_SYMBOL.get(code);
@@ -312,6 +329,38 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
     priceByCode,
   });
 
+  /* 투자 기간별 추천 — 단타/스윙/장기. 매수 신호는 셋 다 같고(삼합 문턱) 청산 규칙만 다르며,
+   * 규칙마다 백테스트를 따로 돌려 성적을 쟀다(2026-09-10). SNS·유튜브·텔레그램이 전부
+   * 이 블록을 그대로 읽어 쓴다 — 채널마다 다시 계산하면 숫자가 갈라진다. */
+  const ontoReasonByCode = new Map<string, string[]>();
+  for (const s of verdict.stocks.recommend) ontoReasonByCode.set(s.code, s.reasons ?? []);
+  const sectorReason = new Map<string, string>();
+  for (const s of verdict.sectors.all) if (s.reasons?.[0]) sectorReason.set(s.sector, s.reasons[0]);
+
+  const horizons = buildHorizons({
+    market: market === "US" ? "US" : "KR",
+    cur,
+    sources: (combo?.rows ?? []).slice(0, 12).map((r) => ({
+      code: r.code,
+      name: r.name,
+      sector: r.sector,
+      price: r.price,
+      changePct: r.changePct,
+      total: r.total,
+      onto: r.onto,
+      flow: r.flow,
+      chart: r.chart,
+      /* 거시 근거 — 종목별 인과 문장이 있으면 그걸, 없으면 그 업종의 국면 문장을 쓴다.
+       * 둘 다 없으면 null 이다(있지도 않은 분석을 지어내지 않는다). */
+      macroKo: ontoReasonByCode.get(r.code)?.[0] ?? (r.sector ? sectorReason.get(r.sector) ?? null : null),
+      flowKo: r.reason ?? null,
+      chartKo: r.chart !== null
+        ? `차트 거장 전략 13종 합의 ${r.chart >= 0 ? "+" : ""}${r.chart.toFixed(2)}${chartPosKo(r.code, r.price, levelsByCode)}`
+        : null,
+      levels: levelsByCode.get(r.code) ?? null,
+    })),
+  });
+
   /* 이 계산에 쓴 시세의 실제 거래일 — 레이더 최신 갱신 시각의 로컬 날짜. 갱신 기록이 없으면
    * (레이더 조회 실패) 오늘 날짜로 보수적으로 대체한다. */
   const dataSessionDate = dataAsOf ? localDate(dataAsOf, tz) : today;
@@ -344,6 +393,10 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
     /** 스윙 관점 — 며칠째 같은 이유로 남아 있는 종목만 거른 목록.
      * "며칠 오를 종목"이 아니다(그런 예측은 검증한 적이 없다) — ruleKo 를 그대로 읽어 소개할 것. */
     swing,
+    /** 투자 기간별 추천 — 단타·스윙·장기. 각 구간에 청산 규칙과 그 규칙의 백테스트 성적,
+     * 종목마다 거시·수급·차트 세 관점과 손절·목표 절대가가 함께 실린다.
+     * 발행 채널은 이 블록만 읽으면 된다(picks·swing 은 이전 형식 호환용으로 남긴다). */
+    horizons,
     /** 시스템 소개 — SNS·유튜브가 "이 시스템이 뭘 하는지" 자랑할 때 쓸 완성 문장(전부 실측 숫자) */
     showcase: showcaseBlock,
     avoid: verdict.stocks.avoid.slice(0, 3).map((s) => ({
@@ -401,9 +454,10 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
     targetSession: nextTradingDay(dataSessionDate, market),
     /** basis 파생 — "장중이라 낡았을 수 있다"를 문자열 파싱 없이 바로 판별하게 (2026-09-04 요청 5번) */
     sessionClosed: basisOf(market) !== "intraday",
-    /** 밀리초 epoch */
-    dataAsOf: verdict.dataAsOf,
-    generatedAt: verdict.generatedAt,
+    /* dataAsOf·generatedAt 은 이 객체 위쪽에서 이미 넣는다. 여기에 verdict 값으로 한 번 더
+     * 넣고 있었는데(뒤가 이기므로 그쪽이 실제로 나갔다), 그러면 dataAgeMinutes·
+     * dataSessionDate 는 레이더 최신 갱신 시각으로 계산하고 dataAsOf 만 verdict 값이 되어
+     * 응답 안에서 출처가 갈린다. 문서화된 뜻(레이더 최신 갱신 시각)으로 통일한다. */
   };
 
   /* 오늘 이력 저장 — 같은 날짜는 마지막 계산으로 덮어쓴다(내일 채점의 기준가가 된다) */

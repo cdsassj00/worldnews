@@ -165,6 +165,44 @@ const SCENARIOS: QScenario[] = [
   { name: "XA 온톨로지+차트·저회전+필터", engine: "onto_ta",  ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
   { name: "XB 수급+차트·저회전+필터",    engine: "quant_ta", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
   { name: "XC 삼합(온톨+수급+차트)·저회전+필터", engine: "all3", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
+
+  /* ⑩ 투자 기간별 규칙 — "단타/스윙/장기 중 뭘 사라는 거냐"에 답하려면
+   *    기간마다 청산 규칙이 달라야 한다. 지금까지 측정한 건 전부 익절15/손절6
+   *    한 벌뿐이라 평균 보유가 2~16일에 몰려 있었다(장기 근거가 아예 없었다).
+   *    한 기간에 후보를 여러 개 두는 이유: 하나만 재고 그걸 채택하면 과최적화다. */
+
+  /* 단타 — 며칠 안에 소진되는 신호(거래대금 급증·MFI)를 짧게 먹고 나온다.
+   *   익절을 6%로 낮추고 손절도 3%로 조여, 5거래일 안에 결론이 나게 한다. */
+  { name: "H-D1 단타·수급",     engine: "flow",     ...BASE, buyScore: 0.35, takePct: 6, stopPct: 3, timeStopDays: 5, rotateGap: 0, marketMaDays: 20 },
+  { name: "H-D2 단타·돌파",     engine: "breakout", ...BASE, buyScore: 0.35, takePct: 6, stopPct: 3, timeStopDays: 5, rotateGap: 0, marketMaDays: 20 },
+  { name: "H-D3 단타·삼합",     engine: "all3",     ...BASE, buyScore: 0.35, takePct: 6, stopPct: 3, timeStopDays: 5, rotateGap: 0, marketMaDays: 20 },
+  /* D1~D3 가 6개월 KR 에서 전부 손실이었다(-9.7~-16.1%). 원인 후보 둘:
+   *   ① 왕복비용 0.83%(수수료+슬리피지 양편)가 익절 6% 를 갉아먹는다
+   *   ② 손절 3% 가 일중 노이즈에 걸려 이기는 자리까지 잘라낸다
+   * 그래서 폭을 넓힌 판을 같이 잰다 — 안 되면 "단타는 이 신호로 안 된다"가 결론이다. */
+  { name: "H-D4 단타·수급 8/5",  engine: "flow",     ...BASE, buyScore: 0.35, takePct: 8, stopPct: 5, timeStopDays: 5, rotateGap: 0, marketMaDays: 20 },
+  { name: "H-D5 단타·삼합 10/5", engine: "all3",     ...BASE, buyScore: 0.35, takePct: 10, stopPct: 5, timeStopDays: 7, rotateGap: 0, marketMaDays: 20 },
+  { name: "H-D6 단타·돌파 8/4",  engine: "breakout", ...BASE, buyScore: 0.35, takePct: 8, stopPct: 4, timeStopDays: 7, rotateGap: 0, marketMaDays: 20 },
+
+  /* 스윙 — 지금 운영 중인 규칙 그대로(익절15·손절6). 비교 기준선이다. */
+  { name: "H-S1 스윙·삼합",     engine: "all3",     ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20, sectorCap: 2 },
+  { name: "H-S2 스윙·온톨+수급", engine: "hybrid",   ...BASE, buyScore: 0.35, takePct: 15, stopPct: 6, timeStopDays: 0, rotateGap: 0, marketMaDays: 20, sectorCap: 2 },
+
+  /* 장기 — 익절을 아예 없애고(takePct 0) 신호이탈 매도도 끈다(sellScore null).
+   *   손절만 넓게 남겨 수개월을 견디게 한다. 시장 필터도 60일선으로 늦춘다 —
+   *   20일선으로 끊으면 장기 포지션이 조정마다 잘려 장기가 되지 않는다. */
+  { name: "H-L1 장기·온톨로지",  engine: "onto", ...BASE, buyScore: 0.35, sellScore: null, takePct: 0, stopPct: 12, timeStopDays: 0, rotateGap: 0, marketMaDays: 60, sectorCap: 2 },
+  { name: "H-L2 장기·삼합",     engine: "all3", ...BASE, buyScore: 0.35, sellScore: null, takePct: 0, stopPct: 12, timeStopDays: 0, rotateGap: 0, marketMaDays: 60, sectorCap: 2 },
+  { name: "H-L3 장기·추적손절15", engine: "all3", ...BASE, buyScore: 0.35, sellScore: null, takePct: 0, stopPct: 20, trailPct: 15, timeStopDays: 0, rotateGap: 0, marketMaDays: 60, sectorCap: 2 },
+  { name: "H-L4 장기·온톨+추적15", engine: "onto", ...BASE, buyScore: 0.35, sellScore: null, takePct: 0, stopPct: 20, trailPct: 15, timeStopDays: 0, rotateGap: 0, marketMaDays: 60, sectorCap: 2 },
+  /* L1·L2(손절만)는 평균 보유 184~354일로 진짜 장기지만 표본이 4~14건이라 못 믿는다.
+   * L4(추적손절 15%)는 표본이 24~48건으로 쓸 만한데 평균 보유가 19~67일 — "3개월 이상"이 아니다.
+   * 추적 폭을 넓히면 표본을 지키면서 보유가 늘어나는지 본다. 이게 안 되면
+   * "장기는 일봉 신호로 만들 수 없다"가 결론이고, 그대로 화면에 적어야 한다. */
+  { name: "H-L5 장기·온톨+추적25", engine: "onto", ...BASE, buyScore: 0.35, sellScore: null, takePct: 0, stopPct: 25, trailPct: 25, timeStopDays: 0, rotateGap: 0, marketMaDays: 60, sectorCap: 2 },
+  { name: "H-L6 장기·삼합+추적25", engine: "all3", ...BASE, buyScore: 0.35, sellScore: null, takePct: 0, stopPct: 25, trailPct: 25, timeStopDays: 0, rotateGap: 0, marketMaDays: 60, sectorCap: 2 },
+  { name: "H-L7 장기·온톨+추적20", engine: "onto", ...BASE, buyScore: 0.35, sellScore: null, takePct: 0, stopPct: 22, trailPct: 20, timeStopDays: 0, rotateGap: 0, marketMaDays: 60, sectorCap: 2 },
+  { name: "H-L8 장기·온톨+추적30", engine: "onto", ...BASE, buyScore: 0.35, sellScore: null, takePct: 0, stopPct: 30, trailPct: 30, timeStopDays: 0, rotateGap: 0, marketMaDays: 60, sectorCap: 2 },
 ];
 
 /* ── 데이터 ─────────────────────────────── */

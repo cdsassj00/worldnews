@@ -3622,3 +3622,110 @@ body {
   /* 시세 티커는 맨 아랫줄 전체 폭 한 줄 */
   .tape { order: 10; flex-basis: 100%; min-width: 0; }
 }
+
+/* ── 종목 추천 탭 (단타·스윙·장기) ─────────────────────────
+   이 사이트의 결론이 나오는 화면이다. 다른 탭이 "무엇을 분석했나"라면 여기는
+   "그래서 뭘 언제 사고 언제 파느냐"다. 성적은 좋든 나쁘든 같은 크기로 보여준다 —
+   수익률만 크게 키우고 승률·낙폭·표본수를 작게 쓰면 그건 광고다. */
+.hz-market { display: flex; gap: 6px; margin-bottom: 10px; }
+.hz-mk {
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.5);
+  color: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.hz-mk.active { border-color: #d9a441; background: rgba(217, 164, 65, 0.1); color: #d9a441; }
+
+.hz-head { margin-bottom: 14px; }
+.hz-entry {
+  margin: 0 0 6px;
+  font-size: 14px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(217, 164, 65, 0.35);
+  background: rgba(217, 164, 65, 0.07);
+}
+.hz-entry b { color: #d9a441; }
+.hz-basis { color: var(--fg-faint, #64748b); font-size: 12px; }
+
+.hz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.hz-card {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.45);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hz-card-head h3 {
+  margin: 0 0 4px;
+  font-size: 19px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.hz-icon { font-size: 17px; }
+.hz-hold { margin: 0 0 3px; font-size: 12px; font-weight: 700; color: #d9a441; }
+.hz-rule { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--fg-dim, #94a3b8); }
+
+/* 백테스트 성적 — 수익률과 함께 표본수·승률·낙폭을 같은 블록에 둔다 */
+.hz-track {
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  padding: 9px 0;
+  display: grid;
+  gap: 3px;
+}
+.hz-track-top { display: flex; align-items: baseline; gap: 8px; }
+.hz-track-top b { font-size: 24px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.hz-track-lbl { font-size: 11px; color: var(--fg-faint, #64748b); }
+.hz-gap { font-size: 12px; font-weight: 700; }
+.hz-gap.up { color: #e0524a; }
+.hz-gap.down { color: #3b82f6; }
+.hz-track-sub { font-size: 11px; color: var(--fg-dim, #94a3b8); font-variant-numeric: tabular-nums; }
+
+.hz-picks { display: grid; gap: 10px; }
+.hz-pick {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 10px;
+  padding: 9px 11px;
+  display: grid;
+  gap: 5px;
+}
+.hz-pick-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.hz-name { font-size: 14.5px; font-weight: 800; }
+.hz-price { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.hz-chg { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hz-sector { font-size: 11px; color: var(--fg-faint, #64748b); }
+
+.hz-plan { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.hz-target { color: #e0524a; font-weight: 700; }
+.hz-stop { color: #3b82f6; font-weight: 700; }
+.hz-rr { color: var(--fg-dim, #94a3b8); }
+.hz-levels { margin: 0; font-size: 11px; line-height: 1.55; color: var(--fg-dim, #94a3b8); }
+
+.hz-why { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 3px; }
+.hz-why li { display: grid; grid-template-columns: 34px 1fr; gap: 7px; font-size: 11.5px; line-height: 1.5; }
+.hz-why-k {
+  font-size: 10px;
+  font-weight: 800;
+  color: #d9a441;
+  padding-top: 1px;
+}
+.hz-more summary { cursor: pointer; font-size: 11.5px; font-weight: 700; color: #d9a441; }
+.hz-more .note { margin: 6px 0 0; font-size: 11px; }
+
+[data-theme="light"] .hz-card,
+[data-theme="light"] .hz-mk { background: rgba(255, 255, 255, 0.7); }
+[data-theme="light"] .hz-entry { background: rgba(217, 164, 65, 0.1); }

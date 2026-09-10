@@ -626,6 +626,49 @@ export interface ComboRank {
   rows: ComboRow[];
 }
 
+/* 투자 기간별 추천 — worker/horizons.ts 의 응답 형태. 화면이 쓰는 부분만 선언한다. */
+
+export interface HorizonPlan {
+  referencePrice: number; referenceLabel: string;
+  stop: number; stopPct: number; stopWhyKo: string;
+  target: number | null; targetPct: number | null; targetWhyKo: string;
+  rr: number | null; holdKo: string;
+  nearestSupport: { price: number; label: string; pct: number } | null;
+  nearestResistance: { price: number; label: string; pct: number } | null;
+  levelNoteKo: string | null;
+}
+
+export interface HorizonPick {
+  rank: number; code: string; symbol: string | null; name: string; sector: string | null;
+  price: number; priceLabel: string; changePct: number;
+  combo: { total: number; onto: number | null; flow: number | null; chart: number | null };
+  why: { ontologyKo: string | null; flowKo: string | null; chartKo: string | null };
+  plan: HorizonPlan;
+  hookKo: string;
+  views: { chart: string; strategies: string; stock: string | null };
+}
+
+export interface HorizonBucket {
+  id: "day" | "swing" | "long";
+  nameKo: string; holdKo: string; ruleKo: string; entryKo: string; orderKo: string;
+  track: {
+    scenario: string; windows: string[]; returns: number[]; winRate: number[];
+    trades: number[]; maxDd: number[]; holdDaysAvg: number[];
+    benchmarkKo: string; benchmarkReturns: number[]; summaryKo: string;
+  } | null;
+  picks: HorizonPick[];
+  headlineKo: string; cautionKo: string;
+}
+
+export interface HorizonsBlock {
+  market: "KR" | "US";
+  entryKo: string; noteKo: string;
+  buckets: HorizonBucket[];
+  caveats: string[];
+  measuredAt: string | null;
+  disclaimerKo: string;
+}
+
 export interface QuantPosition {
   code: string; name: string; symbol: string; qty: number;
   avgPrice: number; lastPrice: number; enteredAt: number; score: number;
@@ -780,6 +823,11 @@ export const api = {
     request<{ ok: true; engine: string }>("/api/auto/us/engine", { method: "POST", auth: true, body: JSON.stringify({ engine }) }),
 
   backtest: () => request<BacktestResults>("/api/backtest"),
+  /** 투자 기간별 추천 — daily-brief 안의 horizons 블록만 꺼내 쓴다 */
+  horizons: (market: "KR" | "US" = "KR") =>
+    request<{ briefs: { targetSession: string; sessionClosed: boolean; regime: { label: string }; horizons: HorizonsBlock | null }[] }>(
+      `/api/daily-brief?market=${market}`,
+    ),
   labOverview: (market: "KR" | "US" = "KR") => request<LabOverview>(`/api/lab/overview?market=${market}`),
   ta: (symbol: string, days = 180) => request<TaResponse>(`/api/ta?symbol=${encodeURIComponent(symbol)}&days=${days}`),
   overseasCheck: () =>

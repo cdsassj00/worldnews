@@ -202,6 +202,9 @@
         <button type="button" class="tt-tab" data-pane="combo" role="tab" aria-selected="false">
           <b>조합 전략</b><span>세 분석을 섞으면 지금 뭐가 유리한가</span>
         </button>
+        <button type="button" class="tt-tab" data-pane="picks" role="tab" aria-selected="false">
+          <b>종목 추천</b><span>단타 · 스윙 · 장기</span>
+        </button>
       </div>
       <p class="lab-sub" id="terminal-sub">거시요인 → 섹터 → 종목으로 신호가 전파되는 3D 인과 그래프. 확대는 <b>Ctrl(⌘)+스크롤</b>, 일반 스크롤은 페이지를 내립니다.</p>
     </div>
@@ -386,6 +389,17 @@
         <div id="combo-presets" class="combo-presets" role="tablist"></div>
         <div id="combo-sliders" class="combo-sliders"></div>
         <div id="combo-body"><p class="note">조합 순위를 불러오는 중…</p></div>
+      </div>
+    </section>
+
+    <!-- 종목 추천 — 이 사이트의 결론. 매수 신호는 셋 다 같고 청산 규칙만 다르다. -->
+    <section class="terminal-pane" id="pane-picks" hidden aria-label="종목 추천">
+      <div class="pane-inner">
+        <div class="hz-market" id="hz-market" role="tablist" aria-label="시장 선택">
+          <button type="button" class="hz-mk active" data-market="KR">한국</button>
+          <button type="button" class="hz-mk" data-market="US">미국</button>
+        </div>
+        <div id="hz-body"><p class="note">구간별 추천을 불러오는 중…</p></div>
       </div>
     </section>
 

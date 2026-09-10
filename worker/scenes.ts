@@ -524,6 +524,71 @@ async function sceneSwing(env: Env, market: "KR" | "US"): Promise<string> {
   return shell(header(`${market === "US" ? "미국" : "한국"} 스윙 관점 — 며칠째 남아 있는 종목`, `${kstDate()} · ${trunc(sw.headlineKo, 60)}`) + g, false);
 }
 
+/* ── horizons — 투자 기간별 추천(단타·스윙·장기) ─────────────
+ * 한 장에 세 구간을 나란히 세운다. 세로로 쌓으면 텔레그램·인스타에서 글씨가 작아지고,
+ * 무엇보다 "이 셋은 같은 신호에 청산만 다르다"는 관계가 안 보인다. */
+
+async function sceneHorizons(env: Env, market: "KR" | "US"): Promise<string> {
+  const brief = await dailyBrief(env, market) as {
+    briefs: {
+      targetSession: string;
+      horizons?: {
+        buckets: {
+          id: string; nameKo: string; holdKo: string; ruleKo: string;
+          track: { windows: string[]; returns: number[]; winRate: number[]; trades: number[]; benchmarkReturns: number[] } | null;
+          picks: {
+            name: string; sector: string | null; priceLabel: string; changePct: number;
+            plan: { stop: number; stopPct: number; target: number | null; targetPct: number | null };
+          }[];
+        }[];
+      } | null;
+    }[];
+  };
+  const b = brief.briefs[0];
+  const hz = b?.horizons;
+  if (!hz?.buckets.length) throw new ApiError(404, "horizons_unavailable", { market });
+  const cur = market === "US" ? "$" : "원";
+  const money = (v: number) => (cur === "$" ? `${v.toLocaleString("en-US", { maximumFractionDigits: v >= 100 ? 0 : 2 })}$` : `${Math.round(v).toLocaleString("ko-KR")}원`);
+
+  const cardW = 560, gap = 30, x0 = (W - cardW * 3 - gap * 2) / 2, y = 290, cardH = 640;
+  let g = "";
+  hz.buckets.slice(0, 3).forEach((k, i) => {
+    const x = x0 + i * (cardW + gap);
+    const li = (k.track?.windows.length ?? 1) - 1;
+    const ret = k.track ? k.track.returns[li] : null;
+    const gapPct = k.track ? round(k.track.returns[li] - k.track.benchmarkReturns[li], 1) : null;
+
+    g += `<rect x="${x}" y="${y}" width="${cardW}" height="${cardH}" rx="18" fill="${PANEL}" stroke="rgba(148,163,184,0.32)" stroke-width="1.5"/>`;
+    g += `<text x="${x + 28}" y="${y + 58}" fill="${FG}" font-size="40" font-weight="900" ${FONT}>${esc(k.nameKo)}</text>`;
+    g += `<text x="${x + 28}" y="${y + 94}" fill="${GOLD}" font-size="21" font-weight="700" ${FONT}>${esc(trunc(k.holdKo, 34))}</text>`;
+    g += `<text x="${x + 28}" y="${y + 126}" fill="${DIM}" font-size="18" ${FONT}>${esc(trunc(k.ruleKo, 44))}</text>`;
+
+    // 백테스트 한 줄 — 지수를 이겼는지까지 색으로 구분한다
+    if (ret !== null && gapPct !== null && k.track) {
+      g += `<text x="${x + 28}" y="${y + 182}" fill="${dirColor(ret)}" font-size="42" font-weight="900" ${FONT}>${sgn(ret, 1)}%</text>`;
+      g += `<text x="${x + 28}" y="${y + 214}" fill="${DIM}" font-size="18" ${FONT}>1년 백테스트 · 지수 ${gapPct >= 0 ? `${gapPct}%p 초과` : `${Math.abs(gapPct)}%p 미달`}</text>`;
+      g += `<text x="${x + 28}" y="${y + 240}" fill="${DIM}" font-size="18" ${FONT}>${k.track.trades[li]}건 · 승률 ${k.track.winRate[li]}%</text>`;
+    }
+
+    g += `<line x1="${x + 28}" y1="${y + 266}" x2="${x + cardW - 28}" y2="${y + 266}" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>`;
+    k.picks.slice(0, 4).forEach((p, j) => {
+      const py = y + 312 + j * 88;
+      g += `<text x="${x + 28}" y="${py}" fill="${FG}" font-size="27" font-weight="800" ${FONT}>${esc(trunc(p.name, 12))} <tspan fill="${dirColor(p.changePct)}" font-size="20">${sgn(p.changePct, 1)}%</tspan></text>`;
+      g += `<text x="${x + 28}" y="${py + 28}" fill="${DIM}" font-size="19" ${FONT}>${esc(p.priceLabel)}${p.sector ? ` · ${esc(trunc(p.sector, 8))}` : ""}</text>`;
+      const tgt = p.plan.target !== null ? `목표 ${money(p.plan.target)}` : "목표 없음(추적)";
+      g += `<text x="${x + 28}" y="${py + 54}" fill="${UP}" font-size="19" font-weight="700" ${FONT}>${esc(tgt)}</text>`;
+      g += `<text x="${x + 300}" y="${py + 54}" fill="${DOWN}" font-size="19" font-weight="700" ${FONT}>손절 ${esc(money(p.plan.stop))}</text>`;
+    });
+  });
+
+  g += `<text x="${x0}" y="${y + cardH + 44}" fill="${DIM}" font-size="21" ${FONT}>매수 시점은 셋 다 같습니다 — ${esc(b.targetSession)} 시가. 다른 것은 언제 파느냐뿐입니다.</text>`;
+
+  return shell(
+    header(`${market === "US" ? "미국" : "한국"} 종목 추천 — 단타 · 스윙 · 장기`, `${kstDate()} · 같은 삼합 신호, 다른 청산 규칙`) + g,
+    false,
+  );
+}
+
 /* ── league — 전략실 4엔진 성적 ─────────────────────────── */
 
 async function sceneLeague(env: Env, market: "KR" | "US"): Promise<string> {
@@ -589,7 +654,8 @@ export async function sceneSvg(env: Env, market: "KR" | "US", view: string, anim
   if (view === "flow") return sceneFlow(env, market);
   if (view === "combo") return sceneCombo(env, market);
   if (view === "swing") return sceneSwing(env, market);
+  if (view === "horizons") return sceneHorizons(env, market);
   throw new ApiError(400, "bad_view", {
-    allowed: ["overview", "sector:<이름>", "stock:<코드>", "chart:<코드>", "strategies:<코드>", "league", "backtest", "consensus", "flow", "combo", "swing"],
+    allowed: ["overview", "sector:<이름>", "stock:<코드>", "chart:<코드>", "strategies:<코드>", "league", "backtest", "consensus", "flow", "combo", "swing", "horizons"],
   });
 }

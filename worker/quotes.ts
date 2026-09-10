@@ -56,14 +56,30 @@ async function loadSeries(symbol: string, range: string, interval: string): Prom
       const rawCloses = q.close ?? [];
       const rawOpens = q.open ?? [];
       const ts = r.timestamp ?? [];
+      const rawHighs = q.high ?? [];
+      const rawLows = q.low ?? [];
+      const rawVolumes = q.volume ?? [];
       const closes: number[] = [];
       const opens: number[] = [];
+      const highs: number[] = [];
+      const lows: number[] = [];
+      const volumes: number[] = [];
       const timestamps: number[] = [];
+      /* 다섯 배열을 **같은 루프에서** 채운다. 예전에는 closes/opens/timestamps 만 여기서 만들고
+       * highs/lows/volumes 는 원본에 각자 filter 를 걸어 만들었는데, 거래정지처럼 일부 봉만
+       * 값이 빠지면 길이가 어긋났다. computeLevels 는 길이가 다르면 "틀린 지지선을 내느니"
+       * null 을 반환하므로, 그 순간 지지·저항·손절·목표가 통째로 사라진다
+       * (2026-09-11 실측: 한국 종목 전반에서 levels 가 null 이었다). */
       for (let i = 0; i < rawCloses.length; i++) {
         const v = rawCloses[i];
         if (typeof v !== "number") continue;
+        const hi = rawHighs[i], lo = rawLows[i], vol = rawVolumes[i];
         closes.push(v);
         opens.push(typeof rawOpens[i] === "number" ? (rawOpens[i] as number) : v);
+        // 고가·저가가 빠진 봉은 종가로 메운다 — 그 봉 하나 때문에 전체를 버리지 않는다
+        highs.push(typeof hi === "number" ? hi : v);
+        lows.push(typeof lo === "number" ? lo : v);
+        volumes.push(typeof vol === "number" ? vol : 0);
         timestamps.push((ts[i] ?? 0) * 1000);
       }
       const price = num(meta.regularMarketPrice, closes.at(-1) ?? 0);
@@ -84,9 +100,9 @@ async function loadSeries(symbol: string, range: string, interval: string): Prom
         time: num(meta.regularMarketTime) * 1000,
         closes: closes.map((v) => round(v, 4)),
         opens: opens.map((v) => round(v, 4)),
-        highs: (q.high ?? []).filter((v): v is number => typeof v === "number").map((v) => round(v, 4)),
-        lows: (q.low ?? []).filter((v): v is number => typeof v === "number").map((v) => round(v, 4)),
-        volumes: (q.volume ?? []).map((v) => (typeof v === "number" ? v : 0)),
+        highs: highs.map((v) => round(v, 4)),
+        lows: lows.map((v) => round(v, 4)),
+        volumes,
         timestamps,
       };
     } catch (err) {

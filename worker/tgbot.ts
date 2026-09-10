@@ -24,7 +24,8 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 const HELP = [
   "<b>쓸 수 있는 명령</b>",
   "",
-  "/추천 — 오늘 스윙 관점 종목 (삼합 종합 순위·업종 분산)",
+  "/추천 — 오늘 종목 추천 (단타·스윙·장기 전부)",
+  "/단타 · /스윙 · /장기 — 그 구간만 (손절·목표·세 관점 근거 포함)",
   "/삼합 — 온톨로지+수급+차트 종합 순위 상위 8",
   "/수급 — 자금흐름·매집·거래대금 순위 상위 8",
   "/지금 — 방금 일어난 변화(합의 형성·급증·돌파 등)",
@@ -91,6 +92,59 @@ async function cmdFeed(env: Env): Promise<string> {
   }
   lines.push(`<i>${DISCLAIMER}</i>`);
   return lines.join("\n");
+}
+
+/**
+ * 구간 하나만 — 전체 공지는 세 구간이 다 들어가 길다.
+ * 성적은 좋든 나쁘든 그대로 붙인다. 규칙만 말하고 성적을 빼면 그건 광고다.
+ */
+async function cmdHorizon(env: Env, id: "day" | "swing" | "long"): Promise<{ text: string; nameKo: string; codes: { code: string; name: string }[] }> {
+  const res = (await dailyBrief(env, "KR")) as {
+    briefs: {
+      targetSession: string;
+      horizons?: {
+        buckets: {
+          id: string; nameKo: string; holdKo: string; ruleKo: string; orderKo: string; cautionKo: string;
+          track: { summaryKo: string } | null;
+          picks: {
+            code: string; name: string; symbol: string | null; sector: string | null; priceLabel: string; changePct: number;
+            why: { ontologyKo: string | null; flowKo: string | null; chartKo: string | null };
+            plan: { stop: number; stopPct: number; target: number | null; targetPct: number | null; rr: number | null; stopWhyKo: string; targetWhyKo: string; levelNoteKo: string | null };
+          }[];
+        }[];
+      } | null;
+    }[];
+  };
+  const b = res.briefs[0];
+  const k = b?.horizons?.buckets.find((x) => x.id === id);
+  if (!k) return { text: "아직 구간별 추천을 만들지 못했습니다. 잠시 뒤 다시 시도해 주세요.", nameKo: id, codes: [] };
+
+  const won = (v: number) => `${Math.round(v).toLocaleString("ko-KR")}원`;
+  const lines = [
+    `<b>${esc(k.nameKo)} 관점</b> — ${esc(k.holdKo)}`,
+    `<i>${esc(k.ruleKo)}</i>`,
+    `매수 시점: <b>${esc(b.targetSession)} 시가</b>`,
+    "",
+  ];
+  if (k.track) lines.push(`📉 ${esc(k.track.summaryKo)}`, "");
+  for (const p of k.picks) {
+    lines.push(`<b>${esc(p.name)}</b> <code>${esc(p.symbol ?? p.code)}</code> ${esc(p.priceLabel)} (${p.changePct >= 0 ? "+" : ""}${p.changePct.toFixed(1)}%)`);
+    if (p.why.ontologyKo) lines.push(`  🌍 거시 — ${esc(p.why.ontologyKo)}`);
+    if (p.why.flowKo) lines.push(`  💰 수급 — ${esc(p.why.flowKo)}`);
+    if (p.why.chartKo) lines.push(`  📈 차트 — ${esc(p.why.chartKo)}`);
+    lines.push(`  🛑 손절 ${esc(won(p.plan.stop))} (${p.plan.stopPct}%) — ${esc(p.plan.stopWhyKo)}`);
+    lines.push(p.plan.target !== null
+      ? `  🎯 목표 ${esc(won(p.plan.target))} (${p.plan.targetPct! >= 0 ? "+" : ""}${p.plan.targetPct}%)${p.plan.rr !== null ? ` · 손익비 ${p.plan.rr}` : ""} — ${esc(p.plan.targetWhyKo)}`
+      : `  🎯 ${esc(p.plan.targetWhyKo)}`);
+    if (p.plan.levelNoteKo) lines.push(`  📐 ${esc(p.plan.levelNoteKo)}`);
+    lines.push("");
+  }
+  lines.push(`<i>${esc(k.orderKo)}</i>`);
+  lines.push(`<i>⚠ ${esc(k.cautionKo)}</i>`);
+  lines.push(`<i>${DISCLAIMER}</i>`);
+  let text = lines.join("\n");
+  if (text.length > 4000) text = `${text.slice(0, 3900)}\n…`;
+  return { text, nameKo: k.nameKo, codes: k.picks.map((p) => ({ code: p.code, name: p.name })) };
 }
 
 async function cmdStock(env: Env, query: string): Promise<{ text: string; code: string | null; market: "KR" | "US" }> {
@@ -165,11 +219,29 @@ export async function handleTelegramUpdate(env: Env, update: unknown): Promise<{
 
     if (cmd === "/추천" || cmd === "/picks") {
       const m = await buildDailyMessage(env, "KR");
-      await reply(env, chatId, m?.text ?? "오늘 스윙 목록을 만들지 못했습니다.");
+      await reply(env, chatId, m?.text ?? "오늘 추천 목록을 만들지 못했습니다.");
       if (isHome) {
         await replyShots(env, chatId, [
-          { view: "swing", caption: "<b>스윙 관점 종목</b> — 삼합 종합 순위·업종 분산" },
-          { view: "combo", caption: "삼합 종합 순위" },
+          { view: "horizons", caption: "<b>투자 기간별 추천</b> — 단타 · 스윙 · 장기" },
+          { view: "combo", caption: "삼합 종합 순위 (세 구간 공통 매수 신호)" },
+          { view: "flow", caption: "수급 순위" },
+        ]);
+      }
+      return { handled: cmd };
+    }
+
+    /* 구간 하나만 보고 싶을 때 — 전체 공지는 길다 */
+    if (cmd === "/단타" || cmd === "/스윙" || cmd === "/장기") {
+      const id = cmd === "/단타" ? "day" : cmd === "/스윙" ? "swing" : "long";
+      const out = await cmdHorizon(env, id);
+      await reply(env, chatId, out.text);
+      if (isHome && out.codes.length) {
+        await replyShots(env, chatId, [
+          { view: "horizons", caption: `<b>${esc(out.nameKo)}</b> 관점` },
+          ...out.codes.slice(0, 3).map((c) => ({
+            view: `chart:${c.code}`,
+            caption: `${esc(c.name)} 일봉 · 지지/저항`,
+          })),
         ]);
       }
       return { handled: cmd };

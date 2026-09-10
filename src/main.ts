@@ -4,6 +4,7 @@ import { api, ApiFailure, getTradeToken, setTradeToken, type ConfigResponse, typ
 import { Panel, type OrderDraft } from "./panel";
 import { AutoPanel } from "./autopanel";
 import { ComboPanel } from "./combopanel";
+import { HorizonPanel } from "./horizonpanel";
 import { FlowPanel } from "./flowpanel";
 import { LabPanel } from "./labpanel";
 import usUniverse from "../shared/us-universe.json";
@@ -54,6 +55,7 @@ let labPanel: LabPanel | null = null;
 let taPanel: TaPanel | null = null;
 let flowPanel: FlowPanel | null = null;
 let comboPanel: ComboPanel | null = null;
+let horizonPanel: HorizonPanel | null = null;
 let onto: Ontology3D | null = null;
 let miniGlobe: Globe | null = null;
 let ontoState: OntoState | null = null;
@@ -254,16 +256,17 @@ function setupAuthModal(): void {
 /* ── 터미널 탭 — 온톨로지 · 차트분석 · 수급분석 · 자동매매 ─────────────
  * 한 화면에 전부 펼치던 것을 탭 전환으로 바꿨다(가독성 피드백).
  * 각 탭의 데이터는 처음 열 때 불러온다 — 안 여는 탭 비용은 0. */
-type PaneId = "onto" | "ta" | "flow" | "combo";
+type PaneId = "onto" | "ta" | "flow" | "combo" | "picks";
 const PANE_SUBS: Record<PaneId, string> = {
   onto: "거시요인 → 섹터 → 종목으로 신호가 전파되는 3D 인과 그래프. 확대는 Ctrl(⌘)+스크롤, 일반 스크롤은 페이지를 내립니다.",
   ta: "창시자가 있는 차트 전략 13종이 종목 하나를 두고 각자 판정합니다 — 패턴·매물대·매매 플랜까지.",
   flow: "자금흐름(MFI)·매집(CLV)·거래대금 급증 — 큰손이 사는 흔적을 점수로 만든 수급 순위입니다.",
   combo: "세 분석을 원하는 비율로 섞은 조합 기준으로, 지금 시점 어떤 종목이 유리한지 보여줍니다. 과거 성적(백테스트)은 전략실에.",
+  picks: "단타·스윙·장기 — 매수 신호는 셋 다 같고 청산 규칙만 다릅니다. 구간마다 그 규칙의 백테스트 성적을 함께 적었습니다.",
 };
 
 function selectPane(id: PaneId, scroll = false): void {
-  for (const p of ["onto", "ta", "flow", "combo"] as PaneId[]) {
+  for (const p of ["onto", "ta", "flow", "combo", "picks"] as PaneId[]) {
     $(`pane-${p}`).hidden = p !== id;
   }
   document.querySelectorAll<HTMLButtonElement>("#terminal-tabs .tt-tab").forEach((b) => {
@@ -275,6 +278,7 @@ function selectPane(id: PaneId, scroll = false): void {
   if (id === "ta") void taPanel?.load();
   if (id === "flow") void flowPanel?.load();
   if (id === "combo") void comboPanel?.load();
+  if (id === "picks") void horizonPanel?.load();
   if (scroll) $("terminal").scrollIntoView({ behavior: "smooth" });
 }
 
@@ -1432,6 +1436,7 @@ async function boot(): Promise<void> {
       void taPanel?.show(symbol, name);
     },
   });
+  horizonPanel = new HorizonPanel({ root: $("hz-body"), tabs: $("hz-market") });
   await Promise.allSettled([loadOntology(), loadTape(), loadRadar(), loadVerdict(), labPanel.load()]);
   // 시세는 주기적으로 갱신(90초 캐시와 맞춤), 온톨로지는 전략 캐시(5분)에 맞춘다
   setInterval(() => void loadTape(), 90_000);
