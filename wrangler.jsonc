@@ -1,0 +1,151 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "worldnews",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // 워커가 먼저 받아야 옛 주소(workers.dev)의 "/" 같은 정적 경로도 301 로 넘길 수 있다
+    "run_worker_first": true
+  },
+  "observability": { "enabled": true },
+  // 커스텀 도메인 (Cloudflare Registrar 에서 구매 — 존이 같은 계정에 있어 자동 연결)
+  "routes": [
+    { "pattern": "stockontology.cc", "custom_domain": true },
+    { "pattern": "www.stockontology.cc", "custom_domain": true }
+  ],
+  // 옛 주소(workers.dev)는 죽이지 않고 301 로 새 도메인에 넘긴다 — 검색 색인 승계용.
+  // routes 를 추가하면 기본값이 false 로 떨어져 404 가 되므로 명시적으로 켠다.
+  "workers_dev": true,
+  "kv_namespaces": [
+    { "binding": "CACHE", "id": "38b0ce18a5b84fa69ff47b10c6648ad6" }
+  ],
+  // Workers AI: ANTHROPIC_API_KEY 가 없을 때 AI 분석을 대신 처리한다(별도 키 불필요).
+  "ai": { "binding": "AI" },
+  // 전 시장 레이더 저장소 — SQLite Durable Object.
+  // KV(쓰기 1,000/일)로는 350종목 주기 갱신이 불가능해서 DB를 썼다.
+  // D1이 아닌 이유: 배포 토큰에 D1 권한이 없고, DO는 Worker 배포에 딸려 나간다.
+  "browser": { "binding": "BROWSER" },
+  "durable_objects": {
+    "bindings": [{ "name": "RADAR", "class_name": "RadarDB" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RadarDB"] }],
+  "vars": {
+    // 텔레그램 공지 — 봇이 참여한 그룹방 번호와 스위치(토큰은 시크릿)
+    "TELEGRAM_ENABLED": "true",
+    "TELEGRAM_CHAT_ID": "@stockontologist,@stockontology_cdsa",
+    // "vts" = 모의투자 도메인(29443), "prod" = 실전투자 도메인(9443).
+    // 사용자 계좌가 실전 전용이므로 "prod". 주문은 아래 스위치들로 여전히 막혀 있다
+    // (ORDER_ENABLED=false, ORDER_DRY_RUN=true) — 조회와 검증만 가능한 상태다.
+    "KIS_ENV": "prod",
+    // AI 분석 — 사용자 지시(2026-08-17): 이미 등록된 ANTHROPIC_API_KEY로 Claude Sonnet 주력.
+    // anthropic 을 1순위로 고정하고, 실패하면 gemini → workers-ai 순으로 폴백된다.
+    "AI_PROVIDER": "anthropic",
+    "AI_MODEL": "claude-sonnet-5",
+    // 주문 API 전체 스위치.
+    // 2026-07-27 사용자 지시("실전거래로 해라")로 실주문 활성화. 손실 한도는 전부 유지.
+    "ORDER_ENABLED": "true",
+    // KIS_ENV=prod 상태에서 실제 주문을 내려면 이 값도 "true" 여야 한다(이중 안전장치).
+    "ORDER_ALLOW_REAL": "true",
+    // 1회 주문 최대 금액(원). 초과 주문은 서버에서 거부.
+    // 자동매매의 종목당 한도(AUTO_CAPITAL_KRW × AUTO_MAX_POSITION_PCT = 600만 × 30% = 180만)에 맞춘다.
+    // 이보다 낮으면 국내 대형주는 1주 값이 한도를 넘어 아예 매수가 불가능해진다.
+    "MAX_ORDER_NOTIONAL_KRW": "1800000",
+    // "true" 면 인증·한도·TR_ID 검증까지만 하고 실제 주문은 보내지 않는다.
+    "ORDER_DRY_RUN": "false",
+    // KIS 호출 방식: auto | fetch | socket (9443 포트 차단 환경 대비)
+    "KIS_TRANSPORT": "auto",
+    // 해외주식 주문·잔고 사용 여부: auto | on | off
+    // auto = 모의투자에서는 해외 불가(한투 모의는 국내 위주), 실전에서는 가능
+    "KIS_OVERSEAS": "auto",
+
+    /* ── 자동매매 ────────────────────────────────────────
+     * 2026-07-27 실매매 가동(사용자 지시). 스위치 4개 전부 ON.
+     * 즉시 정지하려면 이 값 하나만 "false" 로 내려 재배포하거나 대시보드 정지 버튼을 쓴다.
+     * 손실 한도(손절 -7% / 당일 -5% / 낙폭 -20% 영구정지)는 목표와 무관하게 항상 작동한다. */
+    "AUTOTRADE_ENABLED": "true",
+    // 운용 원금 상한(원). "0" = 넣은 돈(입금 총액) 전액 자동 추종.
+    // 2026-08-17 사용자 지시("계좌에 있는 모든 돈은 다 봇이 컨트롤한다") — 고정값을
+    // 버리고 자동으로. 입출금은 runCycle 이 자동 감지해 넣은 돈에 반영한다.
+    // 손실 한도는 %기준이라 원금이 커지면 절대금액도 함께 커진다.
+    "AUTO_CAPITAL_KRW": "0",
+    // 국내 매수 예산에서 빼 두는 예약 현금(원) — 2026-08-16 입금 400만은 미국주식
+    // 매수용이므로 국내 봇이 쓰지 않게 잡아 둔다. 미국 매매를 시작하면 조정.
+    "AUTO_RESERVE_KRW": "4000000",
+    // 한 종목 최대 비중(%) — 25% (50만) 로는 20만원대 고가주를 2주도 못 샀다
+    "AUTO_MAX_POSITION_PCT": "30",
+    /* 종목별 손절 / 익절(%)
+     * 2026-08-06 사용자 지시로 손절 -7% → -5%.
+     * 목적은 "매도가 아예 안 나가 자금이 묶이는" 문제 해소(실제로 매도 0건이었다).
+     * 백테스트: 최근 3개월 하락장에서 -16.96%(현재 설정 -18.68%, 시장 대비 +1.15%p)로
+     * 개선되지만, 1년·2년 상승 구간에서는 +2.9%/+40.7% 로 현재 설정(+14.1%/+46.5%)보다
+     * 뒤진다 — 하락 국면에 맞춘 선택임을 기록해 둔다. */
+    /* 2026-08-21 사용자 지시("좀 기다리는 매매전략으로 전환") — -5% → -7% 로 되돌린다.
+     * 근거는 감이 아니라 두 개의 실측이다.
+     *  ① shared/backtest-results.json 의 liveRuleComparison: 같은 봇 규칙에서 손절만
+     *     바꿔 비교했을 때 -7% 가 -5% 보다 3개월·6개월·1년 세 구간 모두 우위였다
+     *     (1년 +43.5% vs +27.8%). 위의 -5% 도입 근거는 하락 3개월 한 구간뿐이었다.
+     *  ② 실계좌 6일치: 손절당한 3종목 중 2종목이 판 뒤 올랐다(NAVER +6.6%, 한화오션
+     *     +2.3%). -5% 는 한국 주식 이틀 변동에 닿아 회복 전에 손실을 굳혔다.
+     * 한국·미국 봇이 함께 쓴다(미국은 US_STOP_LOSS_PCT 미설정 시 이 값으로 폴백). */
+    "AUTO_STOP_LOSS_PCT": "7",
+    "AUTO_TAKE_PROFIT_PCT": "15",
+    // 당일 손실이 이 %를 넘으면 그날 신규 매수 정지(손절 매도는 계속 동작)
+    "AUTO_DAILY_LOSS_HALT_PCT": "5",
+    // 고점 대비 낙폭이 이 %를 넘으면 사람이 해제할 때까지 영구 정지
+    "AUTO_MAX_DRAWDOWN_PCT": "20",
+    // 목표 수익(원). 도달하면 신규 매수를 멈춘다. 목표를 위해 손실 한도를 풀지는 않는다.
+    "AUTO_TARGET_PROFIT_KRW": "1000000",
+    /* 2026-08-18 사용자 지시 "매매 횟수 제한하지 말고 끊임없이 매매해라" — 횟수 한도를
+     * 사실상 해제한다(999). 실제로 8/18 개장 26분 만에 6회가 차서 종일 매수 보류였고,
+     * 심지어 매도(손절)까지 같은 한도에 걸려 보류될 수 있었다. 손실 제동장치(손절
+     * -5%·당일 -5% 정지·낙폭 -20% 영구정지)는 횟수와 무관하게 전부 유지된다 —
+     * 매매는 끊임없이 하되, 잃는 날은 여전히 멈춘다. */
+    "AUTO_MAX_TRADES_PER_DAY": "999",
+    // 한 사이클(15분) 최대 주문 수 — 서브리퀘스트 예산(50) 안에서 상향
+    "AUTO_MAX_ORDERS_PER_CYCLE": "6",
+    // 자투리 주문 방지 — 이 금액에 못 미치면 아예 안 산다(수수료 대비 무의미)
+    "AUTO_MIN_ORDER_KRW": "150000",
+    "AUTO_MAX_POSITIONS": "6",
+    /* 미국 실계좌 자동매매 (autotrade-us.ts) — 2026-08-18 사용자 지시 "그냥 해보자,
+     * 400만원으로". 예산은 미국 배분 슬라이더(auto:reserve) 금액이다.
+     * 2026-08-18 01:15 KST 장중 그림자 검증 통과(잔고·통합증거금 maxQty·환율 1414.9·
+     * 계획 2건 실측) 후 실주문 ON. 즉시 정지하려면 이 값만 false 로 재배포. */
+    "US_AUTOTRADE_ENABLED": "true",
+
+    /* ── 퀀트 트랙 (수급·차트 전용) ────────────────────
+     * 온톨로지와 무관한 두 번째 엔진. **모의매매다 — 주문 코드 경로가 아예 없다.**
+     * 백테스트(scripts/quant-backtest.ts, 최근 3·6·12개월)에서 이 엔진은 온톨로지
+     * 트랙에 모든 구간에서 졌다. 그래서 실계좌를 붙이지 않고 성적만 쌓는다.
+     * 규칙은 백테스트에서 유일하게 살아남은 조합(QM: 돌파 + 시장필터 + 저회전) 그대로다. */
+    "QUANT_ENABLED": "true",
+    "QUANT_PROFILE": "breakout",
+    "QUANT_CAPITAL_KRW": "6000000", // 전략실 가상 원금 — 실계좌 운용액과 같아야 비교가 직관적이다
+    "QUANT_BUY_SCORE": "0.35",
+    "QUANT_STOP_LOSS_PCT": "6",
+    "QUANT_TAKE_PROFIT_PCT": "15",
+    // 코스피가 20일선 아래면 신규 매수 정지 — 백테스트에서 엔진 종류와 무관하게
+    // 가장 크게 성과를 바꾼 규칙이다(예: blend 1년 -65% → -45%).
+    "QUANT_MARKET_MA_DAYS": "20",
+    "QUANT_MAX_BUYS_PER_DAY": "3",
+    "QUANT_MAX_POSITIONS": "5"
+  },
+  // 한국 정규장(09:00~15:20 KST = 00:00~06:20 UTC) 평일 15분 간격 + 그 외 매시간.
+  // 장외 크론은 자동매매(장중 게이트로 막힘)가 아니라 온톨로지·레이더 갱신용이다 —
+  // 밤사이 미국장·유가·금리가 거시 신호를 움직이므로 아침에 열어도 최신이어야 한다.
+  "triggers": {
+    // ① 한국 정규장(KST 09~15시) 15분 주기 ② 상시 1시간 주기
+    // ③ 미국 정규장(ET 09:30~16:00 = UTC 13:30~21:00, DST 양쪽 커버) 15분 주기 — 미국 리그용
+    "crons": ["*/15 0-6 * * 1-5", "0 * * * *", "*/15 13-21 * * 1-5"]
+  }
+  // 시크릿(대시보드/CLI로 등록, 저장소에 커밋하지 않는다):
+  //   wrangler secret put KIS_APP_KEY
+  //   wrangler secret put KIS_APP_SECRET
+  //   wrangler secret put KIS_ACCOUNT        // 예: 12345678-01
+  //   wrangler secret put TRADE_TOKEN        // 주문/잔고 API 접근 암호
+  //   wrangler secret put GEMINI_API_KEY     // (선택) AI 를 Gemini Flash 로 — 1순위, 사실상 무료
+  //   wrangler secret put ANTHROPIC_API_KEY  // (선택) AI 분석을 Claude로 처리 — 2순위
+}
