@@ -298,9 +298,9 @@ function cautionFor(id: HorizonId, side: BtSide, windows: string[]): string {
 
 export interface HorizonsBlock {
   market: HorizonMarket;
-  /** 세 구간에 공통으로 적용되는 매수 시점 */
+  /** 네 구간에 공통으로 적용되는 매수 시점 */
   entryKo: string;
-  /** 세 구간의 관계를 한 문장으로 */
+  /** 네 구간의 관계를 한 문장으로 */
   noteKo: string;
   buckets: HorizonBucket[];
   caveats: string[];
@@ -396,7 +396,7 @@ export function buildHorizons(params: {
     market,
     entryKo: h?.entryKo ?? "장 마감 후 점수를 내고 다음 거래일 시가에 매수합니다.",
     noteKo:
-      "세 구간의 매수 신호는 같습니다 — 삼합(온톨로지+수급+차트 평균) 점수가 문턱을 넘은 종목입니다. " +
+      "네 구간의 매수 신호는 같습니다 — 삼합(온톨로지+수급+차트 평균) 점수가 문턱을 넘은 종목입니다. " +
       "다른 것은 언제 파느냐뿐이고, 그 청산 규칙마다 백테스트를 따로 돌려 성적을 쟀습니다.",
     buckets,
     caveats: h?.caveats ?? [],

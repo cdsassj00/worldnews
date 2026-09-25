@@ -96,7 +96,7 @@ async function cmdFeed(env: Env): Promise<string> {
 }
 
 /**
- * 구간 하나만 — 전체 공지는 세 구간이 다 들어가 길다.
+ * 구간 하나만 — 전체 공지는 네 구간이 다 들어가 길다.
  * 성적은 좋든 나쁘든 그대로 붙인다. 규칙만 말하고 성적을 빼면 그건 광고다.
  */
 async function cmdHorizon(env: Env, id: "day" | "swing" | "mid" | "long"): Promise<{ text: string; nameKo: string; codes: { code: string; name: string }[] }> {
@@ -323,7 +323,7 @@ export async function handleTelegramUpdate(env: Env, update: unknown): Promise<{
       if (isHome) {
         await replyShots(env, chatId, [
           { view: "horizons", caption: "<b>투자 기간별 추천</b> — 단타 · 스윙 · 장기" },
-          { view: "combo", caption: "삼합 종합 순위 (세 구간 공통 매수 신호)" },
+          { view: "combo", caption: "삼합 종합 순위 (네 구간 공통 매수 신호)" },
           { view: "flow", caption: "수급 순위" },
         ]);
       }

@@ -525,7 +525,7 @@ async function sceneSwing(env: Env, market: "KR" | "US"): Promise<string> {
 }
 
 /* ── horizons — 투자 기간별 추천(단타·스윙·장기) ─────────────
- * 한 장에 세 구간을 나란히 세운다. 세로로 쌓으면 텔레그램·인스타에서 글씨가 작아지고,
+ * 한 장에 네 구간을 나란히 세운다. 세로로 쌓으면 텔레그램·인스타에서 글씨가 작아지고,
  * 무엇보다 "이 셋은 같은 신호에 청산만 다르다"는 관계가 안 보인다. */
 
 async function sceneHorizons(env: Env, market: "KR" | "US"): Promise<string> {
