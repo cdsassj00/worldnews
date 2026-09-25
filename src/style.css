@@ -3623,131 +3623,268 @@ body {
   .tape { order: 10; flex-basis: 100%; min-width: 0; }
 }
 
-/* ── 종목 추천 탭 (단타·스윙·장기) ─────────────────────────
-   이 사이트의 결론이 나오는 화면이다. 다른 탭이 "무엇을 분석했나"라면 여기는
-   "그래서 뭘 언제 사고 언제 파느냐"다. 성적은 좋든 나쁘든 같은 크기로 보여준다 —
-   수익률만 크게 키우고 승률·낙폭·표본수를 작게 쓰면 그건 광고다. */
-.hz-market { display: flex; gap: 6px; margin-bottom: 10px; }
-.hz-mk {
-  padding: 6px 16px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  background: rgba(15, 23, 42, 0.5);
-  color: inherit;
-  font-size: 12.5px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.hz-mk.active { border-color: #d9a441; background: rgba(217, 164, 65, 0.1); color: #d9a441; }
+/* ── 오늘의 추천 — ssjsite 디자인 언어 (KTV .claude/skills/ssjsite) ──────────
+   애플 다크 몰입형: 순수 블랙 배경 위에 iOS 시스템 그레이 계단으로 깊이를 낸다.
+   깊이를 색이 아니라 밝기 단계로 표현하는 게 이 톤의 핵심이라, 카드에 색 틴트를
+   넣지 않는다. 텍스트도 흰색→회색 4단계를 건너뛰지 않는다.
 
-.hz-head { margin-bottom: 14px; }
-.hz-entry {
-  margin: 0 0 6px;
-  font-size: 14px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(217, 164, 65, 0.35);
-  background: rgba(217, 164, 65, 0.07);
-}
-.hz-entry b { color: #d9a441; }
-.hz-basis { color: var(--fg-faint, #64748b); font-size: 12px; }
+   액센트만 스킬 기본값(iOS 블루)에서 골드로 바꿨다 — 스킬이 명시적으로 허용한
+   베리에이션이고("프리미엄·공공·금융 느낌엔 남긴다") 이 사이트의 기존 정체색이다.
+   등락은 한국 관례를 따른다(상승 빨강·하락 파랑) — 여기서 iOS 시맨틱을 그대로
+   쓰면 한국 사용자가 반대로 읽는다. */
+#picks {
+  /* 페이지 배경과 분리된 '순수 블랙' 구역. 풀블리드로 빼 이 섹션만의 세계를 만든다 */
+  --paper: #000;
+  --surf: #1c1c1e;
+  --tint: #2c2c2e;
+  --tint2: #3a3a3c;
+  --hair: #38383a;
+  --ink: #f5f5f7;
+  --body: #d1d1d6;
+  --mut: #98989d;
+  --faint: #6e6e73;
+  --pt-gold: #ffd60a;
+  --pt-up: #ff453a;     /* 상승·목표 (한국 관례) */
+  --pt-down: #0a84ff;   /* 하락·손절 */
+  --pt-green: #30d158;
 
-.hz-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 14px;
-  align-items: start;
+  max-width: none;
+  margin: 0;
+  padding: 88px 20px 80px;   /* 넉넉한 여백이 프리미엄 인상을 만든다 */
+  background: var(--paper);
+  color: var(--ink);
+  word-break: keep-all;      /* 한글 단어 단위 줄바꿈 — 가독성 핵심 */
+  overflow-wrap: break-word;
+  letter-spacing: -0.01em;
 }
-.hz-card {
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 14px;
-  background: rgba(15, 23, 42, 0.45);
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.hz-card-head h3 {
-  margin: 0 0 4px;
-  font-size: 19px;
-  font-weight: 900;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.hz-icon { font-size: 17px; }
-.hz-hold { margin: 0 0 3px; font-size: 12px; font-weight: 700; color: #d9a441; }
-.hz-rule { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--fg-dim, #94a3b8); }
 
-/* 백테스트 성적 — 수익률과 함께 표본수·승률·낙폭을 같은 블록에 둔다 */
-.hz-track {
-  border-top: 1px solid rgba(148, 163, 184, 0.18);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-  padding: 9px 0;
-  display: grid;
-  gap: 3px;
-}
-.hz-track-top { display: flex; align-items: baseline; gap: 8px; }
-.hz-track-top b { font-size: 24px; font-weight: 900; font-variant-numeric: tabular-nums; }
-.hz-track-lbl { font-size: 11px; color: var(--fg-faint, #64748b); }
-.hz-gap { font-size: 12px; font-weight: 700; }
-.hz-gap.up { color: #e0524a; }
-.hz-gap.down { color: #3b82f6; }
-.hz-track-sub { font-size: 11px; color: var(--fg-dim, #94a3b8); font-variant-numeric: tabular-nums; }
-
-.hz-picks { display: grid; gap: 10px; }
-.hz-pick {
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 10px;
-  padding: 9px 11px;
-  display: grid;
-  gap: 5px;
-}
-.hz-pick-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.hz-name { font-size: 14.5px; font-weight: 800; }
-.hz-price { font-size: 12.5px; font-variant-numeric: tabular-nums; }
-.hz-chg { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.hz-sector { font-size: 11px; color: var(--fg-faint, #64748b); }
-
-.hz-plan { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; font-variant-numeric: tabular-nums; }
-.hz-target { color: #e0524a; font-weight: 700; }
-.hz-stop { color: #3b82f6; font-weight: 700; }
-.hz-rr { color: var(--fg-dim, #94a3b8); }
-.hz-levels { margin: 0; font-size: 11px; line-height: 1.55; color: var(--fg-dim, #94a3b8); }
-
-.hz-why { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 3px; }
-.hz-why li { display: grid; grid-template-columns: 34px 1fr; gap: 7px; font-size: 11.5px; line-height: 1.5; }
-.hz-why-k {
-  font-size: 10px;
-  font-weight: 800;
-  color: #d9a441;
-  padding-top: 1px;
-}
-.hz-more summary { cursor: pointer; font-size: 11.5px; font-weight: 700; color: #d9a441; }
-.hz-more .note { margin: 6px 0 0; font-size: 11px; }
-
-[data-theme="light"] .hz-card,
-[data-theme="light"] .hz-mk { background: rgba(255, 255, 255, 0.7); }
-[data-theme="light"] .hz-entry { background: rgba(217, 164, 65, 0.1); }
-
-/* ── 오늘의 추천 섹션 (히어로 바로 아래) ─────────────────
-   탭 속에 있던 걸 페이지 본문으로 끌어올렸다. 첫 화면에서 "뭘 사라는 건지"가
-   보여야 한다 — 예전에는 전략실 성적과 백테스트 이야기가 먼저 나왔다. */
-.picks-strip {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 28px 20px 8px;
-}
+/* 섹션 리듬: overline-label → h-judge → 설명 */
 .picks-head {
+  max-width: 1180px;
+  margin: 0 auto 36px;
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 16px;
+  gap: 20px;
 }
-.picks-head .lab-sub { max-width: 68ch; margin: 4px 0 0; }
-.picks-head .hz-market { margin-bottom: 0; }
+#picks .picks-overline {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mut);
+  letter-spacing: 0.01em;
+}
+#picks .picks-title {
+  margin: 6px 0 0;
+  font-size: clamp(30px, 5vw, 44px);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.028em;   /* 애플 헤드라인 느낌의 핵심 */
+  color: var(--ink);
+  font-variation-settings: "wght" 620;
+}
+#picks .picks-sub {
+  margin: 14px 0 0;
+  max-width: 46ch;
+  font-size: 16px;
+  line-height: 1.65;
+  color: rgba(245, 245, 247, 0.68);
+}
+#picks .picks-sub b { color: var(--ink); font-weight: 600; }
+
+/* 시장 선택 — 알약 토글 */
+#picks .hz-market { display: flex; gap: 8px; }
+#picks .hz-mk {
+  border-radius: 999px;
+  border: 1px solid var(--hair);
+  background: var(--surf);
+  color: var(--mut);
+  padding: 9px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  transition: background .2s, color .2s, border-color .2s;
+}
+#picks .hz-mk:hover { background: var(--tint); color: var(--body); }
+#picks .hz-mk.active { background: var(--tint2); border-color: transparent; color: var(--ink); font-weight: 600; }
+
+/* 매수 시점 — 이 섹션에서 가장 먼저 읽혀야 하는 한 줄 */
+#picks .hz-entry {
+  max-width: 1180px;
+  margin: 0 auto 26px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: var(--surf);
+  font-size: 15px;
+  color: var(--body);
+}
+#picks .hz-entry b { color: var(--pt-gold); font-weight: 600; }
+#picks .hz-basis { color: var(--faint); font-size: 13.5px; }
+#picks .hz-head .card-sub { color: var(--mut); font-size: 14px; line-height: 1.6; }
+
+/* 구간 카드 그리드 */
+.hz-grid {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+.hz-card {
+  border-radius: 18px;
+  background: var(--surf);
+  padding: 22px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: 0 2px 16px rgb(0 0 0 / 0.5);
+  transition: transform .3s cubic-bezier(.2,.7,.2,1), box-shadow .3s;
+}
+.hz-card:hover { transform: translateY(-3px); box-shadow: 0 8px 32px rgb(0 0 0 / 0.6); }
+
+.hz-card-head h3 {
+  margin: 0 0 6px;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.028em;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-variation-settings: "wght" 620;
+}
+.hz-icon { font-size: 18px; }
+.hz-hold { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--pt-gold); }
+.hz-rule { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--mut); }
+
+/* 측정 성적 — 수익률만 키우고 표본·승률·낙폭을 작게 쓰면 광고가 된다.
+   같은 블록에 나란히 두고 숫자는 전부 tabular-nums 로 정렬을 맞춘다. */
+.hz-track {
+  border-top: 1px solid var(--hair);
+  border-bottom: 1px solid var(--hair);
+  padding: 14px 0;
+  display: grid;
+  gap: 5px;
+}
+.hz-track-top { display: flex; align-items: baseline; gap: 9px; }
+.hz-track-top b {
+  font-size: 30px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.028em;
+}
+.hz-track-top b.up { color: var(--pt-up); }
+.hz-track-top b.down { color: var(--pt-down); }
+.hz-track-lbl { font-size: 12.5px; color: var(--faint); }
+/* 규칙 vs 지수 3구간 비교 — 알약 하나로 "지수보다 78%p 뒤짐"만 띄우면
+   방어형이라는 성격이 안 보인다. 표로 나란히 두고 색은 등락 규칙(상승 빨강)만 쓴다. */
+.hz-win { display: grid; gap: 2px; margin: 2px 0 1px; }
+.hz-win-row {
+  display: grid;
+  grid-template-columns: 4.2em 1fr 1fr;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.hz-win-row > span:not(.hz-win-lbl) { text-align: right; }
+.hz-win-head {
+  color: var(--faint);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 4px;
+  margin-bottom: 2px;
+}
+.hz-win-lbl { color: var(--mut); }
+.hz-win-row .up { color: var(--pt-up); font-weight: 600; }
+.hz-win-row .down { color: var(--pt-down); font-weight: 600; }
+.hz-win-note { margin: 6px 0 0; font-size: 12px; line-height: 1.55; color: var(--mut); }
+/* 네 구간이 같은 성격일 때 한 번만 쓰는 요약 — 매수 시점 칸과 같은 폭으로 묶는다 */
+#picks .hz-head-note {
+  max-width: 1180px;
+  margin: -12px auto 22px;
+  padding: 0 20px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--mut);
+}
+.hz-track-sub { font-size: 12.5px; color: var(--mut); font-variant-numeric: tabular-nums; }
+
+/* 종목 — 한 단계 위 표면(tint)으로 카드 안에서 다시 떠오르게 */
+.hz-picks { display: grid; gap: 10px; }
+.hz-pick {
+  border-radius: 14px;
+  background: var(--tint);
+  padding: 14px 15px;
+  display: grid;
+  gap: 7px;
+  transition: background .2s;
+}
+.hz-pick:hover { background: var(--tint2); }
+.hz-pick-top { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+.hz-name { font-size: 16px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); }
+.hz-price { font-size: 13.5px; color: var(--body); font-variant-numeric: tabular-nums; }
+.hz-chg { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.hz-chg.up { color: var(--pt-up); }
+.hz-chg.down { color: var(--pt-down); }
+.hz-sector { font-size: 12.5px; color: var(--faint); }
+
+/* 목표·손절 — 돈이 걸린 숫자라 가장 또렷해야 한다 */
+.hz-plan { display: flex; flex-wrap: wrap; gap: 6px; }
+.hz-plan > span {
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.hz-target { background: rgba(255, 69, 58, .16); color: #ff6961; }
+.hz-stop { background: rgba(10, 132, 255, .16); color: #64b5ff; }
+.hz-rr { background: var(--tint2); color: var(--mut); }
+.hz-levels { margin: 0; font-size: 12px; line-height: 1.6; color: var(--faint); }
+
+.hz-why { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 5px; }
+.hz-why li { display: grid; grid-template-columns: 30px 1fr; gap: 8px; font-size: 12.5px; line-height: 1.6; color: var(--body); }
+.hz-why-k { font-size: 11px; font-weight: 600; color: var(--pt-gold); padding-top: 1px; }
+
+.hz-more summary {
+  cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--mut);
+  list-style: none;
+}
+.hz-more summary::-webkit-details-marker { display: none; }
+.hz-more summary:hover { color: var(--body); }
+.hz-more .note { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: var(--faint); }
+
+#picks .method-box {
+  max-width: 1180px; margin: 26px auto 0;
+  border-color: var(--hair); background: var(--surf);
+}
+#picks .method-box summary { color: var(--pt-gold); }
+#picks .method-box .note,
+#picks .method-box li { color: var(--mut); }
+#picks > .note { max-width: 1180px; margin: 22px auto 0; color: var(--faint); font-size: 12.5px; line-height: 1.65; }
+
+/* 모션 — Reveal 하나로 통일한다. 요소마다 다른 효과를 남발하면 톤이 무너진다. */
+#picks [data-reveal] {
+  opacity: 0; transform: translateY(28px);
+  transition: opacity .7s cubic-bezier(.2,.7,.2,1), transform .7s cubic-bezier(.2,.7,.2,1);
+}
+#picks [data-reveal].show { opacity: 1; transform: none; }
+#picks [data-stagger] > * {
+  opacity: 0; transform: translateY(22px);
+  transition: opacity .6s cubic-bezier(.2,.7,.2,1), transform .6s cubic-bezier(.2,.7,.2,1);
+}
+#picks [data-stagger].show > * { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  #picks [data-reveal], #picks [data-stagger] > * { opacity: 1; transform: none; transition: none; }
+  .hz-card { transition: none; }
+}
+
 @media (max-width: 720px) {
+  #picks { padding: 56px 16px 56px; }
   .picks-head { align-items: flex-start; }
 }
