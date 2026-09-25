@@ -203,6 +203,13 @@ const SCENARIOS: QScenario[] = [
   { name: "H-L6 장기·삼합+추적25", engine: "all3", ...BASE, buyScore: 0.35, sellScore: null, takePct: 0, stopPct: 25, trailPct: 25, timeStopDays: 0, rotateGap: 0, marketMaDays: 60, sectorCap: 2 },
   { name: "H-L7 장기·온톨+추적20", engine: "onto", ...BASE, buyScore: 0.35, sellScore: null, takePct: 0, stopPct: 22, trailPct: 20, timeStopDays: 0, rotateGap: 0, marketMaDays: 60, sectorCap: 2 },
   { name: "H-L8 장기·온톨+추적30", engine: "onto", ...BASE, buyScore: 0.35, sellScore: null, takePct: 0, stopPct: 30, trailPct: 30, timeStopDays: 0, rotateGap: 0, marketMaDays: 60, sectorCap: 2 },
+
+  /* 중기 — 단타(실측 1~4일)와 장기(27~143일) 사이가 통째로 비어 있었다.
+   * "몇 주 들고 갈 종목"을 묻는 사람에게 줄 규칙이 없었다는 뜻이다.
+   * 익절을 스윙(15%)보다 넓히고 손절도 같이 넓혀 몇 주를 버티게 한다. */
+  { name: "H-M1 중기·삼합 25/8",  engine: "all3", ...BASE, buyScore: 0.35, takePct: 25, stopPct: 8, timeStopDays: 0, rotateGap: 0, marketMaDays: 20, sectorCap: 2 },
+  { name: "H-M2 중기·삼합 30/10", engine: "all3", ...BASE, buyScore: 0.35, takePct: 30, stopPct: 10, timeStopDays: 0, rotateGap: 0, marketMaDays: 60, sectorCap: 2 },
+  { name: "H-M3 중기·온톨 25/8",  engine: "onto", ...BASE, buyScore: 0.35, takePct: 25, stopPct: 8, timeStopDays: 0, rotateGap: 0, marketMaDays: 20, sectorCap: 2 },
 ];
 
 /* ── 데이터 ─────────────────────────────── */

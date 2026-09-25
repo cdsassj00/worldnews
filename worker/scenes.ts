@@ -550,9 +550,11 @@ async function sceneHorizons(env: Env, market: "KR" | "US"): Promise<string> {
   const cur = market === "US" ? "$" : "원";
   const money = (v: number) => (cur === "$" ? `${v.toLocaleString("en-US", { maximumFractionDigits: v >= 100 ? 0 : 2 })}$` : `${Math.round(v).toLocaleString("ko-KR")}원`);
 
-  const cardW = 560, gap = 30, x0 = (W - cardW * 3 - gap * 2) / 2, y = 290, cardH = 640;
+  // 구간이 넷(단타·스윙·중기·장기)이라 카드 폭을 줄여 한 줄에 세운다
+  const n = Math.min(4, hz.buckets.length);
+  const gap = 24, cardW = Math.floor((W - 160 - gap * (n - 1)) / n), x0 = (W - cardW * n - gap * (n - 1)) / 2, y = 290, cardH = 640;
   let g = "";
-  hz.buckets.slice(0, 3).forEach((k, i) => {
+  hz.buckets.slice(0, n).forEach((k, i) => {
     const x = x0 + i * (cardW + gap);
     const li = (k.track?.windows.length ?? 1) - 1;
     const ret = k.track ? k.track.returns[li] : null;
@@ -584,7 +586,7 @@ async function sceneHorizons(env: Env, market: "KR" | "US"): Promise<string> {
   g += `<text x="${x0}" y="${y + cardH + 44}" fill="${DIM}" font-size="21" ${FONT}>매수 시점은 셋 다 같습니다 — ${esc(b.targetSession)} 시가. 다른 것은 언제 파느냐뿐입니다.</text>`;
 
   return shell(
-    header(`${market === "US" ? "미국" : "한국"} 종목 추천 — 단타 · 스윙 · 장기`, `${kstDate()} · 같은 삼합 신호, 다른 청산 규칙`) + g,
+    header(`${market === "US" ? "미국" : "한국"} 종목 추천 — 단타 · 스윙 · 중기 · 장기`, `${kstDate()} · 같은 삼합 신호, 다른 청산 규칙`) + g,
     false,
   );
 }

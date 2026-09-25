@@ -3729,3 +3729,25 @@ body {
 [data-theme="light"] .hz-card,
 [data-theme="light"] .hz-mk { background: rgba(255, 255, 255, 0.7); }
 [data-theme="light"] .hz-entry { background: rgba(217, 164, 65, 0.1); }
+
+/* ── 오늘의 추천 섹션 (히어로 바로 아래) ─────────────────
+   탭 속에 있던 걸 페이지 본문으로 끌어올렸다. 첫 화면에서 "뭘 사라는 건지"가
+   보여야 한다 — 예전에는 전략실 성적과 백테스트 이야기가 먼저 나왔다. */
+.picks-strip {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px 20px 8px;
+}
+.picks-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.picks-head .lab-sub { max-width: 68ch; margin: 4px 0 0; }
+.picks-head .hz-market { margin-bottom: 0; }
+@media (max-width: 720px) {
+  .picks-head { align-items: flex-start; }
+}

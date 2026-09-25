@@ -216,7 +216,7 @@ interface BriefForTg {
   } | null;
 }
 
-const BUCKET_ICON: Record<string, string> = { day: "⚡", swing: "🌀", long: "🌳" };
+const BUCKET_ICON: Record<string, string> = { day: "⚡", swing: "🌀", mid: "🌿", long: "🌳" };
 
 /* ── 가독성 ──────────────────────────────────
  * "글이 자글자글하다"는 지적(2026-09-11). 원인은 목표·손절·지지·저항이 전부 문장 속에
@@ -388,6 +388,7 @@ const BOT_COMMANDS: { command: string; description: string }[] = [
   { command: "추천", description: "오늘 종목 추천 — 단타·스윙·장기 전부" },
   { command: "단타", description: "단타 관점 (익절 +10% · 손절 -5%)" },
   { command: "스윙", description: "스윙 관점 (익절 +15% · 손절 -6%)" },
+  { command: "중기", description: "중기 관점 (익절 +25% · 손절 -8%)" },
   { command: "장기", description: "장기 관점 (고점 대비 -25% 추적손절)" },
   { command: "삼합", description: "온톨로지+수급+차트 종합 순위" },
   { command: "수급", description: "자금흐름·매집·거래대금 순위" },

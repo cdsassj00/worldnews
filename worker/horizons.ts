@@ -27,7 +27,7 @@ import { round } from "./util";
 
 const SITE = "https://stockontology.cc";
 
-export type HorizonId = "day" | "swing" | "long";
+export type HorizonId = "day" | "swing" | "mid" | "long";
 export type HorizonMarket = "KR" | "US";
 
 /** 백테스트 기록에서 읽는 부분만 최소로 선언한다 */
@@ -167,6 +167,12 @@ const RULES: Rule[] = [
     maxPicks: 4,
   },
   {
+    id: "mid", nameKo: "중기", stopPct: 8, takePct: 25, trailPct: null,
+    orderBy: "total",
+    orderKo: "삼합 종합 점수 순 — 백테스트가 측정한 순서 그대로입니다.",
+    maxPicks: 3,
+  },
+  {
     id: "long", nameKo: "장기", stopPct: 25, takePct: null, trailPct: 25,
     orderBy: "onto",
     orderKo: "삼합 상위 안에서 온톨로지(거시 인과) 축이 강한 순 — 수개월을 들려면 업종을 미는 거시 국면이 있어야 합니다. 이 정렬 자체는 따로 측정하지 않았습니다.",
@@ -282,6 +288,7 @@ function cautionFor(id: HorizonId, side: BtSide, windows: string[]): string {
   const per: Record<HorizonId, string> = {
     day: "왕복 비용과 일중 노이즈에 가장 취약한 구간입니다. 익절을 더 좁히면(6%·손절 3%) 측정 결과 전 구간 손실이었습니다.",
     swing: "지금 운영 중인 규칙과 같습니다.",
+    mid: "한국은 실측 보유가 6~10일로 스윙과 크게 다르지 않습니다 — 구간 이름만큼 기간이 벌어지지 않습니다.",
     long: "한국은 평균 보유가 한 달 남짓으로 3개월에 못 미칩니다 — 추적손절 25%가 그 전에 걸립니다.",
   };
   return thin + dd + short + per[id];

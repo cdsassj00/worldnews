@@ -649,7 +649,7 @@ export interface HorizonPick {
 }
 
 export interface HorizonBucket {
-  id: "day" | "swing" | "long";
+  id: "day" | "swing" | "mid" | "long";
   nameKo: string; holdKo: string; ruleKo: string; entryKo: string; orderKo: string;
   track: {
     scenario: string; windows: string[]; returns: number[]; winRate: number[];

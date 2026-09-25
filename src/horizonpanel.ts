@@ -16,7 +16,7 @@
 import { api, type HorizonBucket, type HorizonPick, type HorizonsBlock } from "./api";
 import { dirClass, el } from "./format";
 
-const ICON: Record<string, string> = { day: "⚡", swing: "🌀", long: "🌳" };
+const ICON: Record<string, string> = { day: "⚡", swing: "🌀", mid: "🌿", long: "🌳" };
 
 export class HorizonPanel {
   private readonly root: HTMLElement;
