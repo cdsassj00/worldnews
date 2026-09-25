@@ -770,15 +770,29 @@ export async function buildPlan(env: Env): Promise<AutoPlan> {
     if (!why) continue;
 
     const limit = roundToTick(price * (1 - SLIPPAGE), "down");
+    /* 1회 주문 한도(MAX_ORDER_NOTIONAL_KRW)를 넘으면 KIS 가 주문을 통째로 거절한다.
+     * 매수는 room 계산에 한도가 들어가 있는데(아래 2번 블록) 매도는 보유 전량을 그대로
+     * 내보내고 있었다 — 그래서 한 종목 평가액이 한도를 넘는 순간 손절·익절·위험회피
+     * 매도가 **영구히 실패**한다. 2026-09-15 실측: 위험회피 0.84 에서 대한항공
+     * 2,135,250원·S-Oil 2,825,300원 매도가 order_limit_exceeded 로 26건 연속 거절.
+     * 팔아야 할 때 못 파는 상태였다.
+     * 한도 안쪽 수량만 내보내고 나머지는 다음 사이클에서 이어 판다(15분마다 돈다). */
+    const maxQty = limit > 0 ? Math.floor(cfg.maxOrderNotionalKrw / limit) : qty;
+    const sellQty = Math.min(qty, Math.max(1, maxQty));
+    const partial = sellQty < qty;
     orders.push({
       side: "sell",
       code: pos.code,
       nameKo: pos.nameKo,
-      qty,
+      qty: sellQty,
       price: limit,
-      notionalKrw: Math.round(limit * qty),
+      notionalKrw: Math.round(limit * sellQty),
       score: sc?.score ?? 0,
-      reason: why,
+      reason: partial
+        ? `${why} — 1회 주문 한도로 ${sellQty}/${qty}주만, 나머지는 다음 사이클`
+        : maxQty < 1
+          ? `${why} — 1주가 한도를 넘어 거절될 수 있습니다(MAX_ORDER_NOTIONAL_KRW 상향 필요)`
+          : why,
       detail: sc ? sc.reasons.slice(0, 2).map((r) => r.text) : [],
     });
   }

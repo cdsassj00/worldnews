@@ -210,6 +210,33 @@ const SCENARIOS: QScenario[] = [
   { name: "H-M1 중기·삼합 25/8",  engine: "all3", ...BASE, buyScore: 0.35, takePct: 25, stopPct: 8, timeStopDays: 0, rotateGap: 0, marketMaDays: 20, sectorCap: 2 },
   { name: "H-M2 중기·삼합 30/10", engine: "all3", ...BASE, buyScore: 0.35, takePct: 30, stopPct: 10, timeStopDays: 0, rotateGap: 0, marketMaDays: 60, sectorCap: 2 },
   { name: "H-M3 중기·온톨 25/8",  engine: "onto", ...BASE, buyScore: 0.35, takePct: 25, stopPct: 8, timeStopDays: 0, rotateGap: 0, marketMaDays: 20, sectorCap: 2 },
+
+  /* ⑪ 한국 단타 탐색 (2026-09-25) — KR 단타가 네 회차 연속 마이너스(-0.75→-12.11%)다.
+   * 규칙을 그대로 두고 "보여줄지 말지"를 고민하는 건 일을 안 하는 것이다. 왜 지는지부터:
+   *   승률 27~30% · 익절 10% · 손절 5% 면 기대값이 0.29*10 - 0.71*5 = -0.65%/거래.
+   *   여기에 왕복비용 0.83% 가 더 붙는다. **손익비 2:1 로는 이 승률을 못 이긴다.**
+   * 그래서 두 방향을 판다: (가) 승률을 올린다(문턱 상향·시장필터 강화·섹터 분산)
+   *                      (나) 손익비를 올린다(손절 조이고 익절 넓히거나 추적손절로 태운다) */
+  { name: "D-T45 단타·문턱0.45",   engine: "all3", ...BASE, buyScore: 0.45, takePct: 10, stopPct: 5, timeStopDays: 7, rotateGap: 0, marketMaDays: 20 },
+  { name: "D-T55 단타·문턱0.55",   engine: "all3", ...BASE, buyScore: 0.55, takePct: 10, stopPct: 5, timeStopDays: 7, rotateGap: 0, marketMaDays: 20 },
+  { name: "D-RR 단타·15/4",       engine: "all3", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 4, timeStopDays: 7, rotateGap: 0, marketMaDays: 20 },
+  { name: "D-RR45 단타·15/4+문턱", engine: "all3", ...BASE, buyScore: 0.45, takePct: 15, stopPct: 4, timeStopDays: 7, rotateGap: 0, marketMaDays: 20 },
+  { name: "D-TR 단타·추적7",       engine: "all3", ...BASE, buyScore: 0.35, takePct: 0, stopPct: 7, trailPct: 7, timeStopDays: 7, rotateGap: 0, marketMaDays: 20 },
+  { name: "D-TR45 단타·추적7+문턱", engine: "all3", ...BASE, buyScore: 0.45, takePct: 0, stopPct: 7, trailPct: 7, timeStopDays: 7, rotateGap: 0, marketMaDays: 20 },
+  { name: "D-SC1 단타·섹터1",      engine: "all3", ...BASE, buyScore: 0.35, takePct: 10, stopPct: 5, timeStopDays: 7, rotateGap: 0, marketMaDays: 20, sectorCap: 1 },
+  { name: "D-MA60 단타·60일선",    engine: "all3", ...BASE, buyScore: 0.35, takePct: 10, stopPct: 5, timeStopDays: 7, rotateGap: 0, marketMaDays: 60 },
+  { name: "D-NOTS 단타·시간청산끔", engine: "all3", ...BASE, buyScore: 0.35, takePct: 10, stopPct: 5, timeStopDays: 0, rotateGap: 0, marketMaDays: 20 },
+  { name: "D-QM 단타·돌파문턱0.45", engine: "breakout", ...BASE, buyScore: 0.45, takePct: 10, stopPct: 5, timeStopDays: 7, rotateGap: 0, marketMaDays: 20 },
+
+  /* 1차 결과: 문턱·추적손절·시장필터는 전부 헛다리였고 **손익비만이 답이었다**.
+   * 승률 24% 에서 익절10/손절5(2:1) 은 0.24*10 - 0.76*5 = -1.4%/거래로 산술적으로 진다.
+   * 익절15/손절4(3.75:1) 로 바꾸니 1년 +26.32%(218건). 2차는 그 축을 더 민다. */
+  { name: "E1 단타·15/4+섹터2",  engine: "all3",     ...BASE, buyScore: 0.35, takePct: 15, stopPct: 4, timeStopDays: 7, rotateGap: 0, marketMaDays: 20, sectorCap: 2 },
+  { name: "E2 단타·15/4+섹터1",  engine: "all3",     ...BASE, buyScore: 0.35, takePct: 15, stopPct: 4, timeStopDays: 7, rotateGap: 0, marketMaDays: 20, sectorCap: 1 },
+  { name: "E3 단타·20/5",       engine: "all3",     ...BASE, buyScore: 0.35, takePct: 20, stopPct: 5, timeStopDays: 7, rotateGap: 0, marketMaDays: 20, sectorCap: 2 },
+  { name: "E4 단타·돌파15/4",    engine: "breakout", ...BASE, buyScore: 0.35, takePct: 15, stopPct: 4, timeStopDays: 7, rotateGap: 0, marketMaDays: 20, sectorCap: 2 },
+  { name: "E5 단타·15/4+청산끔",  engine: "all3",     ...BASE, buyScore: 0.35, takePct: 15, stopPct: 4, timeStopDays: 0, rotateGap: 0, marketMaDays: 20, sectorCap: 2 },
+  { name: "E6 단타·18/4.5",     engine: "all3",     ...BASE, buyScore: 0.35, takePct: 18, stopPct: 4.5, timeStopDays: 7, rotateGap: 0, marketMaDays: 20, sectorCap: 2 },
 ];
 
 /* ── 데이터 ─────────────────────────────── */

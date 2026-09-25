@@ -232,10 +232,26 @@ async function stockVerdicts(env: Env, market: VerdictMarket, sectors: { recomme
     // "왜 하필 이 종목인가" — 같은 상용구 반복 대신 레이더가 계산한 축별 기여를 그대로 (2026-08-19 파이프라인 요청 1-3)
     reasons: (r.reasons ?? []).slice(0, 3).map((x) => x.text),
   });
-  const recommend = topRes.items
-    .filter((r) => inMarket(r.market) && r.score >= 0.1)
-    .map((r) => toStock(r, recSectors.has(r.sector ?? "") ? "추천 섹터 소속 + 종합 점수 상위" : "섹터 역풍을 이기는 종합 점수 상위"))
-    .slice(0, 6);
+  /* 한 업종에 몰리는 걸 막는다 — 백테스트에서 섹터당 2종목(QKC2)이 3종목(QKC3)보다
+   * 나았고(+5.85% vs -3.76%, 2026-08-21 측정) 그 규칙을 스윙·구간별 목록에는 걸어
+   * 뒀는데 **대표 픽에는 안 걸려 있었다**. 그 사이 실측: 미국 픽이 6세션 중 5세션
+   * 한 업종 5/5 였고, 일별 결과가 -3.37%~+2.13% 로 요동치다 6세션 평균이 정확히
+   * 0.00% 로 수렴했다(2026-09-22). 집중은 이기는 날을 키우는 만큼 지는 날도 키운다.
+   * 점수 순서는 그대로 두고, 같은 업종이 상한을 넘으면 건너뛰고 다음 종목을 올린다. */
+  const SECTOR_CAP = 2;
+  const recommend: StockVerdict[] = [];
+  const secCount = new Map<string, number>();
+  for (const r of topRes.items) {
+    if (recommend.length >= 6) break;
+    if (!inMarket(r.market) || r.score < 0.1) continue;
+    const sec = r.sector ?? "";
+    if (sec) {
+      const n = secCount.get(sec) ?? 0;
+      if (n >= SECTOR_CAP) continue;
+      secCount.set(sec, n + 1);
+    }
+    recommend.push(toStock(r, recSectors.has(sec) ? "추천 섹터 소속 + 종합 점수 상위" : "섹터 역풍을 이기는 종합 점수 상위"));
+  }
   const avoid = weakRes.items
     .filter((r) => inMarket(r.market) && r.score <= -0.15)
     .map((r) => toStock(r, "종합 점수 최하위 — 보유 시 축소 검토"))
