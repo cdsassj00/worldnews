@@ -155,7 +155,7 @@ interface Rule {
 
 const RULES: Rule[] = [
   {
-    id: "day", nameKo: "단타", stopPct: 5, takePct: 10, trailPct: null,
+    id: "day", nameKo: "단타", stopPct: 4, takePct: 15, trailPct: null,
     orderBy: "flow",
     orderKo: "삼합 상위 안에서 수급 축이 강한 순 — 짧게 끊는 규칙이라 거래대금·자금흐름이 먼저 터진 종목을 위에 둡니다. 이 정렬 자체는 따로 측정하지 않았습니다.",
     maxPicks: 3,
@@ -286,7 +286,7 @@ function cautionFor(id: HorizonId, side: BtSide, windows: string[]): string {
   const short = windows.indexOf("3mo") >= 0 && side.returns[windows.indexOf("3mo")] < 0
     ? "최근 3개월 창에서는 손실이었습니다 — 이 규칙은 하락장을 이기지 못합니다. " : "";
   const per: Record<HorizonId, string> = {
-    day: "왕복 비용과 일중 노이즈에 가장 취약한 구간입니다. 익절을 더 좁히면(6%·손절 3%) 측정 결과 전 구간 손실이었습니다.",
+    day: "승률이 20~31% 로 낮습니다 — 손익비 3.75:1 로 버티는 규칙이라 지는 거래가 이기는 거래보다 훨씬 많은 게 정상입니다. 익절을 좁히면(10%·손절 5%) 측정 결과 한국에서 1년 -18.41% 였습니다.",
     swing: "지금 운영 중인 규칙과 같습니다.",
     mid: "한국은 실측 보유가 6~10일로 스윙과 크게 다르지 않습니다 — 구간 이름만큼 기간이 벌어지지 않습니다.",
     long: "한국은 평균 보유가 한 달 남짓으로 3개월에 못 미칩니다 — 추적손절 25%가 그 전에 걸립니다.",

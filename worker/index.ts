@@ -647,7 +647,7 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     const date = url.searchParams.get("date") ?? undefined;
     // v3 — horizons(투자 기간별 추천) 블록 추가. shape 가 바뀌면 키를 올려야 한다:
     // 안 올리면 옛 캐시가 그대로 나가면서 "배포했는데 새 필드가 없다"로 조용히 숨는다.
-    const { data } = await cached(env, `brief:v6:${m}:${date ?? "today"}`, 300, () => dailyBrief(env, m, date));
+    const { data } = await cached(env, `brief:v7:${m}:${date ?? "today"}`, 300, () => dailyBrief(env, m, date));
     return json(data);
   }
 

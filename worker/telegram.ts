@@ -386,7 +386,7 @@ export async function buildEventMessages(env: Env, market: "KR" | "US", minPrior
 /** "/" 메뉴에 올릴 명령 목록 — 설명은 짧아야 메뉴에서 안 잘린다 */
 const BOT_COMMANDS: { command: string; description: string }[] = [
   { command: "추천", description: "오늘 종목 추천 — 단타·스윙·장기 전부" },
-  { command: "단타", description: "단타 관점 (익절 +10% · 손절 -5%)" },
+  { command: "단타", description: "단타 관점 (익절 +15% · 손절 -4%)" },
   { command: "스윙", description: "스윙 관점 (익절 +15% · 손절 -6%)" },
   { command: "중기", description: "중기 관점 (익절 +25% · 손절 -8%)" },
   { command: "장기", description: "장기 관점 (고점 대비 -25% 추적손절)" },
