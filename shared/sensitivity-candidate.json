@@ -1,0 +1,765 @@
+{
+ "generatedAt": "2026-08-03T01:05:17.657Z",
+ "window": {
+  "from": "2025-11-04",
+  "to": "2026-07-24",
+  "samples": 172
+ },
+ "gate": {
+  "current": 0.08110163715491317,
+  "candidate": 0.08001447833259522,
+  "pass": false
+ },
+ "diagnostics": [
+  {
+   "sector": "반도체",
+   "macroId": "SEMI",
+   "w": 0.95,
+   "ic": 0.047,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "반도체",
+   "macroId": "USDKRW",
+   "w": 0.45,
+   "ic": -0.094,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 160
+  },
+  {
+   "sector": "반도체",
+   "macroId": "KOSPI",
+   "w": 0.6,
+   "ic": 0.044,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "반도체",
+   "macroId": "US10Y",
+   "w": -0.2,
+   "ic": 0.017,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "반도체",
+   "macroId": "VIX",
+   "w": -0.5,
+   "ic": 0.037,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "2차전지",
+   "macroId": "US10Y",
+   "w": -0.5,
+   "ic": -0.102,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "2차전지",
+   "macroId": "CHINA",
+   "w": 0.35,
+   "ic": -0.037,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 166
+  },
+  {
+   "sector": "2차전지",
+   "macroId": "KOSPI",
+   "w": 0.5,
+   "ic": -0.187,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "2차전지",
+   "macroId": "OIL",
+   "w": 0.2,
+   "ic": 0.08,
+   "confirmed": true,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "2차전지",
+   "macroId": "VIX",
+   "w": -0.55,
+   "ic": -0.11,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "자동차",
+   "macroId": "USDKRW",
+   "w": 0.6,
+   "ic": -0.025,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 160
+  },
+  {
+   "sector": "자동차",
+   "macroId": "OIL",
+   "w": -0.25,
+   "ic": -0.051,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "자동차",
+   "macroId": "US10Y",
+   "w": -0.15,
+   "ic": 0.043,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "자동차",
+   "macroId": "KOSPI",
+   "w": 0.45,
+   "ic": -0.01,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "자동차",
+   "macroId": "VIX",
+   "w": -0.4,
+   "ic": -0.066,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "바이오",
+   "macroId": "US10Y",
+   "w": -0.65,
+   "ic": -0.071,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "바이오",
+   "macroId": "KOSPI",
+   "w": 0.3,
+   "ic": -0.297,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "바이오",
+   "macroId": "VIX",
+   "w": -0.45,
+   "ic": -0.267,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "금융",
+   "macroId": "US10Y",
+   "w": 0.6,
+   "ic": -0.041,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "금융",
+   "macroId": "KOSPI",
+   "w": 0.45,
+   "ic": -0.269,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "금융",
+   "macroId": "VIX",
+   "w": -0.3,
+   "ic": -0.237,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "정유화학",
+   "macroId": "OIL",
+   "w": 0.65,
+   "ic": 0.036,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "정유화학",
+   "macroId": "CHINA",
+   "w": 0.35,
+   "ic": 0.041,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 166
+  },
+  {
+   "sector": "정유화학",
+   "macroId": "USDKRW",
+   "w": -0.2,
+   "ic": -0.097,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 160
+  },
+  {
+   "sector": "정유화학",
+   "macroId": "KOSPI",
+   "w": 0.35,
+   "ic": -0.171,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "조선",
+   "macroId": "OIL",
+   "w": 0.35,
+   "ic": 0.127,
+   "confirmed": true,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "조선",
+   "macroId": "USDKRW",
+   "w": 0.45,
+   "ic": -0.025,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 160
+  },
+  {
+   "sector": "조선",
+   "macroId": "CHINA",
+   "w": 0.25,
+   "ic": 0.155,
+   "confirmed": true,
+   "contradicted": false,
+   "n": 166
+  },
+  {
+   "sector": "조선",
+   "macroId": "KOSPI",
+   "w": 0.35,
+   "ic": -0.266,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "방산",
+   "macroId": "VIX",
+   "w": 0.25,
+   "ic": 0.011,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "방산",
+   "macroId": "OIL",
+   "w": 0.2,
+   "ic": 0.019,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "방산",
+   "macroId": "KOSPI",
+   "w": 0.25,
+   "ic": -0.16,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "방산",
+   "macroId": "US10Y",
+   "w": -0.1,
+   "ic": 0.196,
+   "confirmed": true,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "인터넷",
+   "macroId": "US10Y",
+   "w": -0.55,
+   "ic": 0.048,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "인터넷",
+   "macroId": "KOSPI",
+   "w": 0.5,
+   "ic": -0.237,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "인터넷",
+   "macroId": "VIX",
+   "w": -0.45,
+   "ic": -0.099,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "철강",
+   "macroId": "CHINA",
+   "w": 0.6,
+   "ic": 0.074,
+   "confirmed": true,
+   "contradicted": false,
+   "n": 166
+  },
+  {
+   "sector": "철강",
+   "macroId": "OIL",
+   "w": 0.2,
+   "ic": 0.107,
+   "confirmed": true,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "철강",
+   "macroId": "KOSPI",
+   "w": 0.35,
+   "ic": -0.23,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "항공",
+   "macroId": "OIL",
+   "w": -0.75,
+   "ic": -0.157,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "항공",
+   "macroId": "USDKRW",
+   "w": -0.6,
+   "ic": -0.233,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 160
+  },
+  {
+   "sector": "항공",
+   "macroId": "KOSPI",
+   "w": 0.3,
+   "ic": -0.252,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "유통소비",
+   "macroId": "USDKRW",
+   "w": -0.35,
+   "ic": -0.088,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 160
+  },
+  {
+   "sector": "유통소비",
+   "macroId": "CHINA",
+   "w": 0.4,
+   "ic": 0.155,
+   "confirmed": true,
+   "contradicted": false,
+   "n": 166
+  },
+  {
+   "sector": "유통소비",
+   "macroId": "KOSPI",
+   "w": 0.35,
+   "ic": 0.052,
+   "confirmed": true,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "통신유틸",
+   "macroId": "US10Y",
+   "w": -0.25,
+   "ic": 0.057,
+   "confirmed": true,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "통신유틸",
+   "macroId": "VIX",
+   "w": 0.2,
+   "ic": 0.23,
+   "confirmed": true,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "통신유틸",
+   "macroId": "KOSPI",
+   "w": 0.15,
+   "ic": -0.193,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "통신유틸",
+   "macroId": "OIL",
+   "w": -0.2,
+   "ic": -0.097,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "건설",
+   "macroId": "US10Y",
+   "w": -0.5,
+   "ic": -0.053,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "건설",
+   "macroId": "KOSPI",
+   "w": 0.3,
+   "ic": -0.274,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "건설",
+   "macroId": "OIL",
+   "w": -0.15,
+   "ic": -0.288,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "증권",
+   "macroId": "KOSPI",
+   "w": 0.75,
+   "ic": -0.237,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "증권",
+   "macroId": "VIX",
+   "w": -0.5,
+   "ic": -0.209,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "증권",
+   "macroId": "US10Y",
+   "w": 0.1,
+   "ic": 0.009,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "보험",
+   "macroId": "US10Y",
+   "w": 0.6,
+   "ic": -0.082,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "보험",
+   "macroId": "KOSPI",
+   "w": 0.3,
+   "ic": -0.042,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "보험",
+   "macroId": "VIX",
+   "w": -0.2,
+   "ic": -0.154,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "해운",
+   "macroId": "CHINA",
+   "w": 0.5,
+   "ic": -0.018,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 166
+  },
+  {
+   "sector": "해운",
+   "macroId": "KOSPI",
+   "w": 0.3,
+   "ic": -0.277,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "해운",
+   "macroId": "OIL",
+   "w": -0.25,
+   "ic": -0.094,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "해운",
+   "macroId": "USDKRW",
+   "w": 0.3,
+   "ic": -0.133,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 160
+  },
+  {
+   "sector": "게임엔터",
+   "macroId": "US10Y",
+   "w": -0.45,
+   "ic": 0.036,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "게임엔터",
+   "macroId": "KOSPI",
+   "w": 0.4,
+   "ic": -0.212,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "게임엔터",
+   "macroId": "VIX",
+   "w": -0.4,
+   "ic": -0.296,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "게임엔터",
+   "macroId": "USDKRW",
+   "w": 0.25,
+   "ic": 0.179,
+   "confirmed": true,
+   "contradicted": false,
+   "n": 160
+  },
+  {
+   "sector": "게임엔터",
+   "macroId": "CHINA",
+   "w": 0.3,
+   "ic": -0.107,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 166
+  },
+  {
+   "sector": "전력설비",
+   "macroId": "KOSPI",
+   "w": 0.4,
+   "ic": -0.07,
+   "confirmed": false,
+   "contradicted": true,
+   "n": 172
+  },
+  {
+   "sector": "전력설비",
+   "macroId": "US10Y",
+   "w": -0.15,
+   "ic": 0.018,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 172
+  },
+  {
+   "sector": "전력설비",
+   "macroId": "USDKRW",
+   "w": 0.35,
+   "ic": 0.025,
+   "confirmed": false,
+   "contradicted": false,
+   "n": 160
+  },
+  {
+   "sector": "전력설비",
+   "macroId": "CHINA",
+   "w": 0.2,
+   "ic": 0.2,
+   "confirmed": true,
+   "contradicted": false,
+   "n": 166
+  }
+ ],
+ "candidate": {
+  "반도체": {
+   "SEMI": 0.95,
+   "USDKRW": 0.32,
+   "KOSPI": 0.6,
+   "US10Y": -0.2,
+   "VIX": -0.5
+  },
+  "2차전지": {
+   "US10Y": -0.35,
+   "CHINA": 0.35,
+   "KOSPI": 0.35,
+   "OIL": 0.2,
+   "VIX": -0.38
+  },
+  "자동차": {
+   "USDKRW": 0.6,
+   "OIL": -0.17,
+   "US10Y": -0.15,
+   "KOSPI": 0.45,
+   "VIX": -0.28
+  },
+  "바이오": {
+   "US10Y": -0.45,
+   "KOSPI": 0.21,
+   "VIX": -0.31
+  },
+  "금융": {
+   "US10Y": 0.6,
+   "KOSPI": 0.32,
+   "VIX": -0.21
+  },
+  "정유화학": {
+   "OIL": 0.65,
+   "CHINA": 0.35,
+   "USDKRW": -0.14,
+   "KOSPI": 0.24
+  },
+  "조선": {
+   "OIL": 0.39,
+   "USDKRW": 0.45,
+   "CHINA": 0.28,
+   "KOSPI": 0.24
+  },
+  "방산": {
+   "VIX": 0.25,
+   "OIL": 0.2,
+   "KOSPI": 0.18,
+   "US10Y": -0.11
+  },
+  "인터넷": {
+   "US10Y": -0.55,
+   "KOSPI": 0.35,
+   "VIX": -0.31
+  },
+  "철강": {
+   "CHINA": 0.6,
+   "OIL": 0.22,
+   "KOSPI": 0.24
+  },
+  "항공": {
+   "OIL": -0.52,
+   "USDKRW": -0.42,
+   "KOSPI": 0.21
+  },
+  "유통소비": {
+   "USDKRW": -0.24,
+   "CHINA": 0.44,
+   "KOSPI": 0.35
+  },
+  "통신유틸": {
+   "US10Y": -0.25,
+   "VIX": 0.22,
+   "KOSPI": 0.11,
+   "OIL": -0.14
+  },
+  "건설": {
+   "US10Y": -0.35,
+   "KOSPI": 0.21,
+   "OIL": -0.1
+  },
+  "증권": {
+   "KOSPI": 0.52,
+   "VIX": -0.35,
+   "US10Y": 0.1
+  },
+  "보험": {
+   "US10Y": 0.42,
+   "KOSPI": 0.3,
+   "VIX": -0.14
+  },
+  "해운": {
+   "CHINA": 0.5,
+   "KOSPI": 0.21,
+   "OIL": -0.17,
+   "USDKRW": 0.21
+  },
+  "게임엔터": {
+   "US10Y": -0.45,
+   "KOSPI": 0.28,
+   "VIX": -0.28,
+   "USDKRW": 0.28,
+   "CHINA": 0.21
+  },
+  "전력설비": {
+   "KOSPI": 0.28,
+   "US10Y": -0.15,
+   "USDKRW": 0.35,
+   "CHINA": 0.22
+  }
+ }
+}

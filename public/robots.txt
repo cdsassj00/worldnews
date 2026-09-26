@@ -1,0 +1,6 @@
+# WORLD FINANCE GLOBE — 검색엔진 수집 허용 (API 는 제외)
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://stockontology.cc/sitemap.xml
