@@ -116,63 +116,6 @@
     </header>
     </div><!-- /top-fixed -->
 
-    <!-- ══ 히어로 — 이 사이트가 무엇인지, 지금 실계좌가 어떻게 돌고 있는지 ══
-         마케팅 문구가 아니라 살아 있는 상태를 보여준다. 신뢰는 숫자가 만든다. -->
-    <!-- 스크롤리텔링 히어로 — 320vh 를 스크롤하는 동안 화면은 고정되고,
-         배경 영상(줌인→분해→재조립)이 스크롤에 맞춰 스크럽되며 문장이 3단계로 바뀐다 -->
-    <section class="hero" id="hero">
-      <div class="hero-sticky">
-        <!-- 스크럽은 영상 대신 프레임 시퀀스(64장) — 서버가 Range 요청을 안 줘 비디오 탐색이 막힌다(실측) -->
-        <canvas id="hero-canvas" class="hero-video" aria-hidden="true"></canvas>
-        <div class="hero-veil" aria-hidden="true"></div>
-        <div class="hero-step" data-step="0">
-          <p class="hero-step-kicker">MACRO</p>
-          <h2 class="hero-step-title">거시 인과가 <em>방향</em>을 읽는다</h2>
-          <p class="hero-step-sub">유가·금리·환율의 큰 흐름이 어느 업종, 어느 종목으로 전파되는지 — 3D 인과 그래프가 추적합니다.</p>
-        </div>
-        <div class="hero-step" data-step="1">
-          <p class="hero-step-kicker">수급</p>
-          <h2 class="hero-step-title">자금 흐름이 <em>힘</em>을 잰다</h2>
-          <p class="hero-step-sub">자금흐름(MFI)·매집강도·거래대금 급증 — 큰손이 사는 흔적을 점수로 만듭니다.</p>
-        </div>
-        <div class="hero-step" data-step="2">
-          <p class="hero-step-kicker">기술적분석</p>
-          <h2 class="hero-step-title">차트가 <em>타이밍</em>을 잡는다</h2>
-          <p class="hero-step-sub">이평교차·MACD·일목균형표 — 창시자가 있는 전략 13종의 합의로 진입과 이탈을 판단합니다.</p>
-        </div>
-      <div class="hero-inner hero-step-final">
-        <p class="hero-eyebrow">MACRO <span class="hero-x">×</span> 수급 <span class="hero-x">×</span> 기술적분석</p>
-        <h1 class="hero-title">AI 융합<br /><em>트레이더 어시스턴트</em></h1>
-        <p class="hero-sub">
-          거시 인과·수급·차트를 함께 보고 <b>지금 어떤 종목을 어느 기간으로 담을지</b> 추천합니다.
-          규칙은 백테스트로 고르고, 이긴 전략이 실제 계좌를 자동매매합니다 — 성적은 진 것까지 공개합니다.
-        </p>
-        <div class="hero-stats" id="hero-stats">
-          <div class="hero-stat"><span class="hero-stat-label">챔피언 전략</span><span class="hero-stat-value gold" id="hero-champ">—</span></div>
-          <div class="hero-stat"><span class="hero-stat-label">백테스트 최근 1년</span><span class="hero-stat-value" id="hero-btyear">—</span></div>
-          <div class="hero-stat"><span class="hero-stat-label">실계좌 운용 엔진</span><span class="hero-stat-value gold" id="hero-engine">—</span></div>
-          <div class="hero-stat"><span class="hero-stat-label">분석 종목</span><span class="hero-stat-value" id="hero-universe">—</span></div>
-        </div>
-        <div class="hero-cta">
-          <button class="btn btn-primary hero-btn" id="hero-goto-picks" type="button">오늘의 추천 종목 보기</button>
-          <button class="btn btn-ghost hero-btn" id="hero-goto-lab" type="button">전략실 — 4개 전략 성적</button>
-          <button class="btn btn-ghost hero-btn" id="hero-goto-terminal" type="button">3D 온톨로지 터미널</button>
-          <button class="btn btn-ghost hero-btn" id="hero-open-ta" type="button">종목 차트 분석</button>
-          <button class="btn btn-ghost hero-btn" id="hero-open-auto" type="button">자동매매 현황</button>
-        </div>
-        <ol class="hero-steps">
-          <li><b>① 오늘의 추천</b>에서 기간별(단타·스윙·중기·장기) 종목과 손절·목표 가격을 확인하고</li>
-          <li><b>② 종목 분석</b>에서 그 종목의 거시 경로·수급·차트 판정을 하나씩 뜯어본 뒤</li>
-          <li><b>③ 전략실·자동매매</b>에서 규칙의 과거 성적과 실계좌 운용 현황을 봅니다</li>
-        </ol>
-        <p class="hero-disclaimer">
-          본 사이트의 모든 수치·추천·시뮬레이션은 운영자 개인 계좌의 기록 공개이며 투자 자문·권유가 아닙니다.
-          전략실 수익률은 계좌 수익률이 아닌 가상 원금 기준 시뮬레이션입니다. 투자 판단과 책임은 이용자 본인에게 있습니다.
-        </p>
-      </div>
-      </div><!-- /hero-sticky -->
-    </section>
-
 
     <!-- ══ 오늘의 추천 — 사람들이 이 사이트에 오는 이유. 히어로 바로 다음에 온다.
          예전에는 분석 터미널의 다섯 번째 탭에 들어 있어서, 첫 화면에 보이는 건
@@ -194,6 +137,40 @@
         </div>
       </div>
       <div id="hz-body"><p class="note">구간별 추천을 불러오는 중…</p></div>
+    </section>
+
+    <!-- ══ 이 사이트는 — 추천을 본 뒤에 읽는 소개. ══
+         2026-09-26 이전에는 이 내용이 320vh 스크롤리텔링 히어로로 맨 위에 있었다.
+         방문자가 첫 종목을 보기까지 세 화면(3,040px)을 지나야 했고, 그 세 화면은
+         전부 "우리가 뭘 하는지"였다 — 사용자 표현으로 "자랑하는 것 같다".
+         배경으로 JPEG 64장을 미리 받던 것도 같이 걷어냈다.
+         소개는 필요하지만 물건 앞이 아니라 뒤에 온다. -->
+    <section class="intro-strip" id="hero" aria-label="이 사이트 소개">
+      <div class="intro-inner">
+        <p class="intro-overline">MACRO × 수급 × 기술적분석</p>
+        <h2 class="intro-title">왜 이 종목인지, 숫자로 답합니다.</h2>
+        <p class="intro-sub">
+          거시 인과·수급·차트 세 관점을 함께 보고 기간별로 고릅니다.
+          규칙은 백테스트로 정하고, 그 규칙이 <b>실제 계좌를 자동매매합니다</b> — 성적은 진 것까지 그대로 공개합니다.
+        </p>
+        <div class="intro-stats" id="hero-stats">
+          <div class="intro-stat"><span class="intro-stat-label">챔피언 전략</span><span class="intro-stat-value gold" id="hero-champ">—</span></div>
+          <div class="intro-stat"><span class="intro-stat-label">백테스트 최근 1년</span><span class="intro-stat-value" id="hero-btyear">—</span></div>
+          <div class="intro-stat"><span class="intro-stat-label">실계좌 운용 엔진</span><span class="intro-stat-value gold" id="hero-engine">—</span></div>
+          <div class="intro-stat"><span class="intro-stat-label">분석 종목</span><span class="intro-stat-value" id="hero-universe">—</span></div>
+        </div>
+        <div class="intro-links">
+          <button class="intro-link" id="hero-goto-picks" type="button">오늘의 추천</button>
+          <button class="intro-link" id="hero-goto-lab" type="button">전략실 성적</button>
+          <button class="intro-link" id="hero-goto-terminal" type="button">3D 온톨로지</button>
+          <button class="intro-link" id="hero-open-ta" type="button">종목 차트 분석</button>
+          <button class="intro-link" id="hero-open-auto" type="button">자동매매 현황</button>
+        </div>
+        <p class="intro-disclaimer">
+          모든 수치·추천·시뮬레이션은 운영자 개인 계좌의 기록 공개이며 투자 자문·권유가 아닙니다.
+          전략실 수익률은 계좌 수익률이 아닌 가상 원금 기준 시뮬레이션입니다. 투자 판단과 책임은 이용자 본인에게 있습니다.
+        </p>
+      </div>
     </section>
 
     <!-- ══ 전략실 — 추천 아래. 사이트의 자랑거리가 첫 스크롤에 나와야 한다.

@@ -710,89 +710,19 @@ function setupVerdict(): void {
   wire("onto-mkt"); // 3D 무대 위 토글 — 같은 스위치의 다른 손잡이
   // 오른쪽 패널의 "대한민국으로 돌아가기" — 무대·왼쪽 카드도 함께 한국으로
   document.addEventListener("wfg:market-kr", () => setVerdictMarket("KR"));
-  setupHeroScrub();
+  /* 스크롤리텔링 히어로는 2026-09-26 에 걷어냈다 — 아래 setupHeroScrub 주석 참고 */
 }
 
-/** 스크롤리텔링 히어로 — 320vh 구간의 진행률(0~1)이 영상 재생 헤드와
- *  단계 문장(MACRO→수급→기술적분석→최종)의 투명도를 움직인다. */
-function setupHeroScrub(): void {
-  const hero = document.getElementById("hero");
-  if (!hero) return;
-  /* 프레임 시퀀스 로드 — 서버가 Range 요청을 지원하지 않아 <video> 탐색이 안 된다(2026-08-17 실측 200).
-   * 64장 JPEG 를 미리 받아 캔버스에 cover 로 그린다. 어떤 브라우저·서버에서도 확실하다. */
-  const FRAMES = 64;
-  const canvas = document.getElementById("hero-canvas") as HTMLCanvasElement | null;
-  const ctx = canvas?.getContext("2d") ?? null;
-  const imgs: HTMLImageElement[] = [];
-  let loaded = 0;
-  for (let i = 1; i <= FRAMES; i++) {
-    const im = new Image();
-    im.src = `/heroseq/f${String(i).padStart(2, "0")}.jpg`;
-    im.onload = () => { loaded++; };
-    imgs.push(im);
-  }
-  let lastFrame = -1;
-  const drawFrame = (p: number) => {
-    if (!canvas || !ctx) return;
-    const idx = Math.max(0, Math.min(FRAMES - 1, Math.round(p * (FRAMES - 1))));
-    const im = imgs[idx];
-    if (!im?.complete || !im.naturalWidth) return;
-    if (idx === lastFrame && canvas.width) return;
-    lastFrame = idx;
-    const w = canvas.clientWidth, h = canvas.clientHeight;
-    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-    // cover — 비율 유지하며 캔버스를 가득 채운다
-    const s = Math.max(w / im.naturalWidth, h / im.naturalHeight);
-    const dw = im.naturalWidth * s, dh = im.naturalHeight * s;
-    ctx.drawImage(im, (w - dw) / 2, (h - dh) / 2, dw, dh);
-  };
-  const steps = [...hero.querySelectorAll<HTMLElement>(".hero-step")];
-  const final = hero.querySelector<HTMLElement>(".hero-step-final");
-  /* 각 단계가 차지하는 진행률 창 [등장, 퇴장] — 최종 화면은 0.72부터 끝까지 */
-  const WINDOWS: [number, number][] = [[0.02, 0.26], [0.26, 0.5], [0.5, 0.72]];
-  const fade = (p: number, [a, b]: [number, number]) => {
-    const inD = 0.05;
-    if (p < a || p > b) return 0;
-    if (p < a + inD) return (p - a) / inD;
-    if (p > b - inD) return (b - p) / inD;
-    return 1;
-  };
-  let ticking = false;
-  const scrub = () => {
-    ticking = false;
-    const r = hero.getBoundingClientRect();
-    const total = Math.max(1, r.height - window.innerHeight);
-    const p = Math.max(0, Math.min(1, -r.top / total));
-    drawFrame(p);
-    steps.forEach((s, i) => {
-      const o = fade(p, WINDOWS[i] ?? [2, 3]);
-      s.style.opacity = String(o);
-      s.style.transform = `translateY(${(1 - o) * 14}px)`;
-    });
-    if (final) {
-      const o = p < 0.72 ? Math.max(0, (p - 0.6) / 0.12) * 0 : Math.min(1, (p - 0.72) / 0.08);
-      // 스크롤리텔링이 꺼진 화면(모바일 media query)에서는 히어로가 낮다 — 최종 화면을 그대로 둔다
-      const scrolly = r.height > window.innerHeight * 1.5;
-      final.style.opacity = scrolly ? String(p < 0.02 ? 1 : o) : "1";
-      final.style.pointerEvents = final.style.opacity === "0" ? "none" : "";
-    }
-  };
-  window.addEventListener(
-    "scroll",
-    () => {
-      if (!ticking) {
-        ticking = true;
-        requestAnimationFrame(scrub);
-      }
-    },
-    { passive: true },
-  );
-  window.addEventListener("resize", () => { lastFrame = -1; scrub(); }, { passive: true });
-  scrub();
-  // 프레임이 도착하는 대로 첫 그림을 그린다 (이미지 로드는 비동기)
-  window.setTimeout(() => { lastFrame = -1; scrub(); }, 700);
-  window.setTimeout(() => { lastFrame = -1; scrub(); }, 2500);
-}
+/* 스크롤리텔링 히어로(setupHeroScrub)는 2026-09-26 에 삭제했다.
+ *
+ * 320vh 를 스크롤하는 동안 화면을 고정해 두고 배경 프레임 64장을 스크럽하며
+ * 슬로건을 3단계로 넘기던 연출이었다. 문제는 그 세 화면이 전부 "우리가 뭘
+ * 하는지"였다는 점이다 — 방문자는 첫 종목을 보기까지 3,040px 을 지나야 했고,
+ * 그 사이 /heroseq/f01~64.jpg 를 전부 내려받았다. 연출 하나에 첫 화면의
+ * 대역폭과 스크롤을 모두 쓴 셈이다.
+ *
+ * 지금은 추천이 첫 화면이고 소개는 그 아래 .intro-strip 한 덩어리로 줄였다.
+ * 되살릴 일이 있으면 git 이력(이 주석 직전 커밋)에서 통째로 꺼내면 된다. */
 
 async function loadVerdict(): Promise<void> {
   if (countryMode) return; // 나라 모드에서는 왼쪽 카드가 그 나라를 유지한다
