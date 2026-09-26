@@ -3721,10 +3721,13 @@ body { font-size: 14px; }
   .ix-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ix-strip .ix-card:nth-child(n+5) { display: none; }
   /* 좁은 화면 표 — 종목·현재가·목표·손절만 남긴다(나머지는 행을 누르면 펼쳐지는 근거에) */
-  .nv-table tr > :nth-child(1), .nv-table tr > :nth-child(4), .nv-table tr > :nth-child(7),
-  .nv-table tr > :nth-child(8), .nv-table tr > :nth-child(9), .nv-table tr > :nth-child(10),
-  .nv-table tr > :nth-child(11) { display: none; }
-  .nv-table .nv-detail td { display: table-cell; }
+  .nv-picks tr > :nth-child(1), .nv-picks tr > :nth-child(4), .nv-picks tr > :nth-child(7),
+  .nv-picks tr > :nth-child(8), .nv-picks tr > :nth-child(9), .nv-picks tr > :nth-child(10),
+  .nv-picks tr > :nth-child(11) { display: none; }
+  .nv-picks .nv-detail td { display: table-cell; }
+  /* 성적표 표 — 좁은 화면에서는 구간표의 부가 열, 거래표의 지수 열을 접는다 */
+  .sc-body .nv-table:not(.sc-trades) tr > :nth-child(n+5):not(:nth-child(9)) { display: none; }
+  .sc-trades tr > :nth-child(2), .sc-trades tr > :nth-child(8) { display: none; }
   .nv-table .num i { display: block; }
   #btn-theme { display: none; }
   .gnb-search { flex: 1 1 auto; }
@@ -3857,3 +3860,18 @@ h1, h2, h3, .nv-title, .nv-box-title, .lab-name, .brand-name { letter-spacing: -
 .lab-strip .lab-return { font-size: 22px; font-weight: 600; letter-spacing: -0.03em; }
 .lab-strip .lab-name { font-size: 15px; }
 .badge { font-family: var(--font-ui); letter-spacing: 0; }
+
+/* ── 성적표 (2026-09-27) ── */
+.sc-body { display: grid; gap: 12px; }
+.sc-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.sc-tile { display: grid; gap: 4px; padding: 14px 16px; border-radius: 14px; background: var(--box); }
+.sc-tile-k { font-size: 12px; color: var(--fg-faint); }
+.sc-tile-v { font-size: 20px; font-weight: 600; letter-spacing: -0.028em; color: var(--fg); font-variant-numeric: tabular-nums; }
+.sc-tile-v.up { color: var(--up); } .sc-tile-v.down { color: var(--down); }
+.sc-tile-s { font-size: 12px; color: var(--fg-faint); }
+.sc-h { margin: 14px 0 0; font-size: 15px; font-weight: 600; letter-spacing: -0.028em; color: var(--fg); }
+.sc-status { font-size: 12.5px; }
+.sc-status.up { color: var(--up); } .sc-status.down { color: var(--down); }
+.nv-link { color: var(--fg-dim); text-decoration: underline; text-underline-offset: 2px; }
+.sc-body .radar-tabs { margin: 0; padding: 0; max-width: none; justify-content: flex-start; }
+@media (max-width: 640px) { .sc-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sc-tile-v { font-size: 18px; } }

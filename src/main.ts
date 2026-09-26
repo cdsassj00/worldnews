@@ -6,7 +6,7 @@ import { AutoPanel } from "./autopanel";
 import { ComboPanel } from "./combopanel";
 import { HorizonPanel } from "./horizonpanel";
 import { FlowPanel } from "./flowpanel";
-import { LabPanel } from "./labpanel";
+import { ScorecardPanel } from "./scorecardpanel";
 import usUniverse from "../shared/us-universe.json";
 import { TaPanel } from "./tapanel";
 import { Ontology3D } from "./ontology3d";
@@ -51,7 +51,7 @@ const panel = new Panel({
 });
 
 let autoPanel: AutoPanel | null = null;
-let labPanel: LabPanel | null = null;
+let scorePanel: ScorecardPanel | null = null;
 let taPanel: TaPanel | null = null;
 let flowPanel: FlowPanel | null = null;
 let comboPanel: ComboPanel | null = null;
@@ -292,6 +292,7 @@ function route(view: ViewId, scrollTop = true): void {
   if (view === "flow") void flowPanel?.load();
   if (view === "combo") void comboPanel?.load();
   if (view === "home") void horizonPanel?.load();
+  if (view === "lab") void scorePanel?.load();
   if (location.hash.slice(1) !== view) history.replaceState(null, "", view === "home" ? location.pathname + location.search : `#${view}`);
   if (scrollTop) window.scrollTo({ top: 0 });
 }
@@ -1341,7 +1342,7 @@ async function boot(): Promise<void> {
   setupVerdict();
   setupLang();
 
-  labPanel = new LabPanel({ grid: $("lab-grid"), detail: $("lab-detail"), disclaimer: $("lab-disclaimer") });
+  scorePanel = new ScorecardPanel({ root: $("sc-body") });
   setupTour();
   taPanel = new TaPanel({ root: $("ta-body"), sub: $("ta-sub") });
   setupTaSearch();
@@ -1375,13 +1376,12 @@ async function boot(): Promise<void> {
   setupTerminalTabs();
   setupGnbSearch();
   // 추천은 홈 첫 화면이라 바로 채워져야 한다
-  await Promise.allSettled([horizonPanel.load(), loadOntology(), loadTape(), loadRadar(), loadVerdict(), labPanel.load()]);
+  await Promise.allSettled([horizonPanel.load(), loadOntology(), loadTape(), loadRadar(), loadVerdict()]);
   // 시세는 주기적으로 갱신(90초 캐시와 맞춤), 온톨로지는 전략 캐시(5분)에 맞춘다
   setInterval(() => void loadTape(), 90_000);
   setInterval(() => void loadOntology(), 300_000);
   setInterval(() => void loadRadar(), 300_000);
   setInterval(() => void loadVerdict(), 300_000);
-  setInterval(() => void labPanel?.load(), 300_000);
 }
 
 void boot();

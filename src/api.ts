@@ -660,6 +660,26 @@ export interface HorizonBucket {
   headlineKo: string; cautionKo: string;
 }
 
+/* 추천 성적표 — worker/scorecard.ts */
+export interface ScTrade {
+  bucket: "day" | "swing" | "mid" | "long"; code: string; name: string; recDate: string;
+  entryDate: string | null; entryPx: number | null; exitDate: string | null; exitPx: number | null;
+  status: "대기" | "보유중" | "익절" | "손절" | "시간청산";
+  ret: number | null; idxRet: number | null; days: number | null;
+}
+export interface ScSummary {
+  closed: number; open: number; waiting: number;
+  avgClosed: number | null; winRateClosed: number | null;
+  avgAll: number | null; idxAvgAll: number | null;
+  tp: number; sl: number; time: number;
+}
+export interface ScorecardView {
+  market: "KR" | "US"; updatedAt: number; since: string | null; lastRecDate: string | null; rulesKo: string;
+  total: ScSummary;
+  buckets: (ScSummary & { id: "day" | "swing" | "mid" | "long"; nameKo: string })[];
+  trades: ScTrade[];
+}
+
 /** 홈이 daily-brief 에서 쓰는 부분 — 추천 표·브리핑·지난 추천 채점·점수 상위 */
 export interface BriefForHome {
   targetSession: string;
@@ -842,6 +862,7 @@ export const api = {
     request<{ briefs: BriefForHome[] }>(
       `/api/daily-brief?market=${market}`,
     ),
+  scorecard: (market: "KR" | "US" = "KR") => request<ScorecardView>(`/api/scorecard?market=${market}`),
   labOverview: (market: "KR" | "US" = "KR") => request<LabOverview>(`/api/lab/overview?market=${market}`),
   ta: (symbol: string, days = 180) => request<TaResponse>(`/api/ta?symbol=${encodeURIComponent(symbol)}&days=${days}`),
   overseasCheck: () =>

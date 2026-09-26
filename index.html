@@ -124,7 +124,7 @@
         <a href="#flow" data-view="flow">수급</a>
         <a href="#ta" data-view="ta">차트</a>
         <a href="#combo" data-view="combo">종합</a>
-        <a href="#lab" data-view="lab">전략실</a>
+        <a href="#lab" data-view="lab">성적표</a>
       </nav>
     </header>
     </div><!-- /top-fixed -->
@@ -338,15 +338,15 @@
       </div>
     </section>
 
-    <!-- 전략실 — 전략별 백테스트·리그 성적 (탭 "전략실") -->
-    <section class="lab-strip" id="lab-strip" aria-label="전략실" hidden>
+    <!-- ══ 성적표 — 사이트가 실제로 낸 추천을, 추천대로 샀다면 (2026-09-27) ══
+         예전 "전략실"은 과거 시세로 규칙을 흉내 낸 백테스트였다(뉴스 0, 수급은 가격 역산).
+         사용자: "니가 추천한 종목을 샀을 때 그걸 백테스팅 해야지". 그래서 교체한다. -->
+    <section class="lab-strip" id="lab-strip" aria-label="추천 성적표" hidden>
       <div class="lab-head nv-wrap">
-        <h2 class="nv-title">전략실</h2>
-        <p class="nv-sub" id="lab-sub">같은 가상 원금·같은 규칙으로 전략들을 겨룹니다. 이긴 전략을 실계좌 엔진으로 선택할 수 있습니다.</p>
+        <h2 class="nv-title">추천 성적표</h2>
+        <p class="nv-sub">화면·텔레그램에 실제로 나갔던 추천을 <b>추천대로 샀다면</b> 얼마였는지 매일 자동으로 채점합니다. 실제 주문은 나가지 않습니다.</p>
       </div>
-      <div class="lab-grid" id="lab-grid"><p class="note">전략실을 불러오는 중…</p></div>
-      <div class="lab-detail" id="lab-detail" hidden></div>
-      <p class="note lab-note" id="lab-disclaimer"></p>
+      <div class="nv-wrap sc-body" id="sc-body"><p class="nv-empty">성적표를 불러오는 중…</p></div>
     </section>
 
     <footer class="footer">

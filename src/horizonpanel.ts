@@ -12,7 +12,7 @@
  *
  * 오른쪽 사이드: 시장 브리핑 · 지난 추천 결과 · 종합 점수 상위.
  */
-import { api, type BriefForHome, type HorizonBucket, type HorizonPick } from "./api";
+import { api, type BriefForHome, type HorizonBucket, type HorizonPick, type ScorecardView } from "./api";
 import { el } from "./format";
 
 type Mk = "KR" | "US";
@@ -32,6 +32,7 @@ export class HorizonPanel {
   private market: Mk = "KR";
   private bucket: BucketId = "day";
   private cache: Partial<Record<Mk, BriefForHome>> = {};
+  private score: Partial<Record<Mk, ScorecardView>> = {};
   private loading = false;
   private open = new Set<string>();
 
@@ -75,6 +76,13 @@ export class HorizonPanel {
       }
       this.cache[this.market] = b;
       this.render(b);
+      const mk = this.market;
+      if (!this.score[mk]) {
+        void api.scorecard(mk).then((v) => {
+          this.score[mk] = v;
+          if (this.market === mk && this.cache[mk]) this.render(this.cache[mk]!);
+        }).catch(() => undefined);
+      }
     } catch {
       if (!hit) this.root.replaceChildren(el("p", { class: "nv-empty", text: "추천을 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요." }));
     } finally {
@@ -106,13 +114,15 @@ export class HorizonPanel {
 
     const table = this.table(k);
 
-    const t = k.track;
-    const li = t ? t.windows.length - 1 : 0;
-    const foot = t
+    /* 각주 — 예전엔 "이 규칙 과거 1년 +24%"(백테스트)였다. 실제로 나갔던 추천의 결과로 바꾼다. */
+    const sc = this.score[this.market]?.buckets.find((x) => x.id === k.id);
+    const pc = (v: number | null) => (v === null ? "—" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(2)}%`);
+    const foot = sc
       ? el("p", { class: "nv-foot" }, [
-        el("span", { text: "이 규칙 과거 1년 " }),
-        el("b", { class: dir(t.returns[li]), text: `${sgn(t.returns[li])}%` }),
-        el("span", { text: ` (${t.benchmarkKo.replace(" 매수 후 보유", "")} ${sgn(t.benchmarkReturns[li])}%) · ${t.trades[li]}건 · 승률 ${t.winRate[li]}%` }),
+        el("span", { text: `이 구간 실제 추천 성적(${this.score[this.market]!.since} 이후) — 끝난 거래 ${sc.closed}건 평균 ` }),
+        el("b", { class: dir(sc.avgClosed ?? 0), text: pc(sc.avgClosed) }),
+        el("span", { text: `${sc.winRateClosed !== null ? ` · 승률 ${(sc.winRateClosed * 100).toFixed(0)}%` : ""} · 보유 중 ${sc.open}건 · ` }),
+        (() => { const a = el("a", { href: "#lab", class: "nv-link", text: "성적표 자세히" }); return a; })(),
       ])
       : null;
 
@@ -158,7 +168,7 @@ export class HorizonPanel {
     }
 
     return el("div", { class: "nv-table-wrap" }, [
-      el("table", { class: "nv-table" }, [el("thead", {}, [head]), el("tbody", {}, rows)]),
+      el("table", { class: "nv-table nv-picks" }, [el("thead", {}, [head]), el("tbody", {}, rows)]),
     ]);
   }
 

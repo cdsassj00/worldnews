@@ -502,6 +502,13 @@ async function router(request: Request, env: Env, ctx: ExecutionContext): Promis
     return json(await radarTop(env, limit, order, sector));
   }
 
+  if (path === "/api/scorecard") {
+    // 추천 성적표 — 실제로 나갔던 추천을 추천대로 샀다면(그림자 운용). 3시간마다 원장 갱신.
+    const market = url.searchParams.get("market") === "US" ? "US" as const : "KR" as const;
+    const { scorecard } = await import("./scorecard");
+    return json(await scorecard(env, market));
+  }
+
   if (path === "/api/radar/find") {
     return json(await radarFind(env, url.searchParams.get("q") ?? "", num(url.searchParams.get("limit"), 8)));
   }

@@ -43,7 +43,7 @@ interface YahooChart {
 const YAHOO_HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
 
 /** Yahoo Finance 차트 API. 무인증이라 호출 실패 시 호스트를 번갈아 시도한다. */
-async function loadSeries(symbol: string, range: string, interval: string): Promise<Series> {
+export async function loadSeries(symbol: string, range: string, interval: string): Promise<Series> {
   let lastErr: unknown = null;
   for (const host of YAHOO_HOSTS) {
     try {
