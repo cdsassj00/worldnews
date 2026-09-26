@@ -36,7 +36,7 @@
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="https://stockontology.cc/og.png" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#000000" />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -60,17 +60,9 @@
     <meta name="color-scheme" content="dark light" />
     <!-- 저장된 테마를 첫 페인트 전에 적용해 화면이 번쩍이지 않게 한다 -->
     <script>
-      /* 기본은 라이트(네이버 증권 톤). 다크는 사용자가 고른 경우만.
-         저장 키를 wfg-theme2 로 바꿨다 — 옛 키에는 재방문자 전원이 "dark" 로 저장돼 있다. */
-      try { if (localStorage.getItem("wfg-theme2") !== "dark") document.documentElement.dataset.theme = "light"; }
-      catch (e) { document.documentElement.dataset.theme = "light"; }
+      /* 기본은 ssjsite 톤(순수 블랙). 라이트는 사용자가 고른 경우만 — 저장 키 wfg-theme2 */
+      try { if (localStorage.getItem("wfg-theme2") === "light") document.documentElement.dataset.theme = "light"; } catch (e) {}
     </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
     <link
       rel="stylesheet"
       as="style"
@@ -116,7 +108,7 @@
           <button type="button" data-lang="zh-CN" title="中文 — 实时翻译">中文</button>
         </div>
         <button class="gnb-util" id="btn-tour" type="button" title="사이트 사용법 안내">사용법</button>
-        <button class="gnb-util" id="btn-theme" type="button" title="화면 밝기 전환">다크</button>
+        <button class="gnb-util" id="btn-theme" type="button" title="화면 밝기 전환">라이트</button>
         <details class="gnb-op">
           <summary class="gnb-util" title="운영자 전용">운영자</summary>
           <div class="gnb-op-menu">

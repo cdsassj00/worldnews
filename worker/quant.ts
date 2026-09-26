@@ -137,6 +137,9 @@ export interface QuantRow {
   scores: Record<string, number>;
   /** 차트 거장 전략 13종 합의 점수 (-1~1) — 전략실 3호가 쓴다 */
   taScore?: number;
+  /** 13종 전략 각각의 판정(-1~1). 예전엔 합의 평균만 남기고 버려서, 어느 전략이
+   *  맞혔는지 되짚을 수 없었다 — 부품별 채점(worker/learn.ts)의 입력. */
+  ta13?: Record<string, number>;
   parts: QuantParts;
   raw: QuantSignal["raw"];
   turnover: number;
@@ -203,6 +206,18 @@ export interface QuantState {
 const RANK_KEY = "quant:rank";
 // v2 — 후보 풀 게이트를 넣기 전의 초기 매수(스캔 12종목 시점)를 성적에서 제외하려고 키를 올렸다
 const STATE_KEY = "quant:state:v2";
+
+/** 종목 페이지용 — 스캔 행 하나 (코드·심볼 대소문자 무시) */
+export async function quantRow(env: Env, q: string): Promise<QuantRow | null> {
+  const store = await loadRank(env);
+  const k = q.trim().toUpperCase();
+  return store.rows[q] ?? Object.values(store.rows).find((r) => r.code.toUpperCase() === k || r.symbol.toUpperCase() === k) ?? null;
+}
+
+/** 부품별 채점용 — 스캔 행 전체 */
+export async function quantRowsAll(env: Env): Promise<QuantRow[]> {
+  return Object.values((await loadRank(env)).rows);
+}
 
 async function loadRank(env: Env): Promise<RankStore> {
   const raw = await env.CACHE.get(RANK_KEY, "json");
@@ -290,7 +305,10 @@ export async function quantScanChunk(env: Env): Promise<{ scanned: number; curso
       for (const p of QUANT_PROFILES) scores[p.id] = scoreFromParts(sig.parts, p);
       // 차트 거장 13종 합의 — 사다리·플랜 계산은 빼고 전략 판정만(속도).
       // 백테스트(quant-backtest.ts ta 엔진)와 정확히 같은 식이라야 성적 비교가 성립한다.
-      const taScore = round(consensus(runStrategies(hist)).score, 3);
+      const taSigs = runStrategies(hist);
+      const taScore = round(consensus(taSigs).score, 3);
+      const ta13: Record<string, number> = {};
+      for (const t of taSigs) ta13[t.id] = round(t.score, 2);
       store.rows[seed.code] = {
         code: seed.code,
         symbol: seed.symbol,
@@ -301,6 +319,7 @@ export async function quantScanChunk(env: Env): Promise<{ scanned: number; curso
         changePct: s.changePct,
         scores,
         taScore,
+        ta13,
         parts: sig.parts,
         raw: sig.raw,
         turnover: Math.round(sig.turnover),
