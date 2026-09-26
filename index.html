@@ -36,7 +36,7 @@
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="https://stockontology.cc/og.png" />
-    <meta name="theme-color" content="#020617" />
+    <meta name="theme-color" content="#ffffff" />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -60,7 +60,10 @@
     <meta name="color-scheme" content="dark light" />
     <!-- 저장된 테마를 첫 페인트 전에 적용해 화면이 번쩍이지 않게 한다 -->
     <script>
-      try { if (localStorage.getItem("wfg-theme") === "light") document.documentElement.dataset.theme = "light"; } catch (e) {}
+      /* 기본은 라이트(네이버 증권 톤). 다크는 사용자가 고른 경우만.
+         저장 키를 wfg-theme2 로 바꿨다 — 옛 키에는 재방문자 전원이 "dark" 로 저장돼 있다. */
+      try { if (localStorage.getItem("wfg-theme2") !== "dark") document.documentElement.dataset.theme = "light"; }
+      catch (e) { document.documentElement.dataset.theme = "light"; }
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -79,7 +82,11 @@
   <body>
     <a class="skip-link" href="#panel">본문(국가 상세 패널)로 건너뛰기</a>
 
-    <!-- 배너 + 상단바(실시간 지수)는 스크롤해도 화면 상단에 고정 (2026-08-17) -->
+    <!-- ══ 상단 — 네이버 증권식 GNB (2026-09-26) ══
+         1줄: 로고 · 종목 검색 · 유틸. 2줄: 화면 탭(홈/온톨로지/수급/차트/종합/전략실).
+         예전 상단바는 로고 + 흐르는 시세 + 버튼 여덟 개가 한 줄에 몰려 모바일에서 세 줄이 됐고,
+         운영자 전용(자동매매·거래 암호·KIS 연동 상태)이 모든 방문자에게 노출됐다.
+         운영자 항목은 "운영자" 메뉴 안으로 넣었다. -->
     <div class="top-fixed">
     <a class="promo-banner" href="https://cdsa.kr" target="_blank" rel="noopener">
       <span class="promo-ad" aria-hidden="true">AD</span>
@@ -87,126 +94,75 @@
       <i class="promo-sweep" aria-hidden="true"></i>
     </a>
 
-    <header class="topbar">
-      <div class="brand">
-        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
-          <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2" />
-          <path d="M3 16h26M16 3c5 5 5 21 0 26M16 3c-5 5-5 21 0 26" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".8" />
-        </svg>
-        <div class="brand-text">
-          <strong>WORLD FINANCE GLOBE</strong>
-          <span id="kis-badge" class="badge badge-muted" title="한국투자증권 연동 상태">연동 확인중…</span>
+    <header class="gnb">
+      <div class="gnb-top">
+        <a class="brand" href="#home" aria-label="홈으로">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2.4" />
+            <path d="M3 16h26M16 3c5 5 5 21 0 26M16 3c-5 5-5 21 0 26" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".85" />
+          </svg>
+          <span class="brand-name">stockontology</span><span class="brand-sub">증권</span>
+        </a>
+        <div class="gnb-search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <input id="gnb-search" type="search" placeholder="종목명·코드 입력 (예: 삼성전자, 005930, NVDA)" autocomplete="off" />
+          <ul id="gnb-results" class="search-results" hidden></ul>
         </div>
+        <span class="spacer"></span>
+        <div class="lang-switch" id="lang-switch" title="언어 / Language" data-no-translate>
+          <button type="button" data-lang="" title="한국어 (원문)">한국어</button>
+          <button type="button" data-lang="en" title="English — real-time translation">EN</button>
+          <button type="button" data-lang="ja" title="日本語 — リアルタイム翻訳">日本語</button>
+          <button type="button" data-lang="zh-CN" title="中文 — 实时翻译">中文</button>
+        </div>
+        <button class="gnb-util" id="btn-tour" type="button" title="사이트 사용법 안내">사용법</button>
+        <button class="gnb-util" id="btn-theme" type="button" title="화면 밝기 전환">다크</button>
+        <details class="gnb-op">
+          <summary class="gnb-util" title="운영자 전용">운영자</summary>
+          <div class="gnb-op-menu">
+            <span id="kis-badge" class="badge badge-muted" title="한국투자증권 연동 상태">연동 확인중…</span>
+            <button class="gnb-op-item" id="btn-auto" type="button">자동매매 현황</button>
+            <button class="gnb-op-item" id="btn-auth" type="button">거래 암호</button>
+          </div>
+        </details>
       </div>
-      <div class="tape" id="tape" role="marquee" aria-label="글로벌 시세 티커">
-        <div class="tape-track" id="tape-track"></div>
-      </div>
-      <div class="lang-switch" id="lang-switch" title="언어 / Language" data-no-translate>
-        <span class="lang-globe" aria-hidden="true">🌐</span>
-        <button type="button" data-lang="" title="한국어 (원문)">한국어</button>
-        <button type="button" data-lang="en" title="English — real-time translation">EN</button>
-        <button type="button" data-lang="ja" title="日本語 — リアルタイム翻訳">日本語</button>
-        <button type="button" data-lang="zh-CN" title="中文 — 实时翻译">中文</button>
-      </div>
-      <button class="btn btn-ghost" id="btn-tour" type="button" title="사이트 사용법 안내">❓ 사용법</button>
-      <button class="btn btn-ghost" id="btn-theme" type="button" title="화면 밝기 전환">☀️ 밝게</button>
-      <button class="btn btn-ghost" id="btn-ta" type="button">차트 분석</button>
-      <button class="btn btn-ghost" id="btn-auto" type="button">자동매매</button>
-      <button class="btn btn-ghost" id="btn-auth" type="button">거래 암호</button>
+      <nav class="gnb-nav" id="gnb-nav" aria-label="화면">
+        <a href="#home" data-view="home" class="on">홈</a>
+        <a href="#onto" data-view="onto">온톨로지</a>
+        <a href="#flow" data-view="flow">수급</a>
+        <a href="#ta" data-view="ta">차트</a>
+        <a href="#combo" data-view="combo">종합</a>
+        <a href="#lab" data-view="lab">전략실</a>
+      </nav>
     </header>
     </div><!-- /top-fixed -->
 
-
-    <!-- ══ 오늘의 추천 — 사람들이 이 사이트에 오는 이유. 히어로 바로 다음에 온다.
-         예전에는 분석 터미널의 다섯 번째 탭에 들어 있어서, 첫 화면에 보이는 건
-         "우리가 뭘 분석했나"(전략실 성적·백테스트)뿐이었다. 순서를 뒤집는다:
-         먼저 무엇을 살지 보여주고, 근거와 성적은 그 아래에서 확인하게 한다. ══ -->
-    <section class="picks-strip" id="picks" aria-label="오늘의 종목 추천">
-      <div class="picks-head">
-        <div>
-          <p class="picks-overline">오늘의 추천</p>
-          <h2 class="picks-title">지금 사면,<br />언제 팔까.</h2>
-          <p class="picks-sub">
-            거시 인과·수급·차트를 함께 보고 <b>기간별로</b> 나눠 추천합니다.
-            구간마다 <b>손절·목표 가격</b>과 그 규칙의 과거 성적을 그대로 답니다.
-          </p>
-        </div>
-        <div class="hz-market" id="hz-market" role="tablist" aria-label="시장 선택">
-          <button type="button" class="hz-mk active" data-market="KR">한국</button>
-          <button type="button" class="hz-mk" data-market="US">미국</button>
+    <!-- ══ 홈 — 지수 카드 · 오늘의 추천 · 오른쪽 사이드(브리핑·지난 추천·점수 상위) ══ -->
+    <div class="view" id="view-home">
+      <div class="nv-wrap">
+        <div class="ix-strip" id="ix-strip" aria-label="주요 지수"></div>
+        <div class="home-grid">
+          <section class="home-main" id="picks" aria-label="오늘의 추천">
+            <div class="nv-head">
+              <h2 class="nv-title">오늘의 추천</h2>
+              <div class="hz-market nv-mk" id="hz-market" role="tablist" aria-label="시장 선택">
+                <button type="button" class="hz-mk active" data-market="KR">국내</button>
+                <button type="button" class="hz-mk" data-market="US">미국</button>
+              </div>
+            </div>
+            <div id="hz-body"><p class="nv-empty">추천을 불러오는 중…</p></div>
+          </section>
+          <aside class="home-side" id="home-side" aria-label="시장 요약"></aside>
         </div>
       </div>
-      <div id="hz-body"><p class="note">구간별 추천을 불러오는 중…</p></div>
-    </section>
-
-    <!-- ══ 이 사이트는 — 추천을 본 뒤에 읽는 소개. ══
-         2026-09-26 이전에는 이 내용이 320vh 스크롤리텔링 히어로로 맨 위에 있었다.
-         방문자가 첫 종목을 보기까지 세 화면(3,040px)을 지나야 했고, 그 세 화면은
-         전부 "우리가 뭘 하는지"였다 — 사용자 표현으로 "자랑하는 것 같다".
-         배경으로 JPEG 64장을 미리 받던 것도 같이 걷어냈다.
-         소개는 필요하지만 물건 앞이 아니라 뒤에 온다. -->
-    <section class="intro-strip" id="hero" aria-label="이 사이트 소개">
-      <div class="intro-inner">
-        <p class="intro-overline">MACRO × 수급 × 기술적분석</p>
-        <h2 class="intro-title">왜 이 종목인지, 숫자로 답합니다.</h2>
-        <p class="intro-sub">
-          거시 인과·수급·차트 세 관점을 함께 보고 기간별로 고릅니다.
-          규칙은 백테스트로 정하고, 그 규칙이 <b>실제 계좌를 자동매매합니다</b> — 성적은 진 것까지 그대로 공개합니다.
-        </p>
-        <div class="intro-stats" id="hero-stats">
-          <div class="intro-stat"><span class="intro-stat-label">챔피언 전략</span><span class="intro-stat-value gold" id="hero-champ">—</span></div>
-          <div class="intro-stat"><span class="intro-stat-label">백테스트 최근 1년</span><span class="intro-stat-value" id="hero-btyear">—</span></div>
-          <div class="intro-stat"><span class="intro-stat-label">실계좌 운용 엔진</span><span class="intro-stat-value gold" id="hero-engine">—</span></div>
-          <div class="intro-stat"><span class="intro-stat-label">분석 종목</span><span class="intro-stat-value" id="hero-universe">—</span></div>
-        </div>
-        <div class="intro-links">
-          <button class="intro-link" id="hero-goto-picks" type="button">오늘의 추천</button>
-          <button class="intro-link" id="hero-goto-lab" type="button">전략실 성적</button>
-          <button class="intro-link" id="hero-goto-terminal" type="button">3D 온톨로지</button>
-          <button class="intro-link" id="hero-open-ta" type="button">종목 차트 분석</button>
-          <button class="intro-link" id="hero-open-auto" type="button">자동매매 현황</button>
-        </div>
-        <p class="intro-disclaimer">
-          모든 수치·추천·시뮬레이션은 운영자 개인 계좌의 기록 공개이며 투자 자문·권유가 아닙니다.
-          전략실 수익률은 계좌 수익률이 아닌 가상 원금 기준 시뮬레이션입니다. 투자 판단과 책임은 이용자 본인에게 있습니다.
-        </p>
-      </div>
-    </section>
-
-    <!-- ══ 전략실 — 추천 아래. 사이트의 자랑거리가 첫 스크롤에 나와야 한다.
-         (무거운 3D 터미널은 아래로 내렸다 — 캔버스가 휠을 잡아먹어 아래 내용에
-         닿기 어렵다는 사용자 피드백에 따른 재배치) ══ -->
-    <section class="lab-strip" id="lab-strip" aria-label="전략실">
-      <div class="lab-head">
-        <h2 class="lab-title">전략실 <span class="lab-tag">시뮬레이션 리그</span></h2>
-        <p class="lab-sub" id="lab-sub">백테스트 성적순으로 4개 전략을 세우고, 같은 가상 원금·같은 규칙의 실시간 리그로 다시 검증합니다. 이긴 전략을 실계좌 엔진으로 선택할 수 있습니다.</p>
-      </div>
-      <div class="lab-grid" id="lab-grid"><p class="note">전략실을 불러오는 중…</p></div>
-      <div class="lab-detail" id="lab-detail" hidden></div>
-      <p class="note lab-note" id="lab-disclaimer"></p>
-    </section>
-
-    <!-- ══ 분석 터미널 — 탭으로 전환되는 4개 화면(온톨로지·차트·수급·자동매매) ══
-         한 화면에 전부 욱여넣으면 가독성이 무너진다는 피드백에 따라 탭으로 분리 -->
-    <div class="terminal-head" id="terminal">
-      <h2 class="lab-title">분석 터미널 <span class="lab-tag">실시간</span></h2>
-      <div class="terminal-tabs" id="terminal-tabs" role="tablist" aria-label="터미널 화면 선택">
-        <button type="button" class="tt-tab active" data-pane="onto" role="tab" aria-selected="true">
-          <b>온톨로지</b><span>거시 인과 3D 그래프</span>
-        </button>
-        <button type="button" class="tt-tab" data-pane="ta" role="tab" aria-selected="false">
-          <b>차트분석</b><span>전략 13종 · 패턴 · 플랜</span>
-        </button>
-        <button type="button" class="tt-tab" data-pane="flow" role="tab" aria-selected="false">
-          <b>수급분석</b><span>자금흐름 · 매집 순위</span>
-        </button>
-        <button type="button" class="tt-tab" data-pane="combo" role="tab" aria-selected="false">
-          <b>조합 전략</b><span>세 분석을 섞으면 지금 뭐가 유리한가</span>
-        </button>
-      </div>
-      <p class="lab-sub" id="terminal-sub">거시요인 → 섹터 → 종목으로 신호가 전파되는 3D 인과 그래프. 확대는 <b>Ctrl(⌘)+스크롤</b>, 일반 스크롤은 페이지를 내립니다.</p>
     </div>
-    <main class="layout" id="pane-onto">
+
+    <!-- ══ 분석 화면 머리 — 온톨로지·수급·차트·종합 공통. 제목·설명만 바뀐다 ══ -->
+    <div class="view-head nv-wrap" id="terminal" hidden>
+      <h2 class="nv-title" id="view-title">온톨로지</h2>
+      <p class="nv-sub" id="terminal-sub"></p>
+    </div>
+    <main class="layout" id="pane-onto" hidden>
       <aside class="rail" aria-label="온톨로지 요약">
         <section class="card card-verdict">
           <h2 class="card-title">온톨로지 결론
@@ -388,6 +344,17 @@
         <div id="combo-sliders" class="combo-sliders"></div>
         <div id="combo-body"><p class="note">조합 순위를 불러오는 중…</p></div>
       </div>
+    </section>
+
+    <!-- 전략실 — 전략별 백테스트·리그 성적 (탭 "전략실") -->
+    <section class="lab-strip" id="lab-strip" aria-label="전략실" hidden>
+      <div class="lab-head nv-wrap">
+        <h2 class="nv-title">전략실</h2>
+        <p class="nv-sub" id="lab-sub">같은 가상 원금·같은 규칙으로 전략들을 겨룹니다. 이긴 전략을 실계좌 엔진으로 선택할 수 있습니다.</p>
+      </div>
+      <div class="lab-grid" id="lab-grid"><p class="note">전략실을 불러오는 중…</p></div>
+      <div class="lab-detail" id="lab-detail" hidden></div>
+      <p class="note lab-note" id="lab-disclaimer"></p>
     </section>
 
     <footer class="footer">

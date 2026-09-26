@@ -108,14 +108,18 @@ export class FlowPanel {
       `${prof?.descKo ?? data.profile.nameKo} · ${data.scanned}/${data.universe}종목 스캔 · 갱신 ${timeAgo(data.updatedAt)} · 점수는 -1(강한 이탈) ~ +1(강한 유입)` });
 
     // 용어 범례 — 표의 축 이름만 보고는 아무도 모른다
-    const legend = el("div", { class: "flow-legend" }, AXES.map((a) =>
-      el("div", { class: "flow-legend-item" }, [
-        el("span", { class: "flow-legend-key", text: a.k }),
-        el("span", { class: "flow-legend-body" }, [
-          el("b", { text: a.t }),
-          el("span", { text: ` — ${a.d}` }),
-        ]),
-      ])));
+    // 2026-09-26: 늘 펼쳐 두던 설명 네 문단을 접었다 — 표가 먼저 보여야 한다
+    const legend = el("details", { class: "nv-fold" }, [
+      el("summary", { text: "점수 항목 설명 (자금·매집·대금·추세)" }),
+      el("div", { class: "flow-legend" }, AXES.map((a) =>
+        el("div", { class: "flow-legend-item" }, [
+          el("span", { class: "flow-legend-key", text: a.k }),
+          el("span", { class: "flow-legend-body" }, [
+            el("b", { text: a.t }),
+            el("span", { text: ` — ${a.d}` }),
+          ]),
+        ]))),
+    ]);
 
     const table = el("div", { class: "flow-table" });
     table.append(el("div", { class: "flow-row flow-th" }, [

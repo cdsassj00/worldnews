@@ -84,18 +84,25 @@ function renderKisBadge(): void {
   badge.title = `1회 한도 ${fmtKrw(kisStatus.maxOrderNotionalKrw)} · 전송방식 ${kisStatus.transport} · ${kisStatus.overseasReason}`;
 }
 
+/** 홈 상단 지수 카드 — 네이버 증권 첫 줄처럼 주요 지수·환율·원자재를 카드로.
+ *  예전에는 상단바에 흐르는 티커였는데, 흐르는 글자는 읽을 수가 없다. */
+const IX_ORDER = ["^KS11", "^KQ11", "KRW=X", "^GSPC", "^IXIC", "^DJI", "^N225", "CL=F", "GC=F"];
 function renderTape(items: Snapshot[]): void {
-  const track = $("tape-track");
-  const build = () =>
-    items.map((i) =>
-      el("span", { class: "tape-item" }, [
-        el("span", { class: "label", text: i.label }),
-        el("span", { class: "px", text: fmtNum(i.price) }),
-        el("span", { class: dirClass(i.changePct), text: fmtPct(i.changePct) }),
-      ]),
-    );
-  // 무한 스크롤을 위해 두 번 이어 붙인다
-  track.replaceChildren(...build(), ...build());
+  const host = document.getElementById("ix-strip");
+  if (!host) return;
+  const bySym = new Map(items.map((i) => [i.symbol, i]));
+  const picked = [
+    ...IX_ORDER.map((sym) => bySym.get(sym)).filter((x): x is Snapshot => Boolean(x)),
+    ...items.filter((i) => !IX_ORDER.includes(i.symbol)),
+  ].slice(0, 8);
+  host.replaceChildren(...picked.map((i) => {
+    const d = i.changePct > 0 ? "up" : i.changePct < 0 ? "down" : "";
+    return el("div", { class: "ix-card" }, [
+      el("span", { class: "ix-label", text: i.label }),
+      el("b", { class: "ix-price", text: fmtNum(i.price) }),
+      el("span", { class: `ix-chg ${d}`, text: `${i.changePct > 0 ? "▲" : i.changePct < 0 ? "▼" : ""} ${fmtPct(i.changePct)}` }),
+    ]);
+  }));
 }
 
 function renderHotList(items: Snapshot[]): void {
@@ -136,7 +143,7 @@ async function loadTape(): Promise<void> {
     renderHotList(items);
     $("footer-meta").textContent = `시세 갱신 ${timeAgo(fetchedAt)} · 뉴스 Google News · 시세 Yahoo Finance · 주문 KIS OpenAPI`;
   } catch {
-    $("tape-track").replaceChildren(el("span", { class: "tape-item", text: "시세 로딩 실패" }));
+    document.getElementById("ix-strip")?.replaceChildren(el("span", { class: "nv-empty", text: "시세를 불러오지 못했습니다." }));
   }
 }
 
@@ -253,37 +260,57 @@ function setupAuthModal(): void {
   });
 }
 
-/* ── 터미널 탭 — 온톨로지 · 차트분석 · 수급분석 · 자동매매 ─────────────
- * 한 화면에 전부 펼치던 것을 탭 전환으로 바꿨다(가독성 피드백).
- * 각 탭의 데이터는 처음 열 때 불러온다 — 안 여는 탭 비용은 0. */
+/* ── 화면 라우팅 — 네이버 증권식 상단 탭 (2026-09-26) ─────────────
+ * 홈 / 온톨로지 / 수급 / 차트 / 종합 / 전략실. 해시(#flow 등)로 주소가 남아
+ * 링크 공유·뒤로가기가 된다. 각 화면의 데이터는 처음 열 때 불러온다. */
 type PaneId = "onto" | "ta" | "flow" | "combo";
-const PANE_SUBS: Record<PaneId, string> = {
-  onto: "거시요인 → 섹터 → 종목으로 신호가 전파되는 3D 인과 그래프. 확대는 Ctrl(⌘)+스크롤, 일반 스크롤은 페이지를 내립니다.",
-  ta: "창시자가 있는 차트 전략 13종이 종목 하나를 두고 각자 판정합니다 — 패턴·매물대·매매 플랜까지.",
-  flow: "자금흐름(MFI)·매집(CLV)·거래대금 급증 — 큰손이 사는 흔적을 점수로 만든 수급 순위입니다.",
-  combo: "세 분석을 원하는 비율로 섞은 조합 기준으로, 지금 시점 어떤 종목이 유리한지 보여줍니다. 과거 성적(백테스트)은 전략실에.",
+type ViewId = "home" | PaneId | "lab";
+const VIEWS: ViewId[] = ["home", "onto", "flow", "ta", "combo", "lab"];
+const VIEW_HEAD: Record<PaneId, { title: string; sub: string }> = {
+  onto: { title: "온톨로지", sub: "거시요인 → 섹터 → 종목으로 신호가 전파되는 인과 그래프. 종목을 누르면 오른쪽에 점수 구성과 근거가 뜹니다." },
+  ta: { title: "차트 분석", sub: "차트 전략 13종이 종목 하나를 두고 각자 판정합니다 — 패턴·지지·저항·매매 플랜까지. 위 검색창에서 종목을 고르세요." },
+  flow: { title: "수급 분석", sub: "자금흐름·매집·거래대금 급증으로 매긴 수급 점수 순위입니다. 종목을 누르면 차트 분석으로 이어집니다." },
+  combo: { title: "종합 분석", sub: "온톨로지·수급·차트를 비율대로 섞은 종합 점수 순위입니다. 비율은 아래에서 바꿀 수 있습니다." },
 };
 
-function selectPane(id: PaneId, scroll = false): void {
-  for (const p of ["onto", "ta", "flow", "combo"] as PaneId[]) {
-    $(`pane-${p}`).hidden = p !== id;
+function route(view: ViewId, scrollTop = true): void {
+  $("view-home").hidden = view !== "home";
+  for (const p of ["onto", "ta", "flow", "combo"] as PaneId[]) $(`pane-${p}`).hidden = p !== view;
+  $("lab-strip").hidden = view !== "lab";
+  const isPane = view !== "home" && view !== "lab";
+  $("terminal").hidden = !isPane;
+  if (isPane) {
+    $("view-title").textContent = VIEW_HEAD[view as PaneId].title;
+    $("terminal-sub").textContent = VIEW_HEAD[view as PaneId].sub;
   }
-  document.querySelectorAll<HTMLButtonElement>("#terminal-tabs .tt-tab").forEach((b) => {
-    const on = b.dataset.pane === id;
-    b.classList.toggle("active", on);
-    b.setAttribute("aria-selected", on ? "true" : "false");
-  });
-  $("terminal-sub").textContent = PANE_SUBS[id];
-  if (id === "ta") void taPanel?.load();
-  if (id === "flow") void flowPanel?.load();
-  if (id === "combo") void comboPanel?.load();
-  if (scroll) $("terminal").scrollIntoView({ behavior: "smooth" });
+  document.querySelectorAll<HTMLAnchorElement>("#gnb-nav a").forEach((a) => a.classList.toggle("on", a.dataset.view === view));
+  if (view === "ta") {
+    const top = taPanel && !taPanel.hasSymbol ? horizonPanel?.topPick() : null;
+    if (top) void taPanel?.show(top.symbol, top.name);
+    else void taPanel?.load();
+  }
+  if (view === "flow") void flowPanel?.load();
+  if (view === "combo") void comboPanel?.load();
+  if (view === "home") void horizonPanel?.load();
+  if (location.hash.slice(1) !== view) history.replaceState(null, "", view === "home" ? location.pathname + location.search : `#${view}`);
+  if (scrollTop) window.scrollTo({ top: 0 });
 }
 
 function setupTerminalTabs(): void {
-  document.querySelectorAll<HTMLButtonElement>("#terminal-tabs .tt-tab").forEach((b) => {
-    b.addEventListener("click", () => selectPane(b.dataset.pane as PaneId));
+  const fromHash = () => {
+    const h = location.hash.slice(1) as ViewId;
+    route(VIEWS.includes(h) ? h : "home", false);
+  };
+  document.querySelectorAll<HTMLAnchorElement>("#gnb-nav a, a.brand").forEach((a) => {
+    a.addEventListener("click", (e) => {
+      e.preventDefault();
+      const v = (a.dataset.view ?? "home") as ViewId;
+      history.pushState(null, "", v === "home" ? location.pathname + location.search : `#${v}`);
+      route(v);
+    });
   });
+  window.addEventListener("popstate", fromHash);
+  fromHash();
 }
 
 /* 자동매매 — 운영자 전용 모달(우측 상단). 공개 터미널에서 분리했다(2026-08-16 지시).
@@ -842,9 +869,9 @@ function setupTheme(): void {
   const apply = (mode: "light" | "dark") => {
     if (mode === "light") document.documentElement.dataset.theme = "light";
     else delete document.documentElement.dataset.theme;
-    btn.textContent = mode === "light" ? "🌙 어둡게" : "☀️ 밝게";
+    btn.textContent = mode === "light" ? "다크" : "라이트";
     onto?.setLightTheme(mode === "light"); // 3D 무대 흐림 강도도 함께
-    try { localStorage.setItem("wfg-theme", mode); } catch { /* 사생활 모드 등 */ }
+    try { localStorage.setItem("wfg-theme2", mode); } catch { /* 사생활 모드 등 */ }
   };
   apply(document.documentElement.dataset.theme === "light" ? "light" : "dark");
   btn.addEventListener("click", () => {
@@ -965,8 +992,7 @@ function radarToTicker(r: RadarItem): TickerScore {
 
 /** 차트분석 탭 열기 — 모달이었던 것을 터미널 탭으로 */
 function setupTaPane(): void {
-  const open = () => selectPane("ta", true);
-  $("btn-ta").addEventListener("click", open);
+  const open = () => route("ta");
   const w = window as unknown as { __wfgOpenTa?: () => void };
   w.__wfgOpenTa = open;
 }
@@ -985,9 +1011,9 @@ function directSymbols(qUp: string): { symbol: string; label: string }[] {
   return [];
 }
 
-function setupTaSearch(): void {
-  const input = $<HTMLInputElement>("ta-search");
-  const results = $<HTMLUListElement>("ta-results");
+function setupTaSearch(inputId = "ta-search", resultsId = "ta-results"): void {
+  const input = $<HTMLInputElement>(inputId);
+  const results = $<HTMLUListElement>(resultsId);
   let timer = 0;
   const close = () => { results.hidden = true; results.replaceChildren(); };
   // 미국 종목은 레이더 DB(국내 전용)에 없어서 번들에 실은 목록(104종목)에서 찾는다.
@@ -1011,6 +1037,7 @@ function setupTaSearch(): void {
     try {
       const { items } = await api.radarFind(q).catch(() => ({ items: [] as never[] }));
       const pick = (symbol: string, name: string) => {
+        if ($("pane-ta").hidden) route("ta");
         void taPanel?.show(symbol, name);
         input.value = "";
         close();
@@ -1062,6 +1089,17 @@ function setupTaSearch(): void {
     timer = window.setTimeout(() => void run(), 250);
   });
   input.addEventListener("blur", () => window.setTimeout(close, 200));
+}
+
+/** 상단 GNB 검색 — 네이버 증권처럼 어느 화면에서든 종목을 찾으면 차트 분석으로 간다 */
+function setupGnbSearch(): void {
+  setupTaSearch("gnb-search", "gnb-results");
+  // 운영자 메뉴 — 항목을 누르면 접는다
+  const op = document.querySelector<HTMLDetailsElement>(".gnb-op");
+  op?.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { op.open = false; }));
+  document.addEventListener("click", (e) => {
+    if (op?.open && !op.contains(e.target as Node)) op.open = false;
+  });
 }
 
 /* ── 종목 검색 (조회용 사용자의 첫 진입점) ─────────────── */
@@ -1273,44 +1311,6 @@ function setupTour(): void {
   if (!Tour.seen()) window.setTimeout(() => { if (!tour.running) tour.start(); }, 3500);
 }
 
-function setupHero(): void {
-  $("hero-goto-picks").addEventListener("click", () => $("picks").scrollIntoView({ behavior: "smooth" }));
-  $("hero-goto-lab").addEventListener("click", () => $("lab-strip").scrollIntoView({ behavior: "smooth" }));
-  $("hero-goto-terminal").addEventListener("click", () => $("terminal").scrollIntoView({ behavior: "smooth" }));
-  $("hero-open-ta").addEventListener("click", () => $("btn-ta").click());
-  $("hero-open-auto").addEventListener("click", () => $("btn-auto").click());
-  void fillHero();
-  setInterval(() => void fillHero(), 300_000);
-}
-
-async function fillHero(): Promise<void> {
-  const names: Record<string, string> = {
-    onto: "온톨로지", quant: "수급", ta: "차트", hybrid: "온톨로지+수급",
-    onto_ta: "온톨로지+차트", quant_ta: "수급+차트", all3: "삼합",
-  };
-  try {
-    const bt = await api.backtest();
-    // 챔피언 = 국내 백테스트 최근 1년 수익률 1위 엔진 (7개 조합 전부 비교)
-    let best: { name: string; year: number } | null = null;
-    for (const e of bt.engineComparison.engines) {
-      const year = e.KR?.returns?.[2];
-      if (year !== undefined && (!best || year > best.year)) best = { name: names[e.id] ?? e.nameKo, year };
-    }
-    if (best) {
-      $("hero-champ").textContent = best.name;
-      const yEl = $("hero-btyear");
-      yEl.textContent = `${best.year >= 0 ? "+" : ""}${best.year.toFixed(1)}%`;
-      yEl.className = `hero-stat-value ${dirClass(best.year)}`;
-    }
-  } catch { /* 못 채우면 그대로 둔다 */ }
-  try {
-    const lab = await api.labOverview();
-    const engineName = names[lab.liveEngine] ?? (lab.liveEngine.startsWith("w:") ? "커스텀 조합" : lab.liveEngine);
-    $("hero-engine").textContent = `${engineName} 가동 중`;
-    if (lab.universe) $("hero-universe").textContent = `${lab.universe.toLocaleString("ko-KR")}종목`;
-  } catch { /* 못 채우면 그대로 둔다 */ }
-}
-
 /* ── 부트스트랩 ─────────────────────────────── */
 
 async function boot(): Promise<void> {
@@ -1333,7 +1333,6 @@ async function boot(): Promise<void> {
   setupSearch();
   setupAuthModal();
   setupOrderModal();
-  setupTerminalTabs();
   setupAutoModal();
   setupTickerSearch();
   setupOntoHelp();
@@ -1343,7 +1342,6 @@ async function boot(): Promise<void> {
   setupLang();
 
   labPanel = new LabPanel({ grid: $("lab-grid"), detail: $("lab-detail"), disclaimer: $("lab-disclaimer") });
-  setupHero();
   setupTour();
   taPanel = new TaPanel({ root: $("ta-body"), sub: $("ta-sub") });
   setupTaSearch();
@@ -1352,7 +1350,7 @@ async function boot(): Promise<void> {
     root: $("flow-body"),
     profileTabs: $("flow-profiles"),
     onPick: (symbol, name) => {
-      selectPane("ta", true);
+      route("ta");
       void taPanel?.show(symbol, name);
     },
   });
@@ -1361,12 +1359,22 @@ async function boot(): Promise<void> {
     sliders: $("combo-sliders"),
     body: $("combo-body"),
     onPick: (symbol, name) => {
-      selectPane("ta", true);
+      route("ta");
       void taPanel?.show(symbol, name);
     },
   });
-  horizonPanel = new HorizonPanel({ root: $("hz-body"), tabs: $("hz-market") });
-  // 추천은 히어로 바로 아래 상시 섹션이라 첫 화면에서 바로 채워져야 한다
+  horizonPanel = new HorizonPanel({
+    root: $("hz-body"),
+    tabs: $("hz-market"),
+    side: $("home-side"),
+    onPick: (symbol, name) => {
+      route("ta");
+      void taPanel?.show(symbol, name);
+    },
+  });
+  setupTerminalTabs();
+  setupGnbSearch();
+  // 추천은 홈 첫 화면이라 바로 채워져야 한다
   await Promise.allSettled([horizonPanel.load(), loadOntology(), loadTape(), loadRadar(), loadVerdict(), labPanel.load()]);
   // 시세는 주기적으로 갱신(90초 캐시와 맞춤), 온톨로지는 전략 캐시(5분)에 맞춘다
   setInterval(() => void loadTape(), 90_000);

@@ -105,6 +105,9 @@ export class TaPanel {
     this.sub = opts.sub;
   }
 
+  /** 이미 종목이 골라져 있는가 — 차트 탭을 빈 화면으로 열지 않기 위해 */
+  get hasSymbol(): boolean { return Boolean(this.symbol); }
+
   /** 다른 화면(레이더·검색·온톨로지)에서 종목을 고르면 이 카드도 따라간다 */
   async show(symbol: string, nameKo?: string): Promise<void> {
     if (!symbol) return;

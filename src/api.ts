@@ -660,6 +660,20 @@ export interface HorizonBucket {
   headlineKo: string; cautionKo: string;
 }
 
+/** 홈이 daily-brief 에서 쓰는 부분 — 추천 표·브리핑·지난 추천 채점·점수 상위 */
+export interface BriefForHome {
+  targetSession: string;
+  sessionClosed: boolean;
+  regime: { label: string; tone?: string; lines?: string[] };
+  horizons: HorizonsBlock | null;
+  narrative?: { summaryKo?: string } | null;
+  previous?: {
+    date: string; hitRate: number; avgChangePct: number;
+    picks: { code: string; name: string; recPrice: number; nowPrice: number; changePct: number }[];
+  } | null;
+  picks?: { code: string; symbol: string | null; name: string; sector: string | null; score: number; price: number; changePct: number }[];
+}
+
 export interface HorizonsBlock {
   market: "KR" | "US";
   entryKo: string; noteKo: string;
@@ -825,7 +839,7 @@ export const api = {
   backtest: () => request<BacktestResults>("/api/backtest"),
   /** 투자 기간별 추천 — daily-brief 안의 horizons 블록만 꺼내 쓴다 */
   horizons: (market: "KR" | "US" = "KR") =>
-    request<{ briefs: { targetSession: string; sessionClosed: boolean; regime: { label: string }; horizons: HorizonsBlock | null }[] }>(
+    request<{ briefs: BriefForHome[] }>(
       `/api/daily-brief?market=${market}`,
     ),
   labOverview: (market: "KR" | "US" = "KR") => request<LabOverview>(`/api/lab/overview?market=${market}`),
