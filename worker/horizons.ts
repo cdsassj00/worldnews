@@ -158,25 +158,25 @@ const RULES: Rule[] = [
     id: "day", nameKo: "단타", stopPct: 4, takePct: 15, trailPct: null,
     orderBy: "flow",
     orderKo: "삼합 상위 안에서 수급 축이 강한 순 — 짧게 끊는 규칙이라 거래대금·자금흐름이 먼저 터진 종목을 위에 둡니다. 이 정렬 자체는 따로 측정하지 않았습니다.",
-    maxPicks: 3,
+    maxPicks: 8,
   },
   {
     id: "swing", nameKo: "스윙", stopPct: 6, takePct: 15, trailPct: null,
     orderBy: "total",
     orderKo: "삼합 종합 점수 순 — 백테스트가 측정한 순서 그대로입니다.",
-    maxPicks: 4,
+    maxPicks: 8,
   },
   {
     id: "mid", nameKo: "중기", stopPct: 8, takePct: 25, trailPct: null,
     orderBy: "total",
     orderKo: "삼합 종합 점수 순 — 백테스트가 측정한 순서 그대로입니다.",
-    maxPicks: 3,
+    maxPicks: 8,
   },
   {
     id: "long", nameKo: "장기", stopPct: 25, takePct: null, trailPct: 25,
     orderBy: "onto",
     orderKo: "삼합 상위 안에서 온톨로지(거시 인과) 축이 강한 순 — 수개월을 들려면 업종을 미는 거시 국면이 있어야 합니다. 이 정렬 자체는 따로 측정하지 않았습니다.",
-    maxPicks: 3,
+    maxPicks: 8,
   },
 ];
 

@@ -451,7 +451,10 @@ export class Globe {
       this.drawOverlay();
       this.opts.onHover(null, 0, 0);
     });
-    c.addEventListener(
+    /* 2026-09-27: 캔버스에만 걸면 그 위에 겹친 범례·버튼·안내 위에서 Ctrl+휠이 브라우저
+     * 확대로 샜다. 크롬은 그 배율을 사이트별로 기억해서, 다음 방문부터 화면이 110~125%로
+     * 열리고 "글씨가 크다"가 됐다. 무대(부모) 전체에서 잡는다. */
+    (c.parentElement ?? c).addEventListener(
       "wheel",
       (e) => {
         e.preventDefault();

@@ -136,7 +136,7 @@ async function cmdHorizon(env: Env, id: "day" | "swing" | "mid" | "long"): Promi
   ];
   if (k.track) lines.push("", `📉 <i>${esc(k.track.summaryKo)}</i>`);
 
-  for (const p of k.picks) {
+  for (const p of k.picks.slice(0, 5)) { // 구간당 8종목 중 상위 5 — 텔레그램 한 메시지 4,000자 한도
     lines.push("");
     lines.push("━━━━━━━━━━━━━━━");
     lines.push(`<b>▎${esc(p.name)}</b> ${esc(p.priceLabel)} <i>(${p.changePct >= 0 ? "+" : ""}${p.changePct.toFixed(1)}%${p.sector ? ` · ${esc(p.sector)}` : ""})</i>`);

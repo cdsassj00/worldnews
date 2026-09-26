@@ -227,7 +227,7 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
   const histChain = prevStored ? [prevStored, ...chain.slice(1)] : [];
   /* 삼합 순위 — 스윙 목록의 정렬 기준(조합 전략 탭과 같은 계산). 레벨 조회보다 **먼저** 구해야
    * 삼합 상위 종목의 지지·저항도 같은 호출로 받아 온다(나중에 구하면 목록엔 있는데 지지선이 빈다). */
-  const combo = await comboRank(env, {}, 20, market).catch(() => null);
+  const combo = await comboRank(env, {}, 40, market).catch(() => null);
   const symbolToCode = new Map<string, string>();
   const levelTargets = [
     ...rawPicks.map((s) => s.code),
@@ -340,7 +340,10 @@ async function marketBrief(env: Env, market: BriefMarket, today: string) {
   const horizons = buildHorizons({
     market: market === "US" ? "US" : "KR",
     cur,
-    sources: (combo?.rows ?? []).slice(0, 12).map((r) => ({
+    /* 후보 40종목 — 예전엔 12종목이었는데 상위가 반도체로 몰려 섹터캡(2)에 걸리면
+     * 구간마다 3종목도 못 채웠다("추천 종목이 왜 이렇게 적냐", 2026-09-27).
+     * 지지·저항(시세 조회)은 비용 때문에 위 12종목만 — 나머지는 규칙 손절·목표만 낸다. */
+    sources: (combo?.rows ?? []).slice(0, 40).map((r) => ({
       code: r.code,
       name: r.name,
       sector: r.sector,
