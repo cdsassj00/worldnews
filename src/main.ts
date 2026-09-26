@@ -1092,6 +1092,19 @@ function setupTaSearch(inputId = "ta-search", resultsId = "ta-results"): void {
   input.addEventListener("blur", () => window.setTimeout(close, 200));
 }
 
+/** 히어로 버튼 — "#picks" 는 화면(view)이 아니라 홈 안의 위치라 라우터 대신 스크롤로 */
+function setupHeroCta(): void {
+  $("hx-go-picks").addEventListener("click", (e) => {
+    e.preventDefault();
+    $("picks").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  $("hx-go-score").addEventListener("click", (e) => {
+    e.preventDefault();
+    history.pushState(null, "", "#lab");
+    route("lab");
+  });
+}
+
 /** 상단 GNB 검색 — 네이버 증권처럼 어느 화면에서든 종목을 찾으면 차트 분석으로 간다 */
 function setupGnbSearch(): void {
   setupTaSearch("gnb-search", "gnb-results");
@@ -1368,6 +1381,7 @@ async function boot(): Promise<void> {
     root: $("hz-body"),
     tabs: $("hz-market"),
     side: $("home-side"),
+    hero: $("hero-demo"),
     onPick: (symbol, name) => {
       route("ta");
       void taPanel?.show(symbol, name);
@@ -1375,6 +1389,7 @@ async function boot(): Promise<void> {
   });
   setupTerminalTabs();
   setupGnbSearch();
+  setupHeroCta();
   // 추천은 홈 첫 화면이라 바로 채워져야 한다
   await Promise.allSettled([horizonPanel.load(), loadOntology(), loadTape(), loadRadar(), loadVerdict()]);
   // 시세는 주기적으로 갱신(90초 캐시와 맞춤), 온톨로지는 전략 캐시(5분)에 맞춘다

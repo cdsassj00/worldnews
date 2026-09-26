@@ -28,6 +28,7 @@ export class HorizonPanel {
   private readonly root: HTMLElement;
   private readonly tabs: HTMLElement;
   private readonly side: HTMLElement | null;
+  private readonly hero: HTMLElement | null;
   private readonly onPick: (symbol: string, name: string) => void;
   private market: Mk = "KR";
   private bucket: BucketId = "day";
@@ -36,8 +37,9 @@ export class HorizonPanel {
   private loading = false;
   private open = new Set<string>();
 
-  constructor(opts: { root: HTMLElement; tabs: HTMLElement; side?: HTMLElement | null; onPick: (symbol: string, name: string) => void }) {
+  constructor(opts: { root: HTMLElement; tabs: HTMLElement; side?: HTMLElement | null; hero?: HTMLElement | null; onPick: (symbol: string, name: string) => void }) {
     this.root = opts.root;
+    this.hero = opts.hero ?? null;
     this.tabs = opts.tabs;
     this.side = opts.side ?? null;
     this.onPick = opts.onPick;
@@ -127,6 +129,7 @@ export class HorizonPanel {
       : null;
 
     this.root.replaceChildren(...[meta, btabs, rule, table, foot].filter(Boolean) as HTMLElement[]);
+    this.renderHero(b);
     this.renderSide(b);
   }
 
@@ -196,6 +199,63 @@ export class HorizonPanel {
         go,
       ]),
     ]);
+  }
+
+  /* ── 히어로 예시 카드 — 오늘 단타 1위를 실제 점수로 분해해 보여 준다 ──
+   * "어떻게 고르나"를 말로 설명하는 대신 오늘 숫자로 보여 주는 게 제일 강한 후킹이다.
+   * 지어낸 예시가 아니라 표 맨 윗줄과 같은 종목·같은 숫자다. */
+  private renderHero(b: BriefForHome): void {
+    if (!this.hero) return;
+    const hz = b.horizons!;
+    /* 예시는 세 점수가 가장 고르게 높은 종목 — "합쳐서 고른다"를 보여 주기에 한 축만 튀는
+     * 종목(수급 0.98·차트 0.06 같은)보다 정직하다. 방법은 가중 합이지 만장일치가 아니다. */
+    let k: typeof hz.buckets[number] | undefined;
+    let p: HorizonPick | undefined;
+    let best = -Infinity;
+    for (const bk of hz.buckets) for (const x of bk.picks) {
+      const m = Math.min(x.combo.onto ?? -1, x.combo.flow ?? -1, x.combo.chart ?? -1);
+      if (m > best) { best = m; k = bk; p = x; }
+    }
+    if (!k || !p) { this.hero.replaceChildren(el("p", { class: "hx-demo-k", text: "오늘은 기준을 넘은 종목이 없습니다." })); return; }
+    const mk = this.market;
+    const distinct = new Set(hz.buckets.flatMap((x) => x.picks.map((y) => y.code))).size;
+    const row = (label: string, v: number | null, why: string | null) => {
+      const bar = el("span", { class: "hx-bar" }, [el("i", { class: v !== null && v < 0 ? "down" : "up" })]);
+      (bar.firstChild as HTMLElement).style.width = `${v === null ? 0 : Math.min(100, Math.abs(v) * 100)}%`;
+      return el("div", { class: "hx-axis" }, [
+        el("span", { class: "hx-axis-k", text: label }),
+        bar,
+        el("b", { class: `hx-axis-v ${v !== null && v < 0 ? "down" : "up"}`, text: v === null ? "—" : v.toFixed(2) }),
+        ...(why ? [el("span", { class: "hx-axis-why", text: why })] : []),
+      ]);
+    };
+    const pl = p.plan;
+    const all = el("button", { type: "button", class: "hx-demo-more", text: `오늘 추천 ${distinct}종목 전부 보기 →` });
+    all.addEventListener("click", () => document.getElementById("picks")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    const name = el("button", { type: "button", class: "hx-demo-name", text: p.name });
+    name.addEventListener("click", () => { if (p.symbol) this.onPick(p.symbol, p.name); });
+    this.hero.replaceChildren(
+      el("p", { class: "hx-demo-k", text: `오늘의 예시 · 세 점수가 가장 고르게 높은 종목 (${k.nameKo})` }),
+      el("div", { class: "hx-demo-head" }, [
+        name,
+        el("span", { class: "hx-demo-px", text: fmtPrice(p.price, mk) + (mk === "KR" ? "원" : "") }),
+        el("span", { class: `hx-demo-chg ${dir(p.changePct)}`, text: `${sgn(p.changePct)}%` }),
+      ]),
+      row("거시 인과", p.combo.onto, p.why.ontologyKo),
+      row("수급", p.combo.flow, p.why.flowKo),
+      row("차트", p.combo.chart, p.why.chartKo ? p.why.chartKo.split(",")[0] : null),
+      el("div", { class: "hx-sum" }, [
+        el("span", { text: "세 점수를 합친 종합 " }),
+        el("b", { class: dir(p.combo.total), text: p.combo.total.toFixed(2) }),
+        el("span", { text: ` → ${k.nameKo} 추천` }),
+      ]),
+      el("div", { class: "hx-plan" }, [
+        el("span", {}, [el("i", { text: "매수" }), el("b", { text: `${b.targetSession} 시가` })]),
+        el("span", {}, [el("i", { text: "목표" }), el("b", { class: "up", text: pl.target !== null ? `${fmtPrice(pl.target, mk)} (+${pl.targetPct}%)` : "추적손절" })]),
+        el("span", {}, [el("i", { text: "손절" }), el("b", { class: "down", text: `${fmtPrice(pl.stop, mk)} (${pl.stopPct}%)` })]),
+      ]),
+      all,
+    );
   }
 
   /* ── 오른쪽 사이드 ───────────────────────────── */

@@ -131,6 +131,38 @@
 
     <!-- ══ 홈 — 지수 카드 · 오늘의 추천 · 오른쪽 사이드(브리핑·지난 추천·점수 상위) ══ -->
     <div class="view" id="view-home">
+      <!-- ══ 히어로 — 처음 온 사람에게 "어떻게 고르는가"를 오늘 실제 숫자로 (2026-09-27) ══
+           예전 히어로(320vh 스크롤리텔링)는 세 화면 내내 "우리가 뭘 하는지"만 말했다.
+           이번엔 한 화면 안에서 방법 → 오늘의 실제 예시 → 추천표로 바로 이어진다.
+           예시 카드(#hero-demo)는 오늘 단타 1위 종목의 실제 점수로 채운다(horizonpanel). -->
+      <section class="hx" id="home-hero" aria-label="이 사이트가 종목을 고르는 방법">
+        <div class="hx-inner nv-wrap">
+          <div class="hx-copy">
+            <p class="hx-over">매일 장 마감 후 · 국내 350종목 · 미국 100여 종목</p>
+            <h1 class="hx-title">
+              <span class="ln"><span>거시·수급·차트를</span></span>
+              <span class="ln"><span><em class="hx-accent">한 점수로 합쳐</em></span></span>
+              <span class="ln"><span>오늘 살 종목을 고릅니다.</span></span>
+            </h1>
+            <p class="hx-sub">
+              유가·금리·환율이 어느 업종에 순풍인지, 큰돈이 실제로 들어오는지, 차트 전략 13종이 사라고 하는지 —
+              셋을 한 점수로 합쳐 고르고, 종목마다 <b>목표가·손절가</b>를 숫자로 답니다.
+            </p>
+            <ol class="hx-steps">
+              <li><b>거시 인과</b><span>유가·금리·환율 → 업종 → 종목</span></li>
+              <li><b>수급</b><span>자금흐름·매집·거래대금 급증</span></li>
+              <li><b>차트</b><span>이평·MACD·일목 등 전략 13종 합의</span></li>
+            </ol>
+            <div class="hx-cta">
+              <a class="hx-btn primary" href="#picks" id="hx-go-picks">오늘의 추천 보기</a>
+              <a class="hx-btn" href="#lab" data-view="lab" id="hx-go-score">추천 성적 공개 — 성적표</a>
+            </div>
+          </div>
+          <div class="hx-demo" id="hero-demo" aria-live="polite">
+            <p class="hx-demo-k">오늘의 예시 — 불러오는 중…</p>
+          </div>
+        </div>
+      </section>
       <div class="nv-wrap">
         <div class="ix-strip" id="ix-strip" aria-label="주요 지수"></div>
         <div class="home-grid">
