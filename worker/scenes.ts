@@ -528,6 +528,13 @@ async function sceneSwing(env: Env, market: "KR" | "US"): Promise<string> {
  * 한 장에 네 구간을 나란히 세운다. 세로로 쌓으면 텔레그램·인스타에서 글씨가 작아지고,
  * 무엇보다 "이 셋은 같은 신호에 청산만 다르다"는 관계가 안 보인다. */
 
+const RULE_LINE: Record<string, [string, string]> = {
+  day: ["목표 +15%", "손절 −4% · 7거래일"],
+  swing: ["목표 +15%", "손절 −6%"],
+  mid: ["목표 +25%", "손절 −8%"],
+  long: ["목표 없음", "고점 대비 −25%"],
+};
+
 async function sceneHorizons(env: Env, market: "KR" | "US"): Promise<string> {
   const brief = await dailyBrief(env, market) as {
     briefs: {
@@ -535,7 +542,6 @@ async function sceneHorizons(env: Env, market: "KR" | "US"): Promise<string> {
       horizons?: {
         buckets: {
           id: string; nameKo: string; holdKo: string; ruleKo: string;
-          track: { windows: string[]; returns: number[]; winRate: number[]; trades: number[]; benchmarkReturns: number[] } | null;
           picks: {
             name: string; sector: string | null; priceLabel: string; changePct: number;
             plan: { stop: number; stopPct: number; target: number | null; targetPct: number | null };
@@ -556,20 +562,17 @@ async function sceneHorizons(env: Env, market: "KR" | "US"): Promise<string> {
   let g = "";
   hz.buckets.slice(0, n).forEach((k, i) => {
     const x = x0 + i * (cardW + gap);
-    const li = (k.track?.windows.length ?? 1) - 1;
-    const ret = k.track ? k.track.returns[li] : null;
-    const gapPct = k.track ? round(k.track.returns[li] - k.track.benchmarkReturns[li], 1) : null;
 
     g += `<rect x="${x}" y="${y}" width="${cardW}" height="${cardH}" rx="18" fill="${PANEL}" stroke="rgba(148,163,184,0.32)" stroke-width="1.5"/>`;
     g += `<text x="${x + 28}" y="${y + 58}" fill="${FG}" font-size="40" font-weight="900" ${FONT}>${esc(k.nameKo)}</text>`;
     g += `<text x="${x + 28}" y="${y + 94}" fill="${GOLD}" font-size="21" font-weight="700" ${FONT}>${esc(trunc(k.holdKo, 34))}</text>`;
     g += `<text x="${x + 28}" y="${y + 126}" fill="${DIM}" font-size="18" ${FONT}>${esc(trunc(k.ruleKo, 44))}</text>`;
 
-    // 백테스트 한 줄 — 지수를 이겼는지까지 색으로 구분한다
-    if (ret !== null && gapPct !== null && k.track) {
-      g += `<text x="${x + 28}" y="${y + 182}" fill="${dirColor(ret)}" font-size="42" font-weight="900" ${FONT}>${sgn(ret, 1)}%</text>`;
-      g += `<text x="${x + 28}" y="${y + 214}" fill="${DIM}" font-size="18" ${FONT}>1년 백테스트 · 지수 ${gapPct >= 0 ? `${gapPct}%p 초과` : `${Math.abs(gapPct)}%p 미달`}</text>`;
-      g += `<text x="${x + 28}" y="${y + 240}" fill="${DIM}" font-size="18" ${FONT}>${k.track.trades[li]}건 · 승률 ${k.track.winRate[li]}%</text>`;
+    // 구간 규칙(목표·손절)만 크게 — 과거 시세 백테스트 성적은 공개 이미지에 넣지 않는다
+    const rule = RULE_LINE[k.id];
+    if (rule) {
+      g += `<text x="${x + 28}" y="${y + 190}" fill="${UP}" font-size="30" font-weight="800" ${FONT}>${esc(rule[0])}</text>`;
+      g += `<text x="${x + 28}" y="${y + 230}" fill="${DOWN}" font-size="30" font-weight="800" ${FONT}>${esc(rule[1])}</text>`;
     }
 
     g += `<line x1="${x + 28}" y1="${y + 266}" x2="${x + cardW - 28}" y2="${y + 266}" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>`;

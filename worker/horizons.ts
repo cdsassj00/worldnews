@@ -157,25 +157,25 @@ const RULES: Rule[] = [
   {
     id: "day", nameKo: "단타", stopPct: 4, takePct: 15, trailPct: null,
     orderBy: "flow",
-    orderKo: "삼합 상위 안에서 수급 축이 강한 순 — 짧게 끊는 규칙이라 거래대금·자금흐름이 먼저 터진 종목을 위에 둡니다. 이 정렬 자체는 따로 측정하지 않았습니다.",
+    orderKo: "삼합 상위 안에서 수급 축이 강한 순 — 짧게 끊는 규칙이라 거래대금·자금흐름이 먼저 터진 종목을 위에 둡니다.",
     maxPicks: 8,
   },
   {
     id: "swing", nameKo: "스윙", stopPct: 6, takePct: 15, trailPct: null,
     orderBy: "total",
-    orderKo: "삼합 종합 점수 순 — 백테스트가 측정한 순서 그대로입니다.",
+    orderKo: "삼합 종합 점수 순입니다.",
     maxPicks: 8,
   },
   {
     id: "mid", nameKo: "중기", stopPct: 8, takePct: 25, trailPct: null,
     orderBy: "total",
-    orderKo: "삼합 종합 점수 순 — 백테스트가 측정한 순서 그대로입니다.",
+    orderKo: "삼합 종합 점수 순입니다.",
     maxPicks: 8,
   },
   {
     id: "long", nameKo: "장기", stopPct: 25, takePct: null, trailPct: 25,
     orderBy: "onto",
-    orderKo: "삼합 상위 안에서 온톨로지(거시 인과) 축이 강한 순 — 수개월을 들려면 업종을 미는 거시 국면이 있어야 합니다. 이 정렬 자체는 따로 측정하지 않았습니다.",
+    orderKo: "삼합 상위 안에서 온톨로지(거시 인과) 축이 강한 순 — 수개월을 들려면 업종을 미는 거시 국면이 있어야 합니다.",
     maxPicks: 8,
   },
 ];
@@ -209,12 +209,12 @@ function planFor(src: HorizonSource, rule: Rule, cur: string, holdKo: string): H
   const near = nearestLevels(src.levels, price);
 
   const stopWhyKo = rule.trailPct !== null
-    ? `측정한 규칙 그대로 고점 대비 −${rule.trailPct}% 입니다. 지금 진입한다면 ${fmt(stop, cur)} 이 첫 손절선이고, 오르면 그만큼 따라 올라갑니다.`
-    : `측정한 규칙 그대로 −${rule.stopPct}% 입니다.`;
+    ? `장기 규칙은 고점 대비 −${rule.trailPct}% 추적손절입니다. 지금 진입한다면 ${fmt(stop, cur)} 이 첫 손절선이고, 오르면 그만큼 따라 올라갑니다.`
+    : `${rule.nameKo} 규칙 손절 −${rule.stopPct}% 입니다.`;
 
   const targetWhyKo = rule.takePct === null
     ? `목표가를 두지 않습니다. 고점 대비 −${rule.trailPct}% 로 내려올 때 나옵니다 — 수개월을 끌고 가려면 위쪽을 막으면 안 됩니다.`
-    : `측정한 규칙 그대로 +${rule.takePct}% 입니다.`;
+    : `${rule.nameKo} 규칙 목표 +${rule.takePct}% 입니다.`;
 
   const risk = price - stop;
   return {
@@ -278,21 +278,16 @@ function summarize(nameKo: string, side: BtSide, bench: number[], windows: strin
 }
 
 /** 표본이 적으면 수익률보다 그 사실을 먼저 말해야 한다 */
-function cautionFor(id: HorizonId, side: BtSide, windows: string[]): string {
-  const i = windows.length - 1;
-  const n = side.trades[i];
-  const thin = n < 20 ? `최근 1년 매매가 ${n}건뿐입니다 — 수익률 숫자보다 "몇 건으로 낸 숫자인지"를 먼저 보십시오. ` : "";
-  const dd = `최대낙폭은 −${side.maxDd[i]}% 였습니다. `;
-  const short = windows.indexOf("3mo") >= 0 && side.returns[windows.indexOf("3mo")] < 0
-    ? "최근 3개월 창에서는 손실이었습니다 — 이 규칙은 하락장을 이기지 못합니다. " : "";
-  const per: Record<HorizonId, string> = {
-    day: "승률이 20~31% 로 낮습니다 — 손익비 3.75:1 로 버티는 규칙이라 지는 거래가 이기는 거래보다 훨씬 많은 게 정상입니다. 익절을 좁히면(10%·손절 5%) 측정 결과 한국에서 1년 -18.41% 였습니다.",
-    swing: "지금 운영 중인 규칙과 같습니다.",
-    mid: "한국은 실측 보유가 6~10일로 스윙과 크게 다르지 않습니다 — 구간 이름만큼 기간이 벌어지지 않습니다.",
-    long: "한국은 평균 보유가 한 달 남짓으로 3개월에 못 미칩니다 — 추적손절 25%가 그 전에 걸립니다.",
-  };
-  return thin + dd + short + per[id];
-}
+
+/* 공개 채널(사이트·텔레그램·SNS·유튜브)에 나가는 문구 — 과거 시세로 흉내 낸 백테스트 성적은
+ * 넣지 않는다(2026-09-27 사용자 지시: 실제로 나간 추천의 성적만 의미가 있다). */
+const ENTRY_KO = "장 마감 후 점수를 내고 다음 거래일 시가에 매수합니다.";
+const CAUTION: Record<HorizonId, string> = {
+  day: "손익비로 버티는 규칙이라 지는 거래가 이기는 거래보다 많은 게 정상입니다. 손절가는 꼭 지키십시오.",
+  swing: "시장 전체가 빠지는 날에는 손절이 한꺼번에 걸립니다. 한 번에 다 사지 마십시오.",
+  mid: "보유가 길어지는 만큼 시장 급락에 그대로 노출됩니다. 비중을 작게 시작하십시오.",
+  long: "목표가가 없고 고점 대비 −25% 에서 나옵니다. 그만큼 흔들림을 견딜 돈으로만 하십시오.",
+};
 
 /* ── 본체 ──────────────────────────────── */
 
@@ -325,7 +320,7 @@ export function buildHorizons(params: {
   const buckets: HorizonBucket[] = RULES.map((rule) => {
     const meta = h?.buckets.find((b) => b.nameKo === rule.nameKo) ?? null;
     const side: BtSide | null = meta ? (market === "KR" ? meta.KR : meta.US) : null;
-    const holdKo = meta?.holdKo ?? "백테스트 기록 없음";
+    const holdKo = (meta?.holdKo ?? "보유 기간 기록 없음").replace(/실측 평균 /g, "보통 ");
 
     /* 정렬 — 그 구간이 기대는 축 순. 축 점수가 없는 종목은 삼합 총점으로 내려간다
      * (없는 축을 0 으로 치면 정보 없음이 나쁨으로 둔갑한다). */
@@ -372,7 +367,7 @@ export function buildHorizons(params: {
       nameKo: rule.nameKo,
       holdKo,
       ruleKo: meta?.ruleKo ?? `익절 ${rule.takePct ? `+${rule.takePct}%` : "없음"} · 손절 −${rule.stopPct}%`,
-      entryKo: h?.entryKo ?? "장 마감 후 점수를 내고 다음 거래일 시가에 매수합니다.",
+      entryKo: ENTRY_KO,
       orderKo: rule.orderKo,
       track: side && bench && meta
         ? {
@@ -388,22 +383,21 @@ export function buildHorizons(params: {
       headlineKo: picks.length
         ? `${rule.nameKo} 관점 ${picks.length}종목 — ${picks.map((p) => p.name).join(" · ")}`
         : `${rule.nameKo} 관점에서 문턱을 넘은 종목이 없습니다.`,
-      cautionKo: side ? cautionFor(rule.id, side, windows) : "이 구간은 아직 백테스트 기록이 없습니다.",
+      cautionKo: CAUTION[rule.id],
     };
   });
 
   return {
     market,
-    entryKo: h?.entryKo ?? "장 마감 후 점수를 내고 다음 거래일 시가에 매수합니다.",
+    entryKo: ENTRY_KO,
     noteKo:
-      "네 구간의 매수 신호는 같습니다 — 삼합(온톨로지+수급+차트 평균) 점수가 문턱을 넘은 종목입니다. " +
-      "다른 것은 언제 파느냐뿐이고, 그 청산 규칙마다 백테스트를 따로 돌려 성적을 쟀습니다.",
+      "네 구간의 매수 신호는 같습니다 — 온톨로지(거시)·수급·차트를 합친 삼합 점수 상위 종목입니다. " +
+      "다른 것은 언제 파느냐(목표가·손절가·보유 기간)뿐입니다.",
     buckets,
     caveats: h?.caveats ?? [],
     measuredAt: bt?.measuredAt ?? null,
     disclaimerKo:
-      "공개 데이터 기반 자동 분석이며 투자 자문·권유가 아닙니다. 백테스트는 과거 시세로 규칙을 되돌려 본 " +
-      "모의 실험이고 미래 수익을 보장하지 않습니다. 투자 판단과 책임은 본인에게 있습니다.",
+      "공개 데이터 기반 자동 분석이며 투자 자문·권유가 아닙니다. 투자 판단과 책임은 본인에게 있습니다.",
   };
 }
 

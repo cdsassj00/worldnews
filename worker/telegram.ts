@@ -303,12 +303,6 @@ export async function buildDailyMessage(env: Env, market: "KR" | "US"): Promise<
     lines.push("━━━━━━━━━━━━━━━");
     lines.push(`${BUCKET_ICON[k.id] ?? "•"} <b>${esc(k.nameKo)}</b>  <i>${esc(cut(k.holdKo, 34))}</i>`);
     lines.push(`<i>${esc(k.ruleKo)}</i>`);
-    if (k.track) {
-      const i = k.track.windows.length - 1;
-      const r = k.track.returns[i], bm = k.track.benchmarkReturns[i];
-      const gap = Math.round((r - bm) * 10) / 10;
-      lines.push(`<i>1년 ${r >= 0 ? "+" : ""}${r}% · 승률 ${k.track.winRate[i]}% · ${k.track.trades[i]}건 · 지수 ${gap >= 0 ? `+${gap}` : gap}%p</i>`);
-    }
 
     // 공지는 구간당 3종목까지 — 더 넣으면 스크롤이 길어져 아무도 끝까지 안 본다
     for (const p of k.picks.slice(0, 3)) {
@@ -431,10 +425,9 @@ export function buildGuideMessage(): { id: string; text: string } {
     "입력창에 <b>/</b> 를 치면 목록이 자동으로 뜹니다.",
     "",
     "<b>❗ 읽기 전에 알아야 할 것</b>",
-    "• 매수 시점은 <b>다음 거래일 시가</b>입니다 — 백테스트가 검증한 체결 시점이 그것입니다.",
-    "• 보유 기간은 <b>과거 실측 평균</b>이지 약속이 아닙니다.",
-    "• 성적은 좋든 나쁘든 그대로 씁니다. 한국 단타·스윙은 최근 1년 코스피 매수 후 보유에 크게 집니다.",
-    "• 계좌·주문·손익은 어떤 메시지에도 넣지 않습니다.",
+    "• 매수 시점은 <b>다음 거래일 시가</b>입니다.",
+    "• 보유 기간은 대략의 기준이지 약속이 아닙니다.",
+        "• 계좌·주문·손익은 어떤 메시지에도 넣지 않습니다.",
     "",
     `🔗 ${SITE}`,
     `<i>${esc(sc.disclaimerKo)}</i>`,

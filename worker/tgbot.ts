@@ -134,7 +134,6 @@ async function cmdHorizon(env: Env, id: "day" | "swing" | "mid" | "long"): Promi
     `<i>${esc(k.ruleKo)}</i>`,
     `🕘 매수 <b>${esc(b.targetSession)} 시가</b>`,
   ];
-  if (k.track) lines.push("", `📉 <i>${esc(k.track.summaryKo)}</i>`);
 
   for (const p of k.picks.slice(0, 5)) { // 구간당 8종목 중 상위 5 — 텔레그램 한 메시지 4,000자 한도
     lines.push("");

@@ -504,8 +504,8 @@ export async function dailyBrief(env: Env, market: "KR" | "US" | "both", date?: 
     archived: false,
     site: "https://stockontology.cc",
     video: {
-      titleSuggestion: `${today} 온톨로지 데일리 — ${titleBase.regime.label}${titleBase.picks[0] ? ` · ${titleBase.picks[0].name} 외 ${Math.max(0, titleBase.picks.length - 1)}종목` : ""}`,
-      hashtags: ["#온톨로지", "#주식자동매매", "#AI투자", "#매크로", ...(titleBase.picks.slice(0, 3).map((p) => `#${p.name.replace(/\s+/g, "")}`))],
+      titleSuggestion: `${today} 오늘의 종목 추천 — 단타·스윙·중기·장기 · ${titleBase.regime.label}`,
+      hashtags: ["#종목추천", "#단타", "#스윙", "#AI투자", "#온톨로지", ...(hzTop(titleBase).map((n) => `#${n.replace(/\s+/g, "")}`))],
     },
     images: markets.map((m) => ({
       market: m,
@@ -527,6 +527,16 @@ const fmtSigned = (v: number, d = 2) => `${v >= 0 ? "+" : ""}${v.toFixed(d)}`;
 const FONT_IMPORT = `<style>@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css');</style>`;
 const FONT = `font-family="'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif"`;
 const GOLD = "#d9a441", UP = "#e0524a", DOWN = "#3b82f6", FG = "#e2e8f0", DIM = "#94a3b8";
+
+/** 영상 제목·해시태그용 — 구간별 추천에서 겹치지 않게 앞쪽 종목 이름 3개 */
+function hzTop(b: { horizons?: { buckets: { picks: { name: string }[] }[] } | null }): string[] {
+  const out: string[] = [];
+  for (const k of b.horizons?.buckets ?? []) for (const p of k.picks) {
+    if (!out.includes(p.name)) out.push(p.name);
+    if (out.length >= 3) return out;
+  }
+  return out;
+}
 
 export async function briefCardSvg(env: Env, market: BriefMarket, ratio: "16:9" | "9:16" | "1:1" = "16:9"): Promise<string> {
   if (ratio === "1:1") return cardSquare(env, market);
