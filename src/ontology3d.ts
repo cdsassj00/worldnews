@@ -122,10 +122,11 @@ const LABEL_ASPECT = 3.2; // 텍스처 512×160 좌표계의 가로/세로 비
 /** fov 42° 카메라에서 sizeAttenuation=false 스프라이트의 화면높이 = scale.y × 캔버스높이 × PROJ11/2 */
 const PROJ11 = 1 / Math.tan(((42 / 2) * Math.PI) / 180);
 
-const UP = new THREE.Color("#f87171");
-const DOWN = new THREE.Color("#60a5fa");
-const FLAT = new THREE.Color("#64748b");
-const SECTOR_C = new THREE.Color("#94a3b8");
+// ssjsite 톤(docs/DESIGN_GUIDE.md) — iOS 빨강/파랑/회색. 슬레이트·남색 틴트를 쓰지 않는다
+const UP = new THREE.Color("#ff453a");
+const DOWN = new THREE.Color("#0a84ff");
+const FLAT = new THREE.Color("#636366");
+const SECTOR_C = new THREE.Color("#98989d");
 
 function toneColor(tone: number): THREE.Color {
   if (Math.abs(tone) < 0.04) return FLAT.clone();
@@ -147,12 +148,12 @@ function labelSprite(title: string, sub: string, color: THREE.Color, kind: NodeK
   ctx.scale(H / 160, H / 160); // 이하 좌표는 기존 512×160 기준
   const hex = `#${color.getHexString()}`;
 
-  /* 유리판 칩 — 진한 남색 유리 + 색상 테두리.
+  /* 유리판 칩 — 무채색 진회색 유리(#1c1c1e) + 색상 테두리.
    * 칩마다 넣던 색 글로우(shadowBlur)는 제거: 수십 개가 겹치면 밝은 배경에서
    * 붉은 연무가 되어 "흐리다"는 인상의 주범이었다(2026-08-17 실측). */
   const grad = ctx.createLinearGradient(0, 0, 0, 160);
-  grad.addColorStop(0, "rgba(17,27,50,0.94)");
-  grad.addColorStop(1, "rgba(7,12,26,0.9)");
+  grad.addColorStop(0, "rgba(28,28,30,0.95)");
+  grad.addColorStop(1, "rgba(18,18,20,0.92)");
   ctx.fillStyle = grad;
   ctx.strokeStyle = hex;
   ctx.lineWidth = 3.5;
@@ -171,12 +172,12 @@ function labelSprite(title: string, sub: string, color: THREE.Color, kind: NodeK
   // 글자를 알약 높이의 40%로 — 글자가 작아서 뭉개져 보이던 문제의 다른 절반
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillStyle = "#f8fafc";
-  ctx.font = "700 64px Pretendard, system-ui, sans-serif";
+  ctx.fillStyle = "#f5f5f7";
+  ctx.font = "600 64px Pretendard, system-ui, sans-serif";
   ctx.fillText(title, 256 + 8, sub ? 80 - 24 : 80, 512 - 84);
   if (sub) {
     ctx.fillStyle = hex;
-    ctx.font = "600 40px 'Fira Code', ui-monospace, monospace";
+    ctx.font = "500 40px Pretendard, system-ui, sans-serif";
     ctx.fillText(sub, 256 + 8, 80 + 34, 512 - 84);
   }
 
@@ -197,9 +198,9 @@ function makeHalo(): THREE.Sprite {
   cv.height = S;
   const ctx = cv.getContext("2d")!;
   const g = ctx.createRadialGradient(S / 2, S / 2, 10, S / 2, S / 2, S / 2);
-  g.addColorStop(0, "rgba(232,192,106,0.85)");
-  g.addColorStop(0.4, "rgba(217,164,65,0.35)");
-  g.addColorStop(1, "rgba(217,164,65,0)");
+  g.addColorStop(0, "rgba(255,214,10,0.7)");
+  g.addColorStop(0.4, "rgba(255,214,10,0.25)");
+  g.addColorStop(1, "rgba(255,214,10,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, S, S);
   const tex = new THREE.CanvasTexture(cv);
@@ -265,7 +266,7 @@ export class Ontology3D {
     this.camera.position.set(0, 0, this.targetZoom);
     this.scene.add(this.world);
     this.world.position.y = -0.4; // 3단 밴드(위 +4.5 ~ 아래 -3.7)의 무게중심을 화면 가운데로
-    this.scene.add(new THREE.AmbientLight(0xdbeafe, 1.2));
+    this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
     this.buildBands();
     this.bindEvents();
     this.resize();
@@ -279,7 +280,7 @@ export class Ontology3D {
       ["sector", "섹터", "전파"],
       ["ticker", "종목", "결론"],
     ];
-    const gold = new THREE.Color("#d9a441");
+    const gold = new THREE.Color("#ffd60a");
     for (const [key, name, sub] of titles) {
       // 받침 호 — 밴드 바로 아래를 따라 흐르는 가는 선
       const pts: THREE.Vector3[] = [];
@@ -288,7 +289,7 @@ export class Ontology3D {
       }
       const line = new THREE.Line(
         new THREE.BufferGeometry().setFromPoints(pts),
-        new THREE.LineBasicMaterial({ color: 0x27548d, transparent: true, opacity: 0.85 }),
+        new THREE.LineBasicMaterial({ color: 0x48484a, transparent: true, opacity: 0.85 }),
       );
       this.world.add(line);
       // 층 제목 — 왼쪽 끝, 금색. 층이 무엇인지 그래프 안에서 바로 읽힌다

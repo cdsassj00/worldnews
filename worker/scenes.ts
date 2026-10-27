@@ -33,7 +33,8 @@ import { ApiError, round } from "./util";
 import { CODE_TO_NAME, marketOfSymbol, resolveTicker } from "./symbols";
 
 const W = 1920, H = 1080;
-const GOLD = "#d9a441", UP = "#e0524a", DOWN = "#3b82f6", FG = "#e2e8f0", DIM = "#94a3b8", PANEL = "rgba(15,23,42,0.92)";
+// ssjsite 톤(docs/DESIGN_GUIDE.md) — 순수 블랙 · iOS 회색 계단 · 등락만 빨강/파랑 · 금색은 포인트
+const GOLD = "#ffd60a", UP = "#ff453a", DOWN = "#0a84ff", FG = "#f5f5f7", DIM = "#98989d", PANEL = "#1c1c1e";
 const FONT = `font-family="'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif"`;
 const FONT_IMPORT = `<style>@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css');</style>`;
 
@@ -60,29 +61,29 @@ function shell(body: string, animate: boolean): string {
     : "";
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
 ${FONT_IMPORT}${anim}
-<defs><radialGradient id="bg" cx="50%" cy="28%" r="95%"><stop offset="0%" stop-color="#0b1530"/><stop offset="100%" stop-color="#040814"/></radialGradient></defs>
+<defs><radialGradient id="bg" cx="50%" cy="28%" r="95%"><stop offset="0%" stop-color="#000000"/><stop offset="100%" stop-color="#000000"/></radialGradient></defs>
 <rect width="${W}" height="${H}" fill="url(#bg)"/>
 ${body}
 <text x="80" y="${H - 40}" fill="${DIM}" font-size="19" ${FONT}>${esc(DISCLAIMER)}</text>
-<text x="${W - 80}" y="${H - 40}" text-anchor="end" fill="${GOLD}" font-size="22" font-weight="700" ${FONT}>stockontology.cc</text>
+<text x="${W - 80}" y="${H - 40}" text-anchor="end" fill="${GOLD}" font-size="22" font-weight="600" ${FONT}>stockontology.cc</text>
 </svg>`;
 }
 
 function header(title: string, sub: string, accent = GOLD): string {
-  return `<text x="80" y="96" fill="${GOLD}" font-size="28" font-weight="900" letter-spacing="5" ${FONT}>STOCKONTOLOGY</text>
-<text x="80" y="168" fill="${FG}" font-size="54" font-weight="900" ${FONT}>${title}</text>
+  return `<text x="80" y="96" fill="${GOLD}" font-size="28" font-weight="600" letter-spacing="5" ${FONT}>STOCKONTOLOGY</text>
+<text x="80" y="168" fill="${FG}" font-size="54" font-weight="600" ${FONT}>${title}</text>
 <text x="80" y="212" fill="${accent === GOLD ? DIM : accent}" font-size="26" ${FONT}>${esc(sub)}</text>`;
 }
 
 function node(x: number, y: number, w: number, h: number, l1: string, l2: string, accent: string, big = false): string {
   return `<g><rect x="${x}" y="${y - h / 2}" width="${w}" height="${h}" rx="14" fill="${PANEL}" stroke="${accent}" stroke-width="2"/>
-<text x="${x + 20}" y="${y - (big ? 8 : 6)}" fill="${FG}" font-size="${big ? 30 : 25}" font-weight="800" ${FONT}>${esc(l1)}</text>
+<text x="${x + 20}" y="${y - (big ? 8 : 6)}" fill="${FG}" font-size="${big ? 30 : 25}" font-weight="600" ${FONT}>${esc(l1)}</text>
 <text x="${x + 20}" y="${y + (big ? 26 : 22)}" fill="${DIM}" font-size="${big ? 21 : 18}" ${FONT}>${esc(l2)}</text></g>`;
 }
 
 function edge(x1: number, y1: number, x2: number, y2: number, color: string, width: number, label?: string): string {
   let s = `<path class="flow" d="M${x1},${y1} C${x1 + 90},${y1} ${x2 - 90},${y2} ${x2},${y2}" fill="none" stroke="${color}" stroke-width="${width.toFixed(1)}" opacity="0.75"/>`;
-  if (label) s += `<text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 10}" text-anchor="middle" fill="${color}" font-size="20" font-weight="700" ${FONT}>${esc(label)}</text>`;
+  if (label) s += `<text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 10}" text-anchor="middle" fill="${color}" font-size="20" font-weight="600" ${FONT}>${esc(label)}</text>`;
   return s;
 }
 
@@ -187,25 +188,25 @@ async function sceneStock(env: Env, market: "KR" | "US", code: string, animate: 
   /* 왼쪽 — 점수 분해 바 */
   const barX = 90, barW = 640;
   const bars: [string, number, number][] = [["온톨로지", t.onto, wOnto], ["가격신호", t.priceScore, wPrice], ["뉴스감성", newsScore, wNews]];
-  let left = `<text x="${barX}" y="330" fill="${GOLD}" font-size="28" font-weight="900" ${FONT}>합성 점수 분해</text>`;
+  let left = `<text x="${barX}" y="330" fill="${GOLD}" font-size="28" font-weight="600" ${FONT}>합성 점수 분해</text>`;
   bars.forEach(([label, val, w], i) => {
     const y = 390 + i * 130;
     const contrib = val * w;
     const half = barW / 2;
     const len = Math.min(half, Math.abs(val) * half);
-    left += `<text x="${barX}" y="${y - 14}" fill="${FG}" font-size="25" font-weight="700" ${FONT}>${label} <tspan fill="${DIM}" font-size="21">${val.toFixed(3)} × ${w} = </tspan><tspan fill="${dirColor(contrib)}" font-weight="800">${sgn(contrib, 3)}</tspan></text>`;
-    left += `<rect x="${barX}" y="${y}" width="${barW}" height="26" rx="13" fill="rgba(148,163,184,0.15)"/>`;
+    left += `<text x="${barX}" y="${y - 14}" fill="${FG}" font-size="25" font-weight="600" ${FONT}>${label} <tspan fill="${DIM}" font-size="21">${val.toFixed(3)} × ${w} = </tspan><tspan fill="${dirColor(contrib)}" font-weight="600">${sgn(contrib, 3)}</tspan></text>`;
+    left += `<rect x="${barX}" y="${y}" width="${barW}" height="26" rx="13" fill="rgba(152,152,157,0.15)"/>`;
     left += `<rect x="${val >= 0 ? barX + half : barX + half - len}" y="${y}" width="${Math.max(2, len)}" height="26" rx="13" fill="${dirColor(val)}"/>`;
     left += `<line x1="${barX + half}" y1="${y - 6}" x2="${barX + half}" y2="${y + 32}" stroke="${DIM}" stroke-width="1.5"/>`;
   });
-  left += `<text x="${barX}" y="810" fill="${FG}" font-size="34" font-weight="900" ${FONT}>합성 ${sgn(t.score, 3)}</text>`;
+  left += `<text x="${barX}" y="810" fill="${FG}" font-size="34" font-weight="600" ${FONT}>합성 ${sgn(t.score, 3)}</text>`;
 
   /* 오른쪽 — 온톨로지 경로 (거시 → 섹터 → 종목) */
   const macroX = 830, sectorX = 1310, nodeW = 330, nodeH = 78;
   const cy2 = 560;
   const es = t.edges.slice(0, 4);
   const my = (i: number) => cy2 - ((Math.max(1, es.length) - 1) * 116) / 2 + i * 116;
-  let right = `<text x="${macroX}" y="330" fill="${GOLD}" font-size="28" font-weight="900" ${FONT}>왜 이 점수인가 — 온톨로지 경로</text>`;
+  let right = `<text x="${macroX}" y="330" fill="${GOLD}" font-size="28" font-weight="600" ${FONT}>왜 이 점수인가 — 온톨로지 경로</text>`;
   es.forEach((e, i) => {
     right += edge(macroX + nodeW, my(i), sectorX, cy2, dirColor(e.contribution), 2.5 + Math.min(8, Math.abs(e.contribution) * 12), sgn(e.contribution));
     right += node(macroX, my(i), nodeW, nodeH, MACRO_KO[e.macroId] ?? e.macroId, e.sector, dirColor(e.contribution));
@@ -228,7 +229,7 @@ async function sceneStock(env: Env, market: "KR" | "US", code: string, animate: 
 
 /* ── chart:코드 — 일봉 + 이동평균 + 지지·저항 + 거래량 (2026-09-04 요청 2번) ────── */
 
-const MA20_COLOR = "#38bdf8", MA60_COLOR = "#a78bfa";
+const MA20_COLOR = "#64d2ff", MA60_COLOR = "#bf5af2";
 
 async function sceneChart(env: Env, _marketHint: "KR" | "US", code: string, animate: boolean): Promise<string> {
   const r = resolveTicker(code);
@@ -287,16 +288,16 @@ async function sceneChart(env: Env, _marketHint: "KR" | "US", code: string, anim
     const y = yFor(p.price);
     const pct = ((p.price - series.price) / series.price) * 100;
     srLines += `<line x1="${chartX0}" y1="${y.toFixed(1)}" x2="${chartX1}" y2="${y.toFixed(1)}" stroke="${color}" stroke-width="1.5" stroke-dasharray="10 8" opacity="0.7"/>`;
-    srLines += `<text x="${chartX1 + 14}" y="${(y + 6).toFixed(1)}" fill="${color}" font-size="19" font-weight="800" ${FONT}>${p.price.toLocaleString("ko-KR")} <tspan font-size="16" font-weight="600">${esc(p.label)} ${sgn(pct, 1)}%</tspan></text>`;
+    srLines += `<text x="${chartX1 + 14}" y="${(y + 6).toFixed(1)}" fill="${color}" font-size="19" font-weight="600" ${FONT}>${p.price.toLocaleString("ko-KR")} <tspan font-size="16" font-weight="600">${esc(p.label)} ${sgn(pct, 1)}%</tspan></text>`;
   };
   const near = nearestLevels(levels, series.price);
   if (near.support) drawLevel(near.support, UP);
   if (near.resistance) drawLevel(near.resistance, DOWN);
 
-  const legend = `<text x="${chartX0}" y="${chartTop - 18}" fill="${MA20_COLOR}" font-size="19" font-weight="700" ${FONT}>— MA20</text>
-<text x="${chartX0 + 110}" y="${chartTop - 18}" fill="${MA60_COLOR}" font-size="19" font-weight="700" ${FONT}>— MA60</text>
-<text x="${chartX0 + 220}" y="${chartTop - 18}" fill="${UP}" font-size="19" font-weight="700" ${FONT}>┅ 지지</text>
-<text x="${chartX0 + 320}" y="${chartTop - 18}" fill="${DOWN}" font-size="19" font-weight="700" ${FONT}>┅ 저항</text>`;
+  const legend = `<text x="${chartX0}" y="${chartTop - 18}" fill="${MA20_COLOR}" font-size="19" font-weight="600" ${FONT}>— MA20</text>
+<text x="${chartX0 + 110}" y="${chartTop - 18}" fill="${MA60_COLOR}" font-size="19" font-weight="600" ${FONT}>— MA60</text>
+<text x="${chartX0 + 220}" y="${chartTop - 18}" fill="${UP}" font-size="19" font-weight="600" ${FONT}>┅ 지지</text>
+<text x="${chartX0 + 320}" y="${chartTop - 18}" fill="${DOWN}" font-size="19" font-weight="600" ${FONT}>┅ 저항</text>`;
 
   const sub = `${kstDate()} · 일봉 ${N}개(약 ${Math.round(N / 21)}개월) · 현재가 ${series.price.toLocaleString("ko-KR")}${cur}` +
     (levels?.atr14 ? ` · ATR(14) ${levels.atr14.toLocaleString("ko-KR")}${cur}` : "");
@@ -307,7 +308,7 @@ async function sceneChart(env: Env, _marketHint: "KR" | "US", code: string, anim
       near.resistance ? `저항 ${near.resistance.label} ${near.resistance.price.toLocaleString("ko-KR")}${cur}` : null,
       levels?.levelNote ?? null,
     ].filter(Boolean);
-    note = `<text x="${chartX0}" y="${volBottom + 60}" fill="${GOLD}" font-size="24" font-weight="800" ${FONT}>${esc(parts.join(" · "))}</text>`;
+    note = `<text x="${chartX0}" y="${volBottom + 60}" fill="${GOLD}" font-size="24" font-weight="600" ${FONT}>${esc(parts.join(" · "))}</text>`;
   }
   else note = `<text x="${chartX0}" y="${volBottom + 60}" fill="${DIM}" font-size="22" ${FONT}>두 번 이상 시험된 지지·저항 자리가 아직 확인되지 않았습니다 — 근거 없는 레벨은 표시하지 않습니다.</text>`;
 
@@ -342,23 +343,23 @@ async function sceneStrategies(env: Env, _marketHint: "KR" | "US", code: string,
     const col = i % cols, row = Math.floor(i / cols);
     const x = gx0 + col * (chipW + gap), y = row === 0 ? row1Y : row2Y;
     const c = dirColor(s.score);
-    chips += `<rect x="${x}" y="${y}" width="${chipW.toFixed(1)}" height="${chipH}" rx="12" fill="${PANEL}" stroke="${s.verdict === "neutral" ? "rgba(148,163,184,0.35)" : c}" stroke-width="2"/>
-<text x="${x + 16}" y="${y + 40}" fill="${FG}" font-size="21" font-weight="800" ${FONT}>${esc(STRAT_SHORT[s.id] ?? s.nameKo)}</text>
-<text x="${x + 16}" y="${y + 78}" fill="${c}" font-size="19" font-weight="800" ${FONT}>${esc(VERDICT_KO[s.verdict])} ${sgn(s.score)}</text>`;
+    chips += `<rect x="${x}" y="${y}" width="${chipW.toFixed(1)}" height="${chipH}" rx="12" fill="${PANEL}" stroke="${s.verdict === "neutral" ? "rgba(152,152,157,0.35)" : c}" stroke-width="2"/>
+<text x="${x + 16}" y="${y + 40}" fill="${FG}" font-size="21" font-weight="600" ${FONT}>${esc(STRAT_SHORT[s.id] ?? s.nameKo)}</text>
+<text x="${x + 16}" y="${y + 78}" fill="${c}" font-size="19" font-weight="600" ${FONT}>${esc(VERDICT_KO[s.verdict])} ${sgn(s.score)}</text>`;
   });
 
   // 합의 바
   const consY = 640;
   const barX = gx0, barW = gx1 - gx0, half = barW / 2;
   const len = Math.min(half, Math.abs(rep.consensus.score) * half);
-  const consBar = `<text x="${barX}" y="${consY - 20}" fill="${GOLD}" font-size="26" font-weight="900" ${FONT}>종합 판정 — ${esc(rep.consensus.text)}</text>
-<rect x="${barX}" y="${consY}" width="${barW}" height="30" rx="15" fill="rgba(148,163,184,0.15)"/>
+  const consBar = `<text x="${barX}" y="${consY - 20}" fill="${GOLD}" font-size="26" font-weight="600" ${FONT}>종합 판정 — ${esc(rep.consensus.text)}</text>
+<rect x="${barX}" y="${consY}" width="${barW}" height="30" rx="15" fill="rgba(152,152,157,0.15)"/>
 <rect x="${rep.consensus.score >= 0 ? barX + half : barX + half - len}" y="${consY}" width="${Math.max(3, len)}" height="30" rx="15" fill="${dirColor(rep.consensus.score)}"/>
 <line x1="${barX + half}" y1="${consY - 8}" x2="${barX + half}" y2="${consY + 38}" stroke="${DIM}" stroke-width="1.5"/>`;
 
   // 추세 + 지표 타일
   const trendY = 730;
-  const trendLine = `<text x="${gx0}" y="${trendY}" fill="${rep.trend.trending ? GOLD : DIM}" font-size="24" font-weight="800" ${FONT}>${esc(rep.trend.alignment)}</text>
+  const trendLine = `<text x="${gx0}" y="${trendY}" fill="${rep.trend.trending ? GOLD : DIM}" font-size="24" font-weight="600" ${FONT}>${esc(rep.trend.alignment)}</text>
 <text x="${gx0}" y="${trendY + 32}" fill="${DIM}" font-size="20" ${FONT}>${esc(rep.trend.text)}</text>`;
 
   const tiles: [string, string][] = [
@@ -373,9 +374,9 @@ async function sceneStrategies(env: Env, _marketHint: "KR" | "US", code: string,
   let tilesG = "";
   tiles.forEach(([label, val], i) => {
     const x = gx0 + i * (tileW + tileGap);
-    tilesG += `<rect x="${x}" y="${tileY}" width="${tileW.toFixed(1)}" height="${tileH}" rx="10" fill="${PANEL}" stroke="rgba(148,163,184,0.25)" stroke-width="1.5"/>
+    tilesG += `<rect x="${x}" y="${tileY}" width="${tileW.toFixed(1)}" height="${tileH}" rx="10" fill="${PANEL}" stroke="rgba(152,152,157,0.25)" stroke-width="1.5"/>
 <text x="${x + 18}" y="${tileY + 34}" fill="${DIM}" font-size="18" ${FONT}>${label}</text>
-<text x="${x + 18}" y="${tileY + 74}" fill="${FG}" font-size="30" font-weight="800" ${FONT}>${esc(val)}</text>`;
+<text x="${x + 18}" y="${tileY + 74}" fill="${FG}" font-size="30" font-weight="600" ${FONT}>${esc(val)}</text>`;
   });
 
   // 매매 플랜
@@ -383,7 +384,7 @@ async function sceneStrategies(env: Env, _marketHint: "KR" | "US", code: string,
   const planY = 950;
   const biasColor = p.bias === "long" ? UP : p.bias === "avoid" ? DOWN : DIM;
   const plan = `<rect x="${gx0}" y="${planY - 40}" width="${gx1 - gx0}" height="100" rx="14" fill="${PANEL}" stroke="${biasColor}" stroke-width="2"/>
-<text x="${gx0 + 24}" y="${planY - 4}" fill="${biasColor}" font-size="26" font-weight="900" ${FONT}>${esc(p.biasKo)} (${esc(p.gradeKo)})</text>
+<text x="${gx0 + 24}" y="${planY - 4}" fill="${biasColor}" font-size="26" font-weight="600" ${FONT}>${esc(p.biasKo)} (${esc(p.gradeKo)})</text>
 <text x="${gx0 + 24}" y="${planY + 32}" fill="${FG}" font-size="21" ${FONT}>진입 ${p.entry.low.toLocaleString("ko-KR")}~${p.entry.high.toLocaleString("ko-KR")}${cur} · 손절 ${p.stop.price.toLocaleString("ko-KR")}${cur}(${sgn(p.stop.pct, 1)}%) · 목표1 ${p.targets[0].price.toLocaleString("ko-KR")}${cur}(${sgn(p.targets[0].pct, 1)}%) · 목표2 ${p.targets[1].price.toLocaleString("ko-KR")}${cur}(${sgn(p.targets[1].pct, 1)}%) · 손익비 ${p.rr.toFixed(2)}</text>`;
 
   const sub = `${kstDate()} · ${rep.price.toLocaleString("ko-KR")}${cur} (${sgn(rep.changePct, 1)}%) · 창시자가 있는 전략 13종`;
@@ -399,16 +400,16 @@ async function sceneFlow(env: Env, market: "KR" | "US"): Promise<string> {
   const x0 = 80, y0 = 340, rowH = 100, colWs = [70, 420, 220, 160, 140, 750];
   const colX = (i: number) => x0 + colWs.slice(0, i).reduce((a, b) => a + b, 0);
   let g = "";
-  cols.forEach((c, i) => { g += `<text x="${colX(i)}" y="${y0 - 24}" fill="${DIM}" font-size="22" font-weight="700" ${FONT}>${c}</text>`; });
+  cols.forEach((c, i) => { g += `<text x="${colX(i)}" y="${y0 - 24}" fill="${DIM}" font-size="22" font-weight="600" ${FONT}>${c}</text>`; });
   res.rows.forEach((r, i) => {
     const y = y0 + i * rowH;
-    g += `<rect x="${x0 - 20}" y="${y - 46}" width="${colWs.reduce((a, b) => a + b, 0) + 20}" height="${rowH - 14}" rx="12" fill="${i % 2 ? "rgba(15,23,42,0.5)" : "rgba(15,23,42,0.85)"}"/>`;
-    g += `<text x="${colX(0)}" y="${y}" fill="${i < 3 ? GOLD : FG}" font-size="26" font-weight="900" ${FONT}>${i + 1}</text>`;
-    g += `<text x="${colX(1)}" y="${y - 8}" fill="${FG}" font-size="25" font-weight="800" ${FONT}>${esc(r.name)}</text>`;
+    g += `<rect x="${x0 - 20}" y="${y - 46}" width="${colWs.reduce((a, b) => a + b, 0) + 20}" height="${rowH - 14}" rx="12" fill="${i % 2 ? "#1c1c1e" : "#1c1c1e"}"/>`;
+    g += `<text x="${colX(0)}" y="${y}" fill="${i < 3 ? GOLD : FG}" font-size="26" font-weight="600" ${FONT}>${i + 1}</text>`;
+    g += `<text x="${colX(1)}" y="${y - 8}" fill="${FG}" font-size="25" font-weight="600" ${FONT}>${esc(r.name)}</text>`;
     g += `<text x="${colX(1)}" y="${y + 20}" fill="${DIM}" font-size="17" ${FONT}>${esc(r.sector || "미분류")} · 자금${sgn(r.parts.moneyFlow, 1)} 매집${sgn(r.parts.accum, 1)} 대금${sgn(r.parts.surge, 1)}</text>`;
     g += `<text x="${colX(2)}" y="${y}" fill="${FG}" font-size="24" ${FONT}>${r.price.toLocaleString("ko-KR")}${cur}</text>`;
-    g += `<text x="${colX(3)}" y="${y}" fill="${dirColor(r.changePct)}" font-size="24" font-weight="700" ${FONT}>${sgn(r.changePct, 1)}%</text>`;
-    g += `<text x="${colX(4)}" y="${y}" fill="${dirColor(r.score)}" font-size="26" font-weight="900" ${FONT}>${r.score.toFixed(2)}</text>`;
+    g += `<text x="${colX(3)}" y="${y}" fill="${dirColor(r.changePct)}" font-size="24" font-weight="600" ${FONT}>${sgn(r.changePct, 1)}%</text>`;
+    g += `<text x="${colX(4)}" y="${y}" fill="${dirColor(r.score)}" font-size="26" font-weight="600" ${FONT}>${r.score.toFixed(2)}</text>`;
     g += `<text x="${colX(5)}" y="${y}" fill="${DIM}" font-size="19" ${FONT}>${esc(trunc(r.reasons[0]?.text ?? "", 32))}</text>`;
   });
   const sub = `${kstDate()} · 자금흐름(MFI)·매집(CLV 누적)·거래대금 급증 — 큰손이 사는 흔적 순위 · ${res.scanned}/${res.universe}종목 스캔`;
@@ -425,18 +426,18 @@ async function sceneCombo(env: Env, market: "KR" | "US"): Promise<string> {
   const colX = (i: number) => x0 + colWs.slice(0, i).reduce((a, b) => a + b, 0);
   const cell = (v: number | null) => (v === null ? `<tspan fill="${DIM}">—</tspan>` : `<tspan fill="${dirColor(v)}">${sgn(v, 2)}</tspan>`);
   let g = "";
-  cols.forEach((c, i) => { g += `<text x="${colX(i)}" y="${y0 - 24}" fill="${DIM}" font-size="22" font-weight="700" ${FONT}>${c}</text>`; });
+  cols.forEach((c, i) => { g += `<text x="${colX(i)}" y="${y0 - 24}" fill="${DIM}" font-size="22" font-weight="600" ${FONT}>${c}</text>`; });
   res.rows.forEach((r, i) => {
     const y = y0 + i * rowH;
-    g += `<rect x="${x0 - 20}" y="${y - 38}" width="${colWs.reduce((a, b) => a + b, 0) + 20}" height="${rowH - 12}" rx="12" fill="${i % 2 ? "rgba(15,23,42,0.5)" : "rgba(15,23,42,0.85)"}"/>`;
-    g += `<text x="${colX(0)}" y="${y}" fill="${i < 3 ? GOLD : FG}" font-size="24" font-weight="900" ${FONT}>${i + 1}</text>`;
-    g += `<text x="${colX(1)}" y="${y}" fill="${FG}" font-size="24" font-weight="800" ${FONT}>${esc(r.name)} <tspan fill="${DIM}" font-size="17">${esc(r.sector || "미분류")}</tspan></text>`;
+    g += `<rect x="${x0 - 20}" y="${y - 38}" width="${colWs.reduce((a, b) => a + b, 0) + 20}" height="${rowH - 12}" rx="12" fill="${i % 2 ? "#1c1c1e" : "#1c1c1e"}"/>`;
+    g += `<text x="${colX(0)}" y="${y}" fill="${i < 3 ? GOLD : FG}" font-size="24" font-weight="600" ${FONT}>${i + 1}</text>`;
+    g += `<text x="${colX(1)}" y="${y}" fill="${FG}" font-size="24" font-weight="600" ${FONT}>${esc(r.name)} <tspan fill="${DIM}" font-size="17">${esc(r.sector || "미분류")}</tspan></text>`;
     g += `<text x="${colX(2)}" y="${y}" fill="${FG}" font-size="22" ${FONT}>${r.price.toLocaleString("ko-KR")}${cur}</text>`;
-    g += `<text x="${colX(3)}" y="${y}" fill="${dirColor(r.changePct)}" font-size="22" font-weight="700" ${FONT}>${sgn(r.changePct, 1)}%</text>`;
-    g += `<text x="${colX(4)}" y="${y}" font-size="23" font-weight="700" ${FONT}>${cell(r.onto)}</text>`;
-    g += `<text x="${colX(5)}" y="${y}" font-size="23" font-weight="700" ${FONT}>${cell(r.flow)}</text>`;
-    g += `<text x="${colX(6)}" y="${y}" font-size="23" font-weight="700" ${FONT}>${cell(r.chart)}</text>`;
-    g += `<text x="${colX(7)}" y="${y}" fill="${dirColor(r.total)}" font-size="27" font-weight="900" ${FONT}>${sgn(r.total, 2)}</text>`;
+    g += `<text x="${colX(3)}" y="${y}" fill="${dirColor(r.changePct)}" font-size="22" font-weight="600" ${FONT}>${sgn(r.changePct, 1)}%</text>`;
+    g += `<text x="${colX(4)}" y="${y}" font-size="23" font-weight="600" ${FONT}>${cell(r.onto)}</text>`;
+    g += `<text x="${colX(5)}" y="${y}" font-size="23" font-weight="600" ${FONT}>${cell(r.flow)}</text>`;
+    g += `<text x="${colX(6)}" y="${y}" font-size="23" font-weight="600" ${FONT}>${cell(r.chart)}</text>`;
+    g += `<text x="${colX(7)}" y="${y}" fill="${dirColor(r.total)}" font-size="27" font-weight="600" ${FONT}>${sgn(r.total, 2)}</text>`;
   });
   const sub = `${kstDate()} · 가중치 온톨로지 ${res.weights.onto}% · 수급 ${res.weights.flow}% · 차트 ${res.weights.chart}% (기본 삼합) · 점수 없는 축은 빼고 재정규화`;
   return shell(header(`${market === "US" ? "미국" : "한국"} 조합 전략 순위`, sub) + g, false);
@@ -463,14 +464,14 @@ async function sceneConsensus(env: Env, market: "KR" | "US"): Promise<string> {
   ENGINE_ORDER.forEach((id, c) => {
     const x = gridX0 + c * (engColW + gap);
     const isDerived = id === "fusion";
-    g += `<text x="${x + engColW / 2}" y="${headerY}" text-anchor="middle" fill="${isDerived ? DIM : GOLD}" font-size="24" font-weight="900" ${FONT}>${esc(engineNames.get(id) ?? id)}${isDerived ? " (파생)" : ""}</text>`;
+    g += `<text x="${x + engColW / 2}" y="${headerY}" text-anchor="middle" fill="${isDerived ? DIM : GOLD}" font-size="24" font-weight="600" ${FONT}>${esc(engineNames.get(id) ?? id)}${isDerived ? " (파생)" : ""}</text>`;
   });
   g += `<text x="${nameColX}" y="${headerY}" fill="${DIM}" font-size="22" letter-spacing="2" ${FONT}>동시 지목 종목</text>`;
 
   rows.forEach((r, i) => {
     const y = firstRowY + i * rowH;
-    g += `<rect x="${nameColX - 20}" y="${y - 54}" width="${gridX0 - nameColX + ENGINE_ORDER.length * (engColW + gap) - 4}" height="${rowH - 14}" rx="12" fill="${i % 2 ? "rgba(15,23,42,0.5)" : "rgba(15,23,42,0.85)"}"/>`;
-    g += `<text x="${nameColX}" y="${y - 8}" fill="${FG}" font-size="27" font-weight="800" ${FONT}>${esc(r.name)}</text>`;
+    g += `<rect x="${nameColX - 20}" y="${y - 54}" width="${gridX0 - nameColX + ENGINE_ORDER.length * (engColW + gap) - 4}" height="${rowH - 14}" rx="12" fill="${i % 2 ? "#1c1c1e" : "#1c1c1e"}"/>`;
+    g += `<text x="${nameColX}" y="${y - 8}" fill="${FG}" font-size="27" font-weight="600" ${FONT}>${esc(r.name)}</text>`;
     g += `<text x="${nameColX}" y="${y + 20}" fill="${DIM}" font-size="18" ${FONT}>${esc(r.sector ?? "미분류")} · 독립 ${r.independentCount}표</text>`;
     const hitById = new Map(r.engines.map((e) => [e.id, e]));
     ENGINE_ORDER.forEach((id, c) => {
@@ -478,10 +479,10 @@ async function sceneConsensus(env: Env, market: "KR" | "US"): Promise<string> {
       const hit = hitById.get(id);
       const cx = x + engColW / 2, cy = y - 20;
       if (hit) {
-        g += `<circle cx="${cx}" cy="${cy}" r="22" fill="${hit.derived ? "rgba(148,163,184,0.25)" : "rgba(217,164,65,0.25)"}" stroke="${hit.derived ? DIM : GOLD}" stroke-width="2"/>`;
-        g += `<text x="${cx}" y="${cy + 9}" text-anchor="middle" fill="${hit.derived ? DIM : GOLD}" font-size="26" font-weight="900" ${FONT}>✓</text>`;
+        g += `<circle cx="${cx}" cy="${cy}" r="22" fill="${hit.derived ? "rgba(152,152,157,0.25)" : "rgba(255,214,10,0.22)"}" stroke="${hit.derived ? DIM : GOLD}" stroke-width="2"/>`;
+        g += `<text x="${cx}" y="${cy + 9}" text-anchor="middle" fill="${hit.derived ? DIM : GOLD}" font-size="26" font-weight="600" ${FONT}>✓</text>`;
       } else {
-        g += `<circle cx="${cx}" cy="${cy}" r="22" fill="none" stroke="rgba(148,163,184,0.2)" stroke-width="1.5"/>`;
+        g += `<circle cx="${cx}" cy="${cy}" r="22" fill="none" stroke="rgba(152,152,157,0.2)" stroke-width="1.5"/>`;
       }
     });
   });
@@ -510,14 +511,14 @@ async function sceneSwing(env: Env, market: "KR" | "US"): Promise<string> {
   sw.picks.slice(0, 4).forEach((p, i) => {
     const y = y0 + i * (cardH + gap);
     const strong = p.independentCount >= 2;
-    g += `<rect x="${x0}" y="${y}" width="${cardW}" height="${cardH}" rx="16" fill="${PANEL}" stroke="${strong ? GOLD : "rgba(148,163,184,0.35)"}" stroke-width="${strong ? 2.5 : 1.5}"/>`;
-    g += `<text x="${x0 + 30}" y="${y + 52}" fill="${FG}" font-size="34" font-weight="900" ${FONT}>${esc(p.name)} <tspan fill="${DIM}" font-size="20">${esc(p.sector ?? "미분류")} · ${esc(p.priceLabel)}</tspan></text>`;
-    g += `<text x="${x0 + 30}" y="${y + 92}" fill="${GOLD}" font-size="24" font-weight="800" ${FONT}>${p.appearances + 1}거래일째 추천 유지</text>`;
+    g += `<rect x="${x0}" y="${y}" width="${cardW}" height="${cardH}" rx="16" fill="${PANEL}" stroke="${strong ? GOLD : "rgba(152,152,157,0.35)"}" stroke-width="${strong ? 2.5 : 1.5}"/>`;
+    g += `<text x="${x0 + 30}" y="${y + 52}" fill="${FG}" font-size="34" font-weight="600" ${FONT}>${esc(p.name)} <tspan fill="${DIM}" font-size="20">${esc(p.sector ?? "미분류")} · ${esc(p.priceLabel)}</tspan></text>`;
+    g += `<text x="${x0 + 30}" y="${y + 92}" fill="${GOLD}" font-size="24" font-weight="600" ${FONT}>${p.appearances + 1}거래일째 추천 유지</text>`;
     g += `<text x="${x0 + 330}" y="${y + 92}" fill="${strong ? GOLD : DIM}" font-size="22" ${FONT}>${esc(p.engines.filter((e) => !e.derived).map((e) => e.nameKo).join(" · "))}${strong ? ` (독립 ${p.independentCount}개 일치)` : ""}</text>`;
     const sup = p.nearestSupport ? `지지 ${p.nearestSupportLabel} ${p.nearestSupport.toLocaleString("ko-KR")}${cur} (${p.toSupportPct}%)` : "지지 자리 미확인";
     const res = p.nearestResistance ? `저항 ${p.nearestResistanceLabel} ${p.nearestResistance.toLocaleString("ko-KR")}${cur} (+${p.toResistancePct}%)` : "위쪽 저항 미확인";
-    g += `<text x="${x0 + 30}" y="${y + 128}" fill="${UP}" font-size="21" font-weight="700" ${FONT}>${esc(sup)}</text>`;
-    g += `<text x="${x0 + 620}" y="${y + 128}" fill="${DOWN}" font-size="21" font-weight="700" ${FONT}>${esc(res)}</text>`;
+    g += `<text x="${x0 + 30}" y="${y + 128}" fill="${UP}" font-size="21" font-weight="600" ${FONT}>${esc(sup)}</text>`;
+    g += `<text x="${x0 + 620}" y="${y + 128}" fill="${DOWN}" font-size="21" font-weight="600" ${FONT}>${esc(res)}</text>`;
   });
   g += `<text x="${x0}" y="${y0 + 4 * (cardH + gap) + 8}" fill="${DIM}" font-size="20" ${FONT}>${esc(trunc(sw.ruleKo, 96))}</text>`;
 
@@ -563,26 +564,26 @@ async function sceneHorizons(env: Env, market: "KR" | "US"): Promise<string> {
   hz.buckets.slice(0, n).forEach((k, i) => {
     const x = x0 + i * (cardW + gap);
 
-    g += `<rect x="${x}" y="${y}" width="${cardW}" height="${cardH}" rx="18" fill="${PANEL}" stroke="rgba(148,163,184,0.32)" stroke-width="1.5"/>`;
-    g += `<text x="${x + 28}" y="${y + 58}" fill="${FG}" font-size="40" font-weight="900" ${FONT}>${esc(k.nameKo)}</text>`;
-    g += `<text x="${x + 28}" y="${y + 94}" fill="${GOLD}" font-size="21" font-weight="700" ${FONT}>${esc(trunc(k.holdKo, 34))}</text>`;
-    g += `<text x="${x + 28}" y="${y + 126}" fill="${DIM}" font-size="18" ${FONT}>${esc(trunc(k.ruleKo, 44))}</text>`;
+    g += `<rect x="${x}" y="${y}" width="${cardW}" height="${cardH}" rx="18" fill="${PANEL}" stroke="rgba(152,152,157,0.32)" stroke-width="1.5"/>`;
+    g += `<text x="${x + 28}" y="${y + 58}" fill="${FG}" font-size="40" font-weight="600" ${FONT}>${esc(k.nameKo)}</text>`;
+    g += `<text x="${x + 28}" y="${y + 94}" fill="${GOLD}" font-size="21" font-weight="600" ${FONT}>${esc(trunc(k.holdKo, 34))}</text>`;
+    g += `<text x="${x + 28}" y="${y + 126}" fill="${DIM}" font-size="18" ${FONT}>${esc(trunc(k.ruleKo, 30))}</text>`;
 
     // 구간 규칙(목표·손절)만 크게 — 과거 시세 백테스트 성적은 공개 이미지에 넣지 않는다
     const rule = RULE_LINE[k.id];
     if (rule) {
-      g += `<text x="${x + 28}" y="${y + 190}" fill="${UP}" font-size="30" font-weight="800" ${FONT}>${esc(rule[0])}</text>`;
-      g += `<text x="${x + 28}" y="${y + 230}" fill="${DOWN}" font-size="30" font-weight="800" ${FONT}>${esc(rule[1])}</text>`;
+      g += `<text x="${x + 28}" y="${y + 190}" fill="${UP}" font-size="30" font-weight="600" ${FONT}>${esc(rule[0])}</text>`;
+      g += `<text x="${x + 28}" y="${y + 230}" fill="${DOWN}" font-size="30" font-weight="600" ${FONT}>${esc(rule[1])}</text>`;
     }
 
-    g += `<line x1="${x + 28}" y1="${y + 266}" x2="${x + cardW - 28}" y2="${y + 266}" stroke="rgba(148,163,184,0.25)" stroke-width="1"/>`;
+    g += `<line x1="${x + 28}" y1="${y + 266}" x2="${x + cardW - 28}" y2="${y + 266}" stroke="rgba(152,152,157,0.25)" stroke-width="1"/>`;
     k.picks.slice(0, 4).forEach((p, j) => {
       const py = y + 312 + j * 88;
-      g += `<text x="${x + 28}" y="${py}" fill="${FG}" font-size="27" font-weight="800" ${FONT}>${esc(trunc(p.name, 12))} <tspan fill="${dirColor(p.changePct)}" font-size="20">${sgn(p.changePct, 1)}%</tspan></text>`;
+      g += `<text x="${x + 28}" y="${py}" fill="${FG}" font-size="27" font-weight="600" ${FONT}>${esc(trunc(p.name, 12))} <tspan fill="${dirColor(p.changePct)}" font-size="20">${sgn(p.changePct, 1)}%</tspan></text>`;
       g += `<text x="${x + 28}" y="${py + 28}" fill="${DIM}" font-size="19" ${FONT}>${esc(p.priceLabel)}${p.sector ? ` · ${esc(trunc(p.sector, 8))}` : ""}</text>`;
       const tgt = p.plan.target !== null ? `목표 ${money(p.plan.target)}` : "목표 없음(추적)";
-      g += `<text x="${x + 28}" y="${py + 54}" fill="${UP}" font-size="19" font-weight="700" ${FONT}>${esc(tgt)}</text>`;
-      g += `<text x="${x + 300}" y="${py + 54}" fill="${DOWN}" font-size="19" font-weight="700" ${FONT}>손절 ${esc(money(p.plan.stop))}</text>`;
+      g += `<text x="${x + 28}" y="${py + 54}" fill="${UP}" font-size="19" font-weight="600" ${FONT}>${esc(tgt)}</text>`;
+      g += `<text x="${x + 300}" y="${py + 54}" fill="${DOWN}" font-size="19" font-weight="600" ${FONT}>손절 ${esc(money(p.plan.stop))}</text>`;
     });
   });
 
@@ -604,12 +605,12 @@ async function sceneLeague(env: Env, market: "KR" | "US"): Promise<string> {
   lab.strategies.forEach((st, i) => {
     const x = x0 + i * (cardW + gap), y = 300;
     const pc = st.pnlPct;
-    g += `<rect x="${x}" y="${y}" width="${cardW}" height="${cardH}" rx="18" fill="${PANEL}" stroke="${st.liveNow ? GOLD : "rgba(148,163,184,0.3)"}" stroke-width="${st.liveNow ? 3 : 1.5}"/>`;
-    g += `<text x="${x + 28}" y="${y + 64}" fill="${FG}" font-size="34" font-weight="900" ${FONT}>${st.no}호 ${esc(st.nameKo)}</text>`;
+    g += `<rect x="${x}" y="${y}" width="${cardW}" height="${cardH}" rx="18" fill="${PANEL}" stroke="${st.liveNow ? GOLD : "rgba(152,152,157,0.3)"}" stroke-width="${st.liveNow ? 3 : 1.5}"/>`;
+    g += `<text x="${x + 28}" y="${y + 64}" fill="${FG}" font-size="34" font-weight="600" ${FONT}>${st.no}호 ${esc(st.nameKo)}</text>`;
     g += `<text x="${x + 28}" y="${y + 100}" fill="${DIM}" font-size="21" ${FONT}>${esc(st.tagKo)}${st.liveNow ? " · 실계좌 운용 중" : " · 시뮬레이션"}</text>`;
-    g += `<text x="${x + 28}" y="${y + 190}" fill="${dirColor(pc)}" font-size="58" font-weight="900" ${FONT}>${sgn(pc, 2)}%</text>`;
+    g += `<text x="${x + 28}" y="${y + 190}" fill="${dirColor(pc)}" font-size="58" font-weight="600" ${FONT}>${sgn(pc, 2)}%</text>`;
     g += `<text x="${x + 28}" y="${y + 232}" fill="${DIM}" font-size="20" ${FONT}>리그 수익률 · 승률 ${st.tradeStats.winRate}% (${st.tradeStats.total}회)</text>`;
-    g += `<text x="${x + 28}" y="${y + 296}" fill="${GOLD}" font-size="21" font-weight="800" ${FONT}>지금 고른 종목</text>`;
+    g += `<text x="${x + 28}" y="${y + 296}" fill="${GOLD}" font-size="21" font-weight="600" ${FONT}>지금 고른 종목</text>`;
     st.picks.slice(0, 4).forEach((p, j) => {
       g += `<text x="${x + 28}" y="${y + 336 + j * 40}" fill="${FG}" font-size="23" ${FONT}>${esc(p.name)} <tspan fill="${dirColor(p.score)}" font-size="20">${sgn(p.score)}</tspan></text>`;
     });
@@ -629,13 +630,13 @@ function sceneBacktest(): string {
   const x0 = 120, y0 = 320, rowH = 84, colWs = [320, 230, 230, 230, 230, 230, 230];
   const colX = (i: number) => x0 + colWs.slice(0, i).reduce((a, b) => a + b, 0);
   let g = "";
-  cols.forEach((c, i) => { g += `<text x="${colX(i)}" y="${y0 - 24}" fill="${DIM}" font-size="23" font-weight="700" ${FONT}>${c}</text>`; });
+  cols.forEach((c, i) => { g += `<text x="${colX(i)}" y="${y0 - 24}" fill="${DIM}" font-size="23" font-weight="600" ${FONT}>${c}</text>`; });
   const bestKr = Math.max(...engines.map((e) => e.KR.returns[2] ?? -999));
   const bestUs = Math.max(...engines.map((e) => e.US.returns[2] ?? -999));
   engines.forEach((e, r) => {
     const y = y0 + r * rowH;
-    g += `<rect x="${x0 - 24}" y="${y - 40}" width="${colWs.reduce((a, b) => a + b, 0) + 24}" height="${rowH - 12}" rx="12" fill="${r % 2 ? "rgba(15,23,42,0.5)" : "rgba(15,23,42,0.85)"}"/>`;
-    g += `<text x="${colX(0)}" y="${y + 8}" fill="${FG}" font-size="27" font-weight="800" ${FONT}>${esc(e.nameKo)}</text>`;
+    g += `<rect x="${x0 - 24}" y="${y - 40}" width="${colWs.reduce((a, b) => a + b, 0) + 24}" height="${rowH - 12}" rx="12" fill="${r % 2 ? "#1c1c1e" : "#1c1c1e"}"/>`;
+    g += `<text x="${colX(0)}" y="${y + 8}" fill="${FG}" font-size="27" font-weight="600" ${FONT}>${esc(e.nameKo)}</text>`;
     [...e.KR.returns, ...e.US.returns].forEach((v, c) => {
       const champ = (c === 2 && v === bestKr) || (c === 5 && v === bestUs);
       g += `<text x="${colX(c + 1)}" y="${y + 8}" fill="${dirColor(v)}" font-size="26" font-weight="${champ ? 900 : 600}" ${FONT}>${sgn(v, 1)}%${champ ? " 🏆" : ""}</text>`;

@@ -526,7 +526,8 @@ const fmtSigned = (v: number, d = 2) => `${v >= 0 ? "+" : ""}${v.toFixed(d)}`;
 /** 래스터화 환경에 Pretendard 가 없어도 같은 글꼴로 굳게 웹폰트를 명시한다 */
 const FONT_IMPORT = `<style>@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css');</style>`;
 const FONT = `font-family="'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif"`;
-const GOLD = "#d9a441", UP = "#e0524a", DOWN = "#3b82f6", FG = "#e2e8f0", DIM = "#94a3b8";
+// ssjsite 톤(docs/DESIGN_GUIDE.md) — 순수 블랙 · iOS 회색 계단 · 등락만 빨강/파랑 · 금색은 포인트
+const GOLD = "#ffd60a", UP = "#ff453a", DOWN = "#0a84ff", FG = "#f5f5f7", DIM = "#98989d";
 
 /** 영상 제목·해시태그용 — 구간별 추천에서 겹치지 않게 앞쪽 종목 이름 3개 */
 function hzTop(b: { horizons?: { buckets: { picks: { name: string }[] }[] } | null }): string[] {
@@ -559,15 +560,15 @@ async function cardSquare(env: Env, market: BriefMarket): Promise<string> {
   let body = "";
   let y = 420;
   if (top3.length) {
-    body += `<text x="64" y="${y}" fill="${GOLD}" font-size="26" font-weight="900" ${FONT}>오늘 여러 방식이 동시에 지목한 종목</text>`;
+    body += `<text x="64" y="${y}" fill="${GOLD}" font-size="26" font-weight="600" ${FONT}>오늘 여러 방식이 동시에 지목한 종목</text>`;
     y += 50;
     top3.forEach((r, i) => {
       const h = 118;
-      body += `<rect x="52" y="${y - 30}" width="${W - 104}" height="${h}" rx="16" fill="rgba(15,23,42,0.9)" stroke="${GOLD}" stroke-width="1.5"/>`;
-      body += `<text x="72" y="${y + 4}" fill="${FG}" font-size="30" font-weight="900" ${FONT}>${i + 1}. ${esc(r.name)}</text>`;
+      body += `<rect x="52" y="${y - 30}" width="${W - 104}" height="${h}" rx="16" fill="#1c1c1e" stroke="${GOLD}" stroke-width="1.5"/>`;
+      body += `<text x="72" y="${y + 4}" fill="${FG}" font-size="30" font-weight="600" ${FONT}>${i + 1}. ${esc(r.name)}</text>`;
       body += `<text x="72" y="${y + 34}" fill="${DIM}" font-size="17" ${FONT}>${esc(r.sector ?? "미분류")} · 독립 ${r.independentCount}개 방식 일치</text>`;
       const names = r.engines.map((e) => e.nameKo + (e.derived ? "(파생)" : "")).join(" · ");
-      body += `<text x="72" y="${y + 62}" fill="${GOLD}" font-size="16" font-weight="700" ${FONT}>${esc(names).slice(0, 60)}</text>`;
+      body += `<text x="72" y="${y + 62}" fill="${GOLD}" font-size="16" font-weight="600" ${FONT}>${esc(names).slice(0, 60)}</text>`;
       y += h + 22;
     });
   } else {
@@ -576,15 +577,15 @@ async function cardSquare(env: Env, market: BriefMarket): Promise<string> {
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   ${FONT_IMPORT}
-  <defs><radialGradient id="bg" cx="50%" cy="18%" r="120%"><stop offset="0%" stop-color="#0b1530"/><stop offset="100%" stop-color="#040814"/></radialGradient></defs>
+  <defs><radialGradient id="bg" cx="50%" cy="18%" r="120%"><stop offset="0%" stop-color="#000000"/><stop offset="100%" stop-color="#000000"/></radialGradient></defs>
   <rect width="${W}" height="${H}" fill="url(#bg)"/>
-  <text x="64" y="90" fill="${GOLD}" font-size="19" font-weight="900" letter-spacing="3" ${FONT}>STOCKONTOLOGY</text>
+  <text x="64" y="90" fill="${GOLD}" font-size="19" font-weight="600" letter-spacing="3" ${FONT}>STOCKONTOLOGY</text>
   <text x="64" y="126" fill="${DIM}" font-size="16" ${FONT}>온톨로지 데일리 · ${kstDate()}</text>
-  <text x="64" y="184" fill="${FG}" font-size="38" font-weight="900" ${FONT}>${mkLabel} 시장</text>
-  <text x="64" y="228" fill="${toneColor}" font-size="26" font-weight="900" ${FONT}>${esc(v.regime.label)}</text>
+  <text x="64" y="184" fill="${FG}" font-size="38" font-weight="600" ${FONT}>${mkLabel} 시장</text>
+  <text x="64" y="228" fill="${toneColor}" font-size="26" font-weight="600" ${FONT}>${esc(v.regime.label)}</text>
   ${body}
   <text x="64" y="${H - 60}" fill="${DIM}" font-size="13" ${FONT}>${esc(DISCLAIMER.slice(0, 40))}…</text>
-  <text x="64" y="${H - 36}" fill="${GOLD}" font-size="15" font-weight="700" ${FONT}>stockontology.cc</text>
+  <text x="64" y="${H - 36}" fill="${GOLD}" font-size="15" font-weight="600" ${FONT}>stockontology.cc</text>
 </svg>`;
 }
 
@@ -620,7 +621,7 @@ function cardLandscape(v: OntoVerdict, market: BriefMarket): string {
       const w = 1.5 + Math.min(6, Math.abs(e.contribution) * 9);
       const x1 = colX.macro + nodeW, x2 = colX.sector;
       edges += `<path d="M${x1},${my} C${x1 + 60},${my} ${x2 - 60},${sy} ${x2},${sy}" fill="none" stroke="${cls}" stroke-width="${w.toFixed(1)}" opacity="0.75"/>`;
-      edges += `<text x="${(x1 + x2) / 2}" y="${(my + sy) / 2 - 8}" text-anchor="middle" fill="${cls}" font-size="15" font-weight="700" ${FONT}>${fmtSigned(e.contribution)}</text>`;
+      edges += `<text x="${(x1 + x2) / 2}" y="${(my + sy) / 2 - 8}" text-anchor="middle" fill="${cls}" font-size="15" font-weight="600" ${FONT}>${fmtSigned(e.contribution)}</text>`;
     }
     for (const t of stocksBySector(s.sector)) {
       const ty = tickerY.get(t.code)!;
@@ -630,8 +631,8 @@ function cardLandscape(v: OntoVerdict, market: BriefMarket): string {
   }
 
   const node = (x: number, y: number, line1: string, line2: string, accent: string) =>
-    `<g><rect x="${x}" y="${y - nodeH / 2}" width="${nodeW}" height="${nodeH}" rx="10" fill="rgba(15,23,42,0.9)" stroke="${accent}" stroke-width="1.5"/>` +
-    `<text x="${x + 14}" y="${y - 6}" fill="${FG}" font-size="19" font-weight="800" ${FONT}>${esc(line1)}</text>` +
+    `<g><rect x="${x}" y="${y - nodeH / 2}" width="${nodeW}" height="${nodeH}" rx="10" fill="#1c1c1e" stroke="${accent}" stroke-width="1.5"/>` +
+    `<text x="${x + 14}" y="${y - 6}" fill="${FG}" font-size="19" font-weight="600" ${FONT}>${esc(line1)}</text>` +
     `<text x="${x + 14}" y="${y + 17}" fill="${DIM}" font-size="14" ${FONT}>${esc(line2)}</text></g>`;
 
   let nodes = "";
@@ -642,15 +643,15 @@ function cardLandscape(v: OntoVerdict, market: BriefMarket): string {
   const listX = 990;
   const rows = v.stocks.recommend.slice(0, 5);
   const avoid = v.stocks.avoid.slice(0, 2);
-  let list = `<text x="${listX}" y="${diaTop + 6}" fill="${GOLD}" font-size="18" font-weight="900" ${FONT}>오늘의 온톨로지 추천</text>`;
+  let list = `<text x="${listX}" y="${diaTop + 6}" fill="${GOLD}" font-size="18" font-weight="600" ${FONT}>오늘의 온톨로지 추천</text>`;
   rows.forEach((s, i) => {
     const y = diaTop + 46 + i * 58;
-    list += `<text x="${listX}" y="${y}" fill="${FG}" font-size="21" font-weight="800" ${FONT}>${i + 1}. ${esc(s.name)}</text>`;
+    list += `<text x="${listX}" y="${y}" fill="${FG}" font-size="21" font-weight="600" ${FONT}>${i + 1}. ${esc(s.name)}</text>`;
     list += `<text x="${listX}" y="${y + 22}" fill="${DIM}" font-size="14" ${FONT}>${esc(s.sector ?? "")} · 점수 ${fmtSigned(s.score)} · ${fmtSigned(s.changePct, 1)}%</text>`;
   });
   if (avoid.length) {
     const y0 = diaTop + 46 + rows.length * 58 + 14;
-    list += `<text x="${listX}" y="${y0}" fill="${DOWN}" font-size="16" font-weight="900" ${FONT}>피할 곳</text>`;
+    list += `<text x="${listX}" y="${y0}" fill="${DOWN}" font-size="16" font-weight="600" ${FONT}>피할 곳</text>`;
     avoid.forEach((s, i) => {
       list += `<text x="${listX}" y="${y0 + 26 + i * 24}" fill="${DIM}" font-size="15" ${FONT}>${esc(s.name)} (${fmtSigned(s.score)})</text>`;
     });
@@ -658,17 +659,17 @@ function cardLandscape(v: OntoVerdict, market: BriefMarket): string {
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   ${FONT_IMPORT}
-  <defs><radialGradient id="bg" cx="50%" cy="30%" r="90%"><stop offset="0%" stop-color="#0b1530"/><stop offset="100%" stop-color="#040814"/></radialGradient></defs>
+  <defs><radialGradient id="bg" cx="50%" cy="30%" r="90%"><stop offset="0%" stop-color="#000000"/><stop offset="100%" stop-color="#000000"/></radialGradient></defs>
   <rect width="${W}" height="${H}" fill="url(#bg)"/>
-  <text x="60" y="72" fill="${GOLD}" font-size="22" font-weight="900" letter-spacing="4" ${FONT}>STOCKONTOLOGY · 온톨로지 데일리</text>
-  <text x="60" y="126" fill="${FG}" font-size="42" font-weight="900" ${FONT}>${dateStr} ${mkLabel} — <tspan fill="${toneColor}">${esc(v.regime.label)}</tspan></text>
+  <text x="60" y="72" fill="${GOLD}" font-size="22" font-weight="600" letter-spacing="4" ${FONT}>STOCKONTOLOGY · 온톨로지 경로</text>
+  <text x="60" y="126" fill="${FG}" font-size="42" font-weight="600" ${FONT}>${dateStr} ${mkLabel} — <tspan fill="${toneColor}">${esc(v.regime.label)}</tspan></text>
   <text x="60" y="158" fill="${DIM}" font-size="17" ${FONT}>${esc((v.causal[0] ?? v.regime.lines[0] ?? "").slice(0, 78))}</text>
   <text x="${colX.macro}" y="${diaTop + 2}" fill="${DIM}" font-size="14" letter-spacing="2" ${FONT}>거시요인</text>
   <text x="${colX.sector}" y="${diaTop + 2}" fill="${DIM}" font-size="14" letter-spacing="2" ${FONT}>섹터</text>
   <text x="${colX.ticker}" y="${diaTop + 2}" fill="${DIM}" font-size="14" letter-spacing="2" ${FONT}>종목</text>
   ${edges}${nodes}${list}
   <text x="60" y="${H - 36}" fill="${DIM}" font-size="13" ${FONT}>${esc(DISCLAIMER.slice(0, 90))}…</text>
-  <text x="${W - 60}" y="${H - 36}" text-anchor="end" fill="${GOLD}" font-size="15" font-weight="700" ${FONT}>stockontology.cc</text>
+  <text x="${W - 60}" y="${H - 36}" text-anchor="end" fill="${GOLD}" font-size="15" font-weight="600" ${FONT}>stockontology.cc</text>
 </svg>`;
 }
 
@@ -682,25 +683,25 @@ function cardPortrait(v: OntoVerdict, market: BriefMarket): string {
 
   let body = "";
   let y = 330;
-  body += `<text x="56" y="${y}" fill="${GOLD}" font-size="24" font-weight="900" ${FONT}>순풍 섹터</text>`;
+  body += `<text x="56" y="${y}" fill="${GOLD}" font-size="24" font-weight="600" ${FONT}>순풍 섹터</text>`;
   y += 44;
   for (const s of secs) {
-    body += `<text x="56" y="${y}" fill="${FG}" font-size="28" font-weight="800" ${FONT}>${esc(s.sector)} <tspan fill="${UP}" font-size="22">${fmtSigned(s.score)}</tspan></text>`;
+    body += `<text x="56" y="${y}" fill="${FG}" font-size="28" font-weight="600" ${FONT}>${esc(s.sector)} <tspan fill="${UP}" font-size="22">${fmtSigned(s.score)}</tspan></text>`;
     y += 34;
     if (s.reasons[0]) { body += `<text x="56" y="${y}" fill="${DIM}" font-size="17" ${FONT}>${esc(s.reasons[0].slice(0, 42))}</text>`; y += 40; }
   }
   y += 20;
-  body += `<text x="56" y="${y}" fill="${GOLD}" font-size="24" font-weight="900" ${FONT}>오늘의 온톨로지 추천</text>`;
+  body += `<text x="56" y="${y}" fill="${GOLD}" font-size="24" font-weight="600" ${FONT}>오늘의 온톨로지 추천</text>`;
   y += 50;
   rows.forEach((s, i) => {
-    body += `<rect x="44" y="${y - 34}" width="${W - 88}" height="82" rx="14" fill="rgba(15,23,42,0.9)" stroke="${s.score >= 0 ? UP : DOWN}" stroke-width="1.5"/>`;
-    body += `<text x="64" y="${y}" fill="${FG}" font-size="30" font-weight="900" ${FONT}>${i + 1}. ${esc(s.name)}</text>`;
+    body += `<rect x="44" y="${y - 34}" width="${W - 88}" height="82" rx="14" fill="#1c1c1e" stroke="${s.score >= 0 ? UP : DOWN}" stroke-width="1.5"/>`;
+    body += `<text x="64" y="${y}" fill="${FG}" font-size="30" font-weight="600" ${FONT}>${i + 1}. ${esc(s.name)}</text>`;
     body += `<text x="64" y="${y + 30}" fill="${DIM}" font-size="18" ${FONT}>${esc(s.sector ?? "미분류")} · 점수 ${fmtSigned(s.score)} · ${fmtSigned(s.changePct, 1)}%</text>`;
     y += 100;
   });
   if (avoid.length) {
     y += 8;
-    body += `<text x="56" y="${y}" fill="${DOWN}" font-size="22" font-weight="900" ${FONT}>피할 곳</text>`;
+    body += `<text x="56" y="${y}" fill="${DOWN}" font-size="22" font-weight="600" ${FONT}>피할 곳</text>`;
     y += 34;
     for (const s of avoid) {
       body += `<text x="56" y="${y}" fill="${DIM}" font-size="19" ${FONT}>${esc(s.name)} (${fmtSigned(s.score)})</text>`;
@@ -710,14 +711,14 @@ function cardPortrait(v: OntoVerdict, market: BriefMarket): string {
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   ${FONT_IMPORT}
-  <defs><radialGradient id="bg" cx="50%" cy="20%" r="110%"><stop offset="0%" stop-color="#0b1530"/><stop offset="100%" stop-color="#040814"/></radialGradient></defs>
+  <defs><radialGradient id="bg" cx="50%" cy="20%" r="110%"><stop offset="0%" stop-color="#000000"/><stop offset="100%" stop-color="#000000"/></radialGradient></defs>
   <rect width="${W}" height="${H}" fill="url(#bg)"/>
-  <text x="56" y="96" fill="${GOLD}" font-size="20" font-weight="900" letter-spacing="3" ${FONT}>STOCKONTOLOGY</text>
+  <text x="56" y="96" fill="${GOLD}" font-size="20" font-weight="600" letter-spacing="3" ${FONT}>STOCKONTOLOGY</text>
   <text x="56" y="132" fill="${DIM}" font-size="18" ${FONT}>온톨로지 데일리 · ${dateStr}</text>
-  <text x="56" y="198" fill="${FG}" font-size="40" font-weight="900" ${FONT}>${mkLabel}</text>
-  <text x="56" y="252" fill="${toneColor}" font-size="30" font-weight="900" ${FONT}>${esc(v.regime.label)}</text>
+  <text x="56" y="198" fill="${FG}" font-size="40" font-weight="600" ${FONT}>${mkLabel}</text>
+  <text x="56" y="252" fill="${toneColor}" font-size="30" font-weight="600" ${FONT}>${esc(v.regime.label)}</text>
   ${body}
   <text x="56" y="${H - 60}" fill="${DIM}" font-size="14" ${FONT}>${esc(DISCLAIMER.slice(0, 46))}…</text>
-  <text x="56" y="${H - 36}" fill="${GOLD}" font-size="16" font-weight="700" ${FONT}>stockontology.cc</text>
+  <text x="56" y="${H - 36}" fill="${GOLD}" font-size="16" font-weight="600" ${FONT}>stockontology.cc</text>
 </svg>`;
 }
