@@ -97,7 +97,11 @@ async function bars(symbol: string, mk: Mk): Promise<Bar[] | null> {
     for (let i = 0; i < s.closes.length; i++) {
       const t = s.timestamps[i];
       if (!t) continue;
-      out.push({ d: localDate(t, mk), o: s.opens[i], h: s.highs[i], l: s.lows[i], c: s.closes[i] });
+      const o = s.opens[i], h = s.highs[i], l = s.lows[i], c = s.closes[i];
+      // 야후가 당일·휴장 봉을 0/빈값으로 줄 때가 있다. 그대로 쓰면 저가 0 이 손절선을 "건드려"
+      // 가격 0 에 손절된 −100% 거래가 생긴다(2026-11-23 실측: 국내 16건). 정상 봉만 쓴다.
+      if (!(o > 0 && h > 0 && l > 0 && c > 0)) continue;
+      out.push({ d: localDate(t, mk), o, h, l, c });
     }
     return out.length ? out : null;
   } catch {
@@ -199,7 +203,10 @@ export async function refreshScorecard(env: Env, mk: Mk, force = false): Promise
   }
   const need = [...byGroup.entries()].filter(([k, rs]) => {
     const g = led.groups[k];
-    return !g || g.recCount !== rs.length || g.trades.some((t) => t.status === "대기" || t.status === "보유중");
+    return !g || g.recCount !== rs.length || g.trades.some((t) =>
+      t.status === "대기" || t.status === "보유중" ||
+      // 0원 봉으로 잘못 채점된 거래(위 bars 참고)는 끝난 거래라도 다시 계산한다
+      (t.exitPx !== null && t.exitPx <= 0) || (t.entryPx !== null && t.entryPx <= 0));
   }).sort((a, b) => (led.groups[a[0]]?.computedAt ?? 0) - (led.groups[b[0]]?.computedAt ?? 0));
 
   // 같은 종목이 여러 구간에 걸쳐 있으면 시세는 한 번만 받는다
