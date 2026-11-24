@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <!-- Google AdSense -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5862755346780724" crossorigin="anonymous"></script>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-X3FVV1GT8F"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-X3FVV1GT8F');
+    </script>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>WORLD FINANCE GLOBE — 3D 세계지도 금융뉴스·시세·주문</title>
+    <meta
+      name="description"
+      content="3D 지구본에서 나라를 클릭하면 그 나라 금융뉴스와 지수, 종목 점수와 매매 계획을 보여주고 한국투자증권 계좌로 매수·매도까지 연결하는 터미널."
+    />
+    <link rel="canonical" href="https://stockontology.cc/" />
+    <!-- 다국어 상호 링크 — /en /ja /zh 는 워커가 head 를 그 언어로 바꿔 서빙한다 -->
+    <link rel="alternate" hreflang="ko" href="https://stockontology.cc/" />
+    <link rel="alternate" hreflang="en" href="https://stockontology.cc/en" />
+    <link rel="alternate" hreflang="ja" href="https://stockontology.cc/ja" />
+    <link rel="alternate" hreflang="zh-Hans" href="https://stockontology.cc/zh" />
+    <link rel="alternate" hreflang="x-default" href="https://stockontology.cc/" />
+    <link rel="alternate" type="application/rss+xml" title="WORLD FINANCE GLOBE 일일 시장 브리핑" href="/rss.xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="WORLD FINANCE GLOBE — 3D 온톨로지 금융 터미널" />
+    <meta property="og:description" content="거시요인→섹터→종목 온톨로지로 시장을 읽는 3D 금융 터미널. 350종목 레이더, 기회 탐색, 세계 경제 지표." />
+    <meta property="og:url" content="https://stockontology.cc/" />
+    <meta property="og:locale" content="ko_KR" />
+    <meta property="og:image" content="https://stockontology.cc/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://stockontology.cc/og.png" />
+    <meta name="theme-color" content="#000000" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "WORLD FINANCE GLOBE",
+        "url": "https://stockontology.cc/",
+        "description": "거시요인→섹터→종목 온톨로지로 시장을 읽는 3D 금융 터미널. 350종목 레이더, 기회 탐색, 세계 경제 지표, 일일 시장 브리핑.",
+        "applicationCategory": "FinanceApplication",
+        "operatingSystem": "Web",
+        "inLanguage": "ko",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "KRW" }
+      }
+    </script>
+    <!-- 검색엔진 소유 확인 (네이버: 첫 줄 = stockontology.cc, 둘째 줄 = 옛 workers.dev 속성) -->
+    <meta name="naver-site-verification" content="775bc5d1f31a08817bb5e3d276c76e9bf0f8ac8c" />
+    <meta name="naver-site-verification" content="53e4a52b1f3fc2917198f0a5b38b152f54202805" />
+    <meta name="google-site-verification" content="t1PuK7GrNq02YWMxvgAA-fEg--fQ6co4EVsQXphbp68" />
+    <!-- 빙은 구글 서치콘솔 가져오기(Import from GSC)를 쓰면 코드가 필요 없다. 수동 등록 시:
+      <meta name="msvalidate.01" content="빙_코드" />
+    -->
+    <meta name="color-scheme" content="dark light" />
+    <!-- 저장된 테마를 첫 페인트 전에 적용해 화면이 번쩍이지 않게 한다 -->
+    <script>
+      /* 기본은 ssjsite 톤(순수 블랙). 라이트는 사용자가 고른 경우만 — 저장 키 wfg-theme2 */
+      try { if (localStorage.getItem("wfg-theme2") === "light") document.documentElement.dataset.theme = "light"; } catch (e) {}
+    </script>
+    <link
+      rel="stylesheet"
+      as="style"
+      crossorigin
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+    />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%23020617' stroke='%2322C55E' stroke-width='2'/%3E%3Cpath d='M3 16h26M16 3c5 5 5 21 0 26M16 3c-5 5-5 21 0 26' stroke='%2334D399' stroke-width='1.2' fill='none'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <a class="skip-link" href="#panel">본문(국가 상세 패널)로 건너뛰기</a>
+
+    <!-- ══ 상단 — 네이버 증권식 GNB (2026-09-26) ══
+         1줄: 로고 · 종목 검색 · 유틸. 2줄: 화면 탭(홈/온톨로지/수급/차트/종합/전략실).
+         예전 상단바는 로고 + 흐르는 시세 + 버튼 여덟 개가 한 줄에 몰려 모바일에서 세 줄이 됐고,
+         운영자 전용(자동매매·거래 암호·KIS 연동 상태)이 모든 방문자에게 노출됐다.
+         운영자 항목은 "운영자" 메뉴 안으로 넣었다. -->
+    <div class="top-fixed">
+    <a class="promo-banner" href="https://cdsa.kr" target="_blank" rel="noopener">
+      <span class="promo-ad" aria-hidden="true">AD</span>
+      <span class="promo-text">강사가 부족하다고 아무 강사나 뽑고 계십니까? — AX 전환·AI 교육은 <u>CDSA와 함께</u></span>
+      <i class="promo-sweep" aria-hidden="true"></i>
+    </a>
+
+    <header class="gnb">
+      <div class="gnb-top">
+        <a class="brand" href="#home" aria-label="홈으로">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+            <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2.4" />
+            <path d="M3 16h26M16 3c5 5 5 21 0 26M16 3c-5 5-5 21 0 26" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".85" />
+          </svg>
+          <span class="brand-name">stockontology</span><span class="brand-sub">증권</span>
+        </a>
+        <div class="gnb-search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <input id="gnb-search" type="search" placeholder="종목명·코드 입력 (예: 삼성전자, 005930, NVDA)" autocomplete="off" />
+          <ul id="gnb-results" class="search-results" hidden></ul>
+        </div>
+        <span class="spacer"></span>
+        <div class="lang-switch" id="lang-switch" title="언어 / Language" data-no-translate>
+          <button type="button" data-lang="" title="한국어 (원문)">한국어</button>
+          <button type="button" data-lang="en" title="English — real-time translation">EN</button>
+          <button type="button" data-lang="ja" title="日本語 — リアルタイム翻訳">日本語</button>
+          <button type="button" data-lang="zh-CN" title="中文 — 实时翻译">中文</button>
+        </div>
+        <button class="gnb-util" id="btn-tour" type="button" title="사이트 사용법 안내">사용법</button>
+        <button class="gnb-util" id="btn-theme" type="button" title="화면 밝기 전환">라이트</button>
+        <details class="gnb-op">
+          <summary class="gnb-util" title="운영자 전용">운영자</summary>
+          <div class="gnb-op-menu">
+            <span id="kis-badge" class="badge badge-muted" title="한국투자증권 연동 상태">연동 확인중…</span>
+            <button class="gnb-op-item" id="btn-auto" type="button">자동매매 현황</button>
+            <button class="gnb-op-item" id="btn-auth" type="button">거래 암호</button>
+          </div>
+        </details>
+      </div>
+      <nav class="gnb-nav" id="gnb-nav" aria-label="화면">
+        <a href="#home" data-view="home" class="on">홈</a>
+        <a href="#onto" data-view="onto">온톨로지</a>
+        <a href="#flow" data-view="flow">수급</a>
+        <a href="#ta" data-view="ta">차트</a>
+        <a href="#combo" data-view="combo">종합</a>
+        <a href="#lab" data-view="lab">성적표</a>
+      </nav>
+    </header>
+    </div><!-- /top-fixed -->
+
+    <!-- ══ 홈 — 지수 카드 · 오늘의 추천 · 오른쪽 사이드(브리핑·지난 추천·점수 상위) ══ -->
+    <div class="view" id="view-home">
+      <!-- ══ 히어로 — 처음 온 사람에게 "어떻게 고르는가"를 오늘 실제 숫자로 (2026-09-27) ══
+           예전 히어로(320vh 스크롤리텔링)는 세 화면 내내 "우리가 뭘 하는지"만 말했다.
+           이번엔 한 화면 안에서 방법 → 오늘의 실제 예시 → 추천표로 바로 이어진다.
+           예시 카드(#hero-demo)는 오늘 단타 1위 종목의 실제 점수로 채운다(horizonpanel). -->
+      <section class="hx" id="home-hero" aria-label="이 사이트가 종목을 고르는 방법">
+        <div class="hx-inner nv-wrap">
+          <div class="hx-copy">
+            <p class="hx-over">매일 장 마감 후 · 국내 350종목 · 미국 100여 종목</p>
+            <h1 class="hx-title">
+              <span class="ln"><span>거시·수급·차트를</span></span>
+              <span class="ln"><span><em class="hx-accent">한 점수로 합쳐</em></span></span>
+              <span class="ln"><span>오늘 살 종목을 고릅니다.</span></span>
+            </h1>
+            <p class="hx-sub">
+              유가·금리·환율이 어느 업종에 순풍인지, 큰돈이 실제로 들어오는지, 차트 전략 13종이 사라고 하는지 —
+              셋을 한 점수로 합쳐 고르고, 종목마다 <b>목표가·손절가</b>를 숫자로 답니다.
+            </p>
+            <ol class="hx-steps">
+              <li><b>거시 인과</b><span>유가·금리·환율 → 업종 → 종목</span></li>
+              <li><b>수급</b><span>자금흐름·매집·거래대금 급증</span></li>
+              <li><b>차트</b><span>이평·MACD·일목 등 전략 13종 합의</span></li>
+            </ol>
+            <div class="hx-cta">
+              <a class="hx-btn primary" href="#picks" id="hx-go-picks">오늘의 추천 보기</a>
+              <a class="hx-btn" href="#lab" data-view="lab" id="hx-go-score">추천 성적 공개 — 성적표</a>
+            </div>
+          </div>
+          <div class="hx-demo" id="hero-demo" aria-live="polite">
+            <p class="hx-demo-k">오늘의 예시 — 불러오는 중…</p>
+          </div>
+        </div>
+      </section>
+      <div class="nv-wrap">
+        <div class="ix-strip" id="ix-strip" aria-label="주요 지수"></div>
+        <div class="home-grid">
+          <section class="home-main" id="picks" aria-label="오늘의 추천">
+            <div class="nv-head">
+              <h2 class="nv-title">오늘의 추천</h2>
+              <div class="hz-market nv-mk" id="hz-market" role="tablist" aria-label="시장 선택">
+                <button type="button" class="hz-mk active" data-market="KR">국내</button>
+                <button type="button" class="hz-mk" data-market="US">미국</button>
+              </div>
+            </div>
+            <div id="hz-body"><p class="nv-empty">추천을 불러오는 중…</p></div>
+          </section>
+          <aside class="home-side" id="home-side" aria-label="시장 요약"></aside>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ 분석 화면 머리 — 온톨로지·수급·차트·종합 공통. 제목·설명만 바뀐다 ══ -->
+    <div class="view-head nv-wrap" id="terminal" hidden>
+      <h2 class="nv-title" id="view-title">온톨로지</h2>
+      <p class="nv-sub" id="terminal-sub"></p>
+    </div>
+    <main class="layout" id="pane-onto" hidden>
+      <aside class="rail" aria-label="온톨로지 요약">
+        <section class="card card-verdict">
+          <h2 class="card-title">온톨로지 결론
+            <span class="radar-tabs verdict-mkt" id="verdict-mkt" role="tablist" style="display:inline-flex;margin:0 0 0 8px">
+              <button type="button" class="radar-tab active" data-mkt="KR" role="tab">한국</button>
+              <button type="button" class="radar-tab" data-mkt="US" role="tab">미국</button>
+            </span>
+          </h2>
+          <p class="card-sub">요인(거시·뉴스·수급)의 인과를 계산한 결과 — 섹터·종목은 여기서 출력됩니다.</p>
+          <div id="verdict-body"><p class="note">분석 중…</p></div>
+        </section>
+
+        <details class="card acc" open>
+          <summary class="card-title">종목 검색</summary>
+          <p class="card-sub">이름이나 코드를 입력하면 지금 시점 온톨로지 분석이 열립니다.</p>
+          <label class="ticker-search">
+            <span class="sr-only">종목 검색</span>
+            <input id="ticker-search" type="search" placeholder="예: 현대해상, 삼성전자, 005930" autocomplete="off" />
+            <ul id="ticker-results" class="search-results" hidden></ul>
+          </label>
+        </details>
+
+        <details class="card acc">
+          <summary class="card-title">거시 신호</summary>
+          <p class="card-sub">5일 변화율을 요인별 기준폭으로 나눈 -1~1 신호. 이게 그래프의 입력입니다.</p>
+          <ul class="macro-list" id="macro-list">
+            <li class="skeleton-row"></li>
+            <li class="skeleton-row"></li>
+            <li class="skeleton-row"></li>
+          </ul>
+        </details>
+
+        <details class="card acc">
+          <summary class="card-title">종목 점수 상위</summary>
+          <p class="card-sub">클릭하면 3D 그래프가 그 종목의 경로만 남깁니다.</p>
+          <ul class="hot-list" id="score-list">
+            <li class="skeleton-row"></li>
+            <li class="skeleton-row"></li>
+            <li class="skeleton-row"></li>
+          </ul>
+        </details>
+
+        <details class="card acc">
+          <summary class="card-title">기회 탐색 <span class="card-tag">KOSPI200+KOSDAQ150</span></summary>
+          <p class="card-sub" id="radar-sub">하락장에서도 350종목 중 순풍 받는 곳과 피할 곳을 찾습니다.</p>
+          <div class="radar-tabs" id="radar-tabs" role="tablist">
+            <button type="button" class="radar-tab active" data-tab="tailwind" role="tab">수혜 경로</button>
+            <button type="button" class="radar-tab" data-tab="relative" role="tab">상대 강세</button>
+            <button type="button" class="radar-tab" data-tab="weak" role="tab">약세 경고</button>
+          </div>
+          <p class="radar-tab-note" id="radar-tab-note"></p>
+          <ul class="hot-list" id="radar-list">
+            <li class="skeleton-row"></li>
+            <li class="skeleton-row"></li>
+          </ul>
+        </details>
+
+        <details class="card acc">
+          <summary class="card-title">지금 움직이는 시장</summary>
+          <ul class="hot-list" id="hot-list">
+            <li class="skeleton-row"></li>
+            <li class="skeleton-row"></li>
+          </ul>
+        </details>
+
+        <details class="card card-guide acc">
+          <summary class="card-title">쓰는 순서</summary>
+          <ol class="steps">
+            <li><b>가운데 3D 그래프</b>는 개념 그래프다 — 거시요인(의미 클러스터)끼리의 인과와 섹터로의 전파를 보여준다. 종목은 검색하거나 목록에서 클릭하면 그래프에 얹힌다.</li>
+            <li>오른쪽 아래 <b>돌아가는 지구본</b>을 누르면 세계 경제 지표와 지도가 열린다. 나라를 클릭하면 그 나라 상세가 뜬다.</li>
+            <li>상단 <b>자동매매</b>에서 계획·근거·백테스트 결과를 확인한다.</li>
+          </ol>
+        </details>
+      </aside>
+
+      <section class="stage">
+        <div id="onto-host" class="onto-host">
+          <canvas id="onto3d" aria-label="3D 온톨로지 그래프. 거시요인에서 섹터를 거쳐 종목까지 신호가 전파되는 구조입니다."></canvas>
+          <!-- 범례는 네온 원형 버튼으로 껐다 켰다 — 큰 카드가 거시요인 층을 가린다는 피드백(2026-08-17) -->
+          <button class="onto-fab" id="btn-legend" type="button" title="온톨로지 분석 설명 열기/닫기" aria-expanded="false">i</button>
+          <!-- 무대 위 시장 토글 — 그래프·결론·점수 상위·기회 탐색이 함께 전환된다 -->
+          <!-- 무대 토글은 온톨로지 유니버스(한국·미국)만 — 다른 나라는 아래 지구본 모달에서 (2026-08-17) -->
+          <div class="radar-tabs onto-mkt" id="onto-mkt" role="tablist" aria-label="온톨로지 시장 선택" data-no-translate>
+            <button type="button" class="radar-tab active" data-mkt="KR" role="tab">🇰🇷 한국</button>
+            <button type="button" class="radar-tab" data-mkt="US" role="tab">🇺🇸 미국</button>
+          </div>
+          <div class="onto-legend" id="onto-legend" hidden>
+            <div class="onto-title">
+              <b>온톨로지 분석</b>
+              <span id="onto-note">거시 신호를 불러오는 중…</span>
+            </div>
+            <div class="onto-layers">
+              <span><i class="layer layer-macro"></i>요인 (진한 점선 = 지금 작동 중인 인과)</span>
+              <span><i class="layer layer-sector"></i>섹터 (결론에 오른 것만)</span>
+              <span><i class="layer layer-ticker"></i>종목 (결론 + 검색)</span>
+            </div>
+            <p class="onto-help">노드를 클릭하면 그와 이어진 경로만 남습니다. 드래그로 회전 · Ctrl(⌘)+스크롤로 확대.</p>
+            <button class="btn btn-ghost onto-what" id="btn-onto-help" type="button">온톨로지란? · 갱신 주기</button>
+          </div>
+          <!-- 사이드 패널 접기 — 그래프를 넓게 보고 싶을 때 -->
+          <button class="side-toggle left" id="btn-rail-toggle" type="button" title="왼쪽 패널 접기/펴기">◀</button>
+          <button class="side-toggle right" id="btn-panel-toggle" type="button" title="오른쪽 패널 접기/펴기">▶</button>
+          <div class="globe-hint" id="onto-hint">불러오는 중…</div>
+          <div class="globe-tooltip" id="onto-tooltip" hidden></div>
+          <div class="globe-controls">
+            <button class="icon-btn" id="btn-spin" type="button" aria-pressed="true" title="자동회전 켜기/끄기">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 1 1-7.7 5.9M12 4V1M12 4l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              <span class="sr-only">자동회전</span>
+            </button>
+            <button class="icon-btn" id="btn-zoom-in" type="button" title="확대">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <span class="sr-only">확대</span>
+            </button>
+            <button class="icon-btn" id="btn-zoom-out" type="button" title="축소">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <span class="sr-only">축소</span>
+            </button>
+          </div>
+
+          <!-- 돌아가는 지구본 아이콘 — 누르면 세계 경제 지표 모달 -->
+          <button class="globe-orb" id="btn-world" type="button" title="세계 경제 지표 열기">
+            <canvas id="mini-globe" aria-hidden="true"></canvas>
+            <span class="orb-label">세계 경제</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="panel" id="panel" aria-live="polite">
+        <div class="panel-empty" id="panel-empty">
+          <h2>무엇을 볼지 고르세요</h2>
+          <p>
+            가운데 <b>3D 온톨로지 그래프</b>에서 종목 노드를 누르면 그 종목의 점수 구성과 근거가 여기에 뜹니다.
+            왼쪽 <b>종목 점수 상위</b> 목록을 눌러도 같습니다.
+          </p>
+          <p>
+            나라별 뉴스·지수·추천이 보고 싶으면 오른쪽 아래 <b>돌아가는 지구본</b>을 눌러
+            세계 경제 지표를 열고 지도에서 나라를 클릭하세요.
+          </p>
+          <div class="empty-legend">
+            <span><i class="dot dot-live"></i> 거시요인 (그래프 위층)</span>
+            <span><i class="dot dot-news"></i> 섹터 (가운데층)</span>
+            <span><i class="dot dot-order"></i> 종목 (아래층)</span>
+          </div>
+        </div>
+        <div class="panel-body" id="panel-body" hidden></div>
+      </section>
+    </main>
+
+    <!-- 차트분석 탭 — 이전의 전폭 모달을 인라인 화면으로 -->
+    <section class="terminal-pane" id="pane-ta" hidden aria-label="차트분석">
+      <div class="pane-inner">
+        <p class="card-sub" id="ta-sub">종목을 고르면 창시자가 있는 차트 전략들이 각각 판정을 냅니다.</p>
+        <div class="ta-search">
+          <input id="ta-search" type="search" placeholder="종목명 또는 코드 (예: 현대백화점, 069960)" autocomplete="off" />
+          <ul id="ta-results" class="search-results" hidden></ul>
+        </div>
+        <div id="ta-body"><p class="note">종목을 검색하거나 목록에서 눌러 보세요.</p></div>
+      </div>
+    </section>
+
+    <!-- 수급분석 탭 — 자금흐름·매집·거래대금 급증 순위 -->
+    <section class="terminal-pane" id="pane-flow" hidden aria-label="수급분석">
+      <div class="pane-inner">
+        <div class="pane-toolbar">
+          <p class="card-sub">순위표의 자금·매집·대금·추세가 무슨 뜻인지는 표 위 설명 카드에 있습니다. 종목을 누르면 차트분석 탭으로 이어집니다.</p>
+        </div>
+        <div class="radar-tabs flow-profiles" id="flow-profiles" role="tablist"></div>
+        <div id="flow-body"><p class="note">수급 순위를 불러오는 중…</p></div>
+      </div>
+    </section>
+
+    <!-- 조합 전략 탭 — 온톨로지·수급·차트를 가중치로 섞은 "지금 시점" 종목 순위.
+         백테스트(과거 성적)는 전략실이 담당하고, 여기는 추천(현재)만 담당한다 —
+         2026-08-16 사용자 지시: 백스테이징과 추천 종목은 분리한다. -->
+    <section class="terminal-pane" id="pane-combo" hidden aria-label="조합 전략">
+      <div class="pane-inner">
+        <p class="card-sub">세 분석(온톨로지·수급·차트)을 원하는 비율로 섞으면, 그 조합 기준으로 지금 어떤 종목이 유리한지 보여줍니다. 종목을 누르면 차트분석으로 이어집니다.</p>
+        <div id="combo-presets" class="combo-presets" role="tablist"></div>
+        <div id="combo-sliders" class="combo-sliders"></div>
+        <div id="combo-body"><p class="note">조합 순위를 불러오는 중…</p></div>
+      </div>
+    </section>
+
+    <!-- ══ 성적표 — 사이트가 실제로 낸 추천을, 추천대로 샀다면 (2026-09-27) ══
+         예전 "전략실"은 과거 시세로 규칙을 흉내 낸 백테스트였다(뉴스 0, 수급은 가격 역산).
+         사용자: "니가 추천한 종목을 샀을 때 그걸 백테스팅 해야지". 그래서 교체한다. -->
+    <section class="lab-strip" id="lab-strip" aria-label="추천 성적표" hidden>
+      <div class="lab-head nv-wrap">
+        <h2 class="nv-title">추천 성적표</h2>
+        <p class="nv-sub">화면·텔레그램에 실제로 나갔던 추천을 <b>추천대로 샀다면</b> 얼마였는지 매일 자동으로 채점합니다. 실제 주문은 나가지 않습니다.</p>
+      </div>
+      <div class="nv-wrap sc-body" id="sc-body"><p class="nv-empty">성적표를 불러오는 중…</p></div>
+    </section>
+
+    <footer class="footer">
+      <span id="disclaimer">
+        점수·의견은 가격지표와 공개 뉴스 키워드로 계산한 참고 자료입니다. 투자 자문이 아니며 매매 판단과 책임은 이용자 본인에게 있습니다.
+      </span>
+      <span class="footer-meta" id="footer-meta"></span>
+    </footer>
+
+    <!-- 거래 암호 모달 -->
+    <div class="modal" id="auth-modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+        <h2 id="auth-title">거래 암호 입력</h2>
+        <p class="modal-desc">
+          주문·잔고 조회는 서버에 설정한 <code>TRADE_TOKEN</code> 을 아는 사람만 쓸 수 있습니다.
+          입력값은 이 브라우저 세션에만 저장되고 서버에 저장되지 않습니다.
+        </p>
+        <label class="field">
+          <span>거래 암호</span>
+          <input type="password" id="auth-input" autocomplete="current-password" />
+        </label>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="auth-clear" type="button">저장값 삭제</button>
+          <span class="spacer"></span>
+          <button class="btn btn-ghost" id="auth-cancel" type="button">취소</button>
+          <button class="btn btn-primary" id="auth-save" type="button">저장</button>
+        </div>
+        <p class="modal-status" id="auth-status"></p>
+      </div>
+    </div>
+
+    <!-- 주문 확인 모달 -->
+    <div class="modal" id="order-modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="order-title">
+        <h2 id="order-title">주문 확인</h2>
+        <div id="order-summary" class="order-summary"></div>
+        <label class="field">
+          <span>확인을 위해 종목코드를 다시 입력하세요</span>
+          <input type="text" id="order-confirm-input" autocomplete="off" spellcheck="false" />
+        </label>
+        <div class="modal-actions">
+          <span class="spacer"></span>
+          <button class="btn btn-ghost" id="order-cancel" type="button">취소</button>
+          <button class="btn btn-danger" id="order-submit" type="button">주문 전송</button>
+        </div>
+        <p class="modal-status" id="order-status"></p>
+      </div>
+    </div>
+
+    <!-- 세계 경제 지표 (지구본 아이콘 클릭) -->
+    <div class="modal modal-wide" id="world-modal" hidden>
+      <div class="modal-card world-card" role="dialog" aria-modal="true" aria-labelledby="world-title">
+        <div class="auto-head">
+          <h2 id="world-title">세계 경제 지표</h2>
+          <span id="world-time" class="badge badge-muted">불러오는 중…</span>
+          <span class="spacer"></span>
+          <button class="btn btn-ghost" id="world-close" type="button">닫기</button>
+        </div>
+        <div class="world-body">
+          <div class="world-globe" id="globe-host">
+            <canvas id="globe" aria-label="3D 세계지도. 국가를 클릭해 해당 국가 금융정보를 봅니다."></canvas>
+            <div class="globe-hint" id="globe-hint">드래그로 지구를 돌리고, 나라를 클릭하세요</div>
+            <div class="globe-tooltip" id="globe-tooltip" hidden></div>
+            <label class="country-search">
+              <span class="sr-only">국가 검색</span>
+              <input id="country-search" type="search" placeholder="국가 검색 (예: 미국, Japan, DE)" autocomplete="off" />
+              <ul id="search-results" class="search-results" hidden></ul>
+            </label>
+          </div>
+          <div class="world-side">
+            <div id="world-side-main">
+              <h3 class="card-title">주요 지수 · 환율 · 원자재</h3>
+              <div class="world-grid" id="world-grid"></div>
+              <h3 class="card-title">글로벌 헤드라인</h3>
+              <ul class="news-list compact" id="world-news"></ul>
+            </div>
+            <!-- 나라를 고르면 이 모달 안에서 상세를 보여준다 — 온톨로지 3분할은 한국·미국 전용 -->
+            <div id="world-country" hidden>
+              <button class="btn btn-ghost panel-back" id="world-country-back" type="button">← 세계 지표로</button>
+              <div id="world-country-body"></div>
+              <div id="world-country-empty" hidden></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 온톨로지 설명 -->
+    <div class="modal" id="onto-help-modal" hidden>
+      <div class="modal-card onto-help-card" role="dialog" aria-modal="true" aria-labelledby="oh-title">
+        <h2 id="oh-title">이 화면이 보여주는 것</h2>
+        <div class="oh-body">
+          <p><b>세상의 큰 변화가 어느 종목에 어떻게 닿는지</b>를 세 층으로 추적하는 지식그래프(온톨로지)입니다.</p>
+          <div class="oh-flow">
+            <span class="oh-step"><b>① 거시요인</b><br/>유가·환율·금리·달러인덱스·구리·나스닥 등 12개를 금리·통화 / 원자재·원가 / 위험선호 / 실물·업황 클러스터로 묶음. 최근 5일 움직임 + 1면 뉴스 AI 보정. 거시끼리의 인과는 점선 아치로 표시</span>
+            <span class="oh-arrow">→</span>
+            <span class="oh-step"><b>② 섹터</b><br/>19개 업종. "유가가 오르면 정유는 +, 항공은 −" 같은 민감도 표가 신호를 전달</span>
+            <span class="oh-arrow">→</span>
+            <span class="oh-step"><b>③ 종목 (인스턴스)</b><br/>총 350종목. 종목은 온톨로지의 개념이 아니라 인스턴스라 상시 그래프에는 없고, 검색·클릭 시 해당 종목의 경로만 얹힘. 거시 신호 + 가격 + 뉴스 합산 -1~1 점수</span>
+          </div>
+          <p class="oh-read"><b>읽는 법</b> — <i class="up-txt">빨간 선</i>은 점수를 올리는 흐름, <i class="down-txt">파란 선</i>은 내리는 흐름. 선이 굵을수록 영향이 큽니다. 선 위를 흐르는 점이 신호의 방향과 세기입니다.</p>
+          <p><b>점수 읽기</b> — +0.3 이상 강한 신호 · +0.15 이상 매수 후보 기준 · −0.15 이하 약세 신호. 근거는 종목을 클릭하면 문장으로 전부 나옵니다.</p>
+          <p><b>간선의 의미</b> — 층 사이의 선은 단순 숫자가 아니라 <b>원가·수요·환율·할인율·마진·수주·위험선호·업황·안전자산</b> 9가지 인과 유형 중 하나입니다. 예: 유가→항공은 "원가 경로(유류비가 영업비용의 약 30%)", 금리→은행은 "마진 경로(예대마진 확대)". 종목을 클릭하면 각 경로의 메커니즘이 문장으로 나옵니다.</p>
+          <p><b>거시요인 사이의 인과</b> — 위층 안에서도 힘이 흐릅니다(점수에는 중복 반영하지 않고 설명에만 씁니다).</p>
+          <ul class="plan-detail" id="oh-macro-links"><li class="note">로딩 중…</li></ul>
+          <table class="oh-table">
+            <tr><th>무엇이</th><th>얼마나 자주 갱신되나</th></tr>
+            <tr><td>거시 신호 (가격 기반)</td><td>5분 (방문 시 재계산)</td></tr>
+            <tr><td>1면 뉴스 AI 해석</td><td>30분</td></tr>
+            <tr><td>종목별 뉴스 감성</td><td>45분 (핵심 20종목)</td></tr>
+            <tr><td>전 시장 레이더 350종목</td><td>종목당 약 75분 — 장중 15분 간격, 그 외 매시간 순회</td></tr>
+          </table>
+          <p class="note">점수는 공개 지표·뉴스로 계산한 참고 자료입니다. 투자 자문이 아니며 수익을 보장하지 않습니다.</p>
+        </div>
+        <div class="modal-actions">
+          <span class="spacer"></span>
+          <button class="btn btn-primary" id="onto-help-close" type="button">알겠습니다</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 자동매매 — 운영자 전용(거래 암호). 공개 화면(전략실·조합 전략)과 분리해
+         우측 상단 버튼으로만 연다. 2026-08-16 사용자 지시: "나만 보도록". -->
+    <div class="modal modal-wide" id="auto-modal" hidden>
+      <div class="modal-card auto-card" role="dialog" aria-modal="true" aria-labelledby="auto-title">
+        <div class="auto-head">
+          <h2 id="auto-title">자동매매 (운영자 전용)</h2>
+          <span id="auto-badge" class="badge badge-muted">상태 확인중…</span>
+          <span class="spacer"></span>
+          <button class="btn btn-ghost" id="auto-refresh" type="button">새로고침</button>
+          <button class="btn btn-ghost" id="auto-close" type="button">닫기</button>
+        </div>
+        <div class="auto-body" id="auto-body"></div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
